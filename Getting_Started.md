@@ -369,3 +369,16 @@ The UI screens are Aquarium, Stats, Clock, Phone pairing, DX Visit, Options, RF 
 Fish color controls and colored visitor rendering require a color display; monochrome OLED targets remain monochrome. Monochrome and Colour tanks know about each other and act & display accordingly
 
 Use the companion BLE connection for MeshCore functions such as messages, contacts, and setting device time. LoRaGotchi DX adds the pet UI and DX visit behavior on top of that companion firmware.
+
+## Aquarium eggs and inherited colours
+
+Fresh pets and confirmed pet resets can adopt an egg from a saved **🥚** aquarium
+companion. DX checks transfer support before offering adoption; click to select
+another tank, hold/back to skip. No candidate falls back after ten seconds; the
+whole selection window is two minutes. The aquarium/RX must implement
+[the egg contract](EGG-ADOPTION.md); an emoji alone does not enable transfers.
+Adoption retains the five-minute egg/hatching stage. Existing pets are not replaced.
+
+Visitor breeding now samples finer hues between parents. Older receivers still
+show a nearest-palette fallback. The outgoing fish label strips emoji, while your
+node name and discovery markers stay unchanged.

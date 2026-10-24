@@ -17,6 +17,12 @@ def declaration(name):
     return re.search(r'^static [^\n]*\b'+name+r'\b.*?;',source,re.M|re.S).group(0)
 pre=r'''
 #include <cassert>
+#include "examples/companion_radio/LoRaFishColour.h"
+#include "examples/companion_radio/LoRaFishEgg.h"
+static bool loRaFishAdoptionEligible=false,loRaFishEggApplying=false;
+static LoRaFishEgg loRaFishEggSession;
+static void closeLoRaFishAdoption(){loRaFishAdoptionEligible=false;loRaFishEggSession.close();}
+static bool selectLoRaFishEggTank(bool){return false;}
 #include <cstring>
 #include <cstdio>
 #include <cstdlib>

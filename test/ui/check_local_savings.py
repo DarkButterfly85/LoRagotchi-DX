@@ -214,7 +214,8 @@ int main() {
   saveLoRaFishSettings();
   const std::vector<uint8_t> expected={5,2,1,3,22,6,240,4,2,1,3,2,1,3,4,5,
       0x34,0x12,1,6,5,4,1,1,0x31,0x50,0x41,0x48,3,2,1,0,4,3,2,0,
-      0x41,0x51,0x55,0x31,0,0,0,0};
+      0x41,0x51,0x55,0x31,0,0,0,0,
+      0x48,0x55,0x45,0x31,3,4,5,5,6,4};
   assert(files["/lorafish.cfg"]==expected);
   reboot();clearCounts();saveLoRaFishSettings();assert(saves.empty());
   pass("settings encoding retains every byte of the legacy prefix and HAP1 tail");

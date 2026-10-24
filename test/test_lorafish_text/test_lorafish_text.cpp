@@ -68,3 +68,33 @@ int main(int argc,char** argv) {
   ::testing::InitGoogleTest(&argc,argv);
   return RUN_ALL_TESTS();
 }
+
+TEST(LoRaFishText, EggMarkerIsSeparateFromFishAndBounded) {
+  EXPECT_TRUE(LoRaFishText::hasEgg("🥚 Tank",9));
+  EXPECT_FALSE(LoRaFishText::hasEgg("🥚",3));
+  EXPECT_FALSE(LoRaFishText::hasEgg("🐣 🪺",9));
+  EXPECT_FALSE(LoRaFishText::hasFish("🥚",4));
+}
+TEST(LoRaFishText, WireNameStripsEmojiButPreservesLettersAndRawNodeName) {
+  char raw[]=" 🥚 🐟 José 🧑🏽‍🔧 🇺🇸 ";char out[32];
+  LoRaFishText::protocolName(out,sizeof(out),raw,sizeof(raw));
+  EXPECT_STREQ(out,"José");EXPECT_STREQ(raw," 🥚 🐟 José 🧑🏽‍🔧 🇺🇸 ");
+  LoRaFishText::protocolName(out,sizeof(out),"中文 魚",16);EXPECT_STREQ(out,"中文 魚");
+}
+TEST(LoRaFishText, WireNameCleansDelimitersControlsSelectorsAndKeycaps) {
+  char out[32];LoRaFishText::protocolName(out,sizeof(out),"  A|B\nC\t  1️⃣ ️‍  ",48);
+  EXPECT_STREQ(out,"A B C");
+  LoRaFishText::protocolName(out,sizeof(out),"🐠🥚️‍",32);EXPECT_STREQ(out,"DX Fish");
+  LoRaFishText::protocolName(out,sizeof(out),"A\xFF" "B",3);EXPECT_STREQ(out,"AB");
+}
+TEST(LoRaFishText, WireNameTinyBuffersAndMalformedNonterminatedInput) {
+  const char raw[]={'A',char(0xc3),char(0xa9),'B',char(0xf0)};
+  for(size_t cap=0;cap<=sizeof(raw);++cap)for(size_t size=1;size<=8;++size) {
+    char out[10];memset(out,'!',sizeof(out));
+    LoRaFishText::protocolName(out,size,raw,cap);
+    EXPECT_EQ(out[size],'!');EXPECT_LT(strlen(out),size);
+    EXPECT_EQ(mesh::validUtf8PrefixLength(out,strlen(out)),strlen(out));
+  }
+  char out[3];LoRaFishText::protocolName(out,sizeof(out),"AéB",4);EXPECT_STREQ(out,"A");
+  LoRaFishText::protocolName(nullptr,0,nullptr,0);
+}

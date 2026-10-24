@@ -1,5 +1,6 @@
 #pragma once
 #include <stdint.h>
+#include <stddef.h>
 #include "LoRaFishGuestReturn.h"
 #include "LoRaFishVisit.h"
 
@@ -46,6 +47,7 @@ extern uint8_t loragotchiDXLocalColorIndex;
 extern uint8_t loragotchiDXLocalScalesColorIndex;
 extern uint8_t loragotchiDXLocalEyesColorIndex;
 extern bool loragotchiDXReturnedFromMonochrome;
+bool loragotchiEggMessage(const uint8_t* key, const char* text, char* reply, size_t size);
 void loragotchiDXLoad();
 void loragotchiDXSave();
 #endif

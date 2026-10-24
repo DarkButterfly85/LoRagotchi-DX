@@ -1,9 +1,25 @@
-name: Build LoRagotchi-DX release images
+name: Build LoRagotchi-DX standard images
 
 on:
   push:
-    branches: ['release/firmware-*']
+    branches: [main, 'release/firmware-*']
+  pull_request:
+    branches: [main, dev]
+    paths:
+      - 'examples/**'
+      - 'src/**'
+      - 'variants/**'
+      - 'boards/**'
+      - 'platformio.ini'
+      - 'test/**'
+      - 'docs/experimental-screen-targets.json'
+      - '.github/workflows/loragotchi-release-build.yml'
+      - '.github/workflows/experimental-screen-builds.yml'
   workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -11,26 +27,36 @@ permissions:
 jobs:
   checks:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
       - run: pip install platformio==6.1.19
       - name: Native regressions
         run: pio test -e native -e native_kiss_modem
-      - name: Production arrival, return, storage, menu and PIN checks
+      - name: Production DX host regressions
         run: |
-          python3 test/ui/check_arrival_recovery.py
-          python3 test/ui/check_dx_handlers.py
-          python3 test/ui/check_dx_storage.py
-          python3 test/ui/check_menu_navigation.py
-          python3 test/ui/check_return_menu.py
-          python3 test/ui/check_emoji_dx.py
+          python3 - <<'PYTEST'
+          import subprocess
+          from pathlib import Path
+          for test in sorted(Path('test/ui').glob('check_*.py')):
+              # These integration tests need independent RX/Aquarium checkouts;
+              # retain their local evidence rather than silently mocking them in CI.
+              if test.name in {'check_dx_colour_retries.py', 'check_busy_mesh.py'}:
+                  print(f"Not run in standalone DX CI: {test.name} (requires RX/Aquarium)", flush=True)
+                  continue
+              subprocess.run(['python3', str(test)], check=True)
+          PYTEST
           python3 test/ble/check_pairing_pin.py
 
   build:
+    needs: checks
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       max-parallel: 5
@@ -58,6 +84,8 @@ jobs:
             target: build
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -86,10 +114,13 @@ jobs:
           fi
           git rev-parse HEAD > release-artifact/source-sha.txt
           pio pkg list -e "$BUILD_ENV" > release-artifact/dependencies.txt
+          echo "standard build; compilation is not physical hardware acceptance. See source-sha.txt for the exact revision." > release-artifact/BUILD-NOTES.txt
+          cp EGG-ADOPTION.md release-artifact/
           cd release-artifact
           sha256sum * > SHA256SUMS
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.environment }}-${{ github.sha }}
+          name: standard-${{ matrix.environment }}-${{ github.event.pull_request.head.sha || github.sha }}
           path: release-artifact/
           if-no-files-found: error
+          retention-days: 14

@@ -1,17 +1,36 @@
 name: Experimental TFT and OLED DX builds
 on:
   push:
-    branches: ['feature/experimental-screen-boards']
+    branches: [main, 'feature/experimental-screen-boards']
+  pull_request:
+    branches: [main, dev]
+    paths:
+      - 'examples/**'
+      - 'src/**'
+      - 'variants/**'
+      - 'boards/**'
+      - 'platformio.ini'
+      - 'test/**'
+      - 'docs/experimental-screen-targets.json'
+      - '.github/workflows/loragotchi-release-build.yml'
+      - '.github/workflows/experimental-screen-builds.yml'
   workflow_dispatch:
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 jobs:
   checks:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     outputs:
       matrix: ${{ steps.matrix.outputs.value }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -25,10 +44,7 @@ jobs:
           from pathlib import Path
           targets = json.loads(Path('docs/experimental-screen-targets.json').read_text())['targets']
           rows = [{'environment': t['environment'], 'target': t['target']} for t in targets]
-          rows += [
-              {'environment':'Heltec_v3_LoRaFish_companion_ble','target':'build'},
-              {'environment':'heltec_v4_LoRaFish_companion_ble','target':'build'},
-              {'environment':'Heltec_t096_LoRaFish_companion_ble','target':'create_uf2'}]
+          assert len({row['environment'] for row in rows}) == len(rows)
           with open(os.environ['GITHUB_OUTPUT'],'a') as out:
               out.write('value=' + json.dumps({'include':rows},separators=(',',':')) + '\n')
           PY
@@ -42,12 +58,15 @@ jobs:
   build:
     needs: checks
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       max-parallel: 10
       matrix: ${{ fromJSON(needs.checks.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -85,10 +104,13 @@ jobs:
           (out/'source-sha.txt').write_text(subprocess.check_output(['git','rev-parse','HEAD'],text=True))
           (out/'dependencies.txt').write_text(subprocess.check_output(['pio','pkg','list','-e',env],text=True))
           PY
+          echo "experimental build; compilation is not physical hardware acceptance. See source-sha.txt for the exact revision." > release-artifact/BUILD-NOTES.txt
+          cp EGG-ADOPTION.md release-artifact/
           cd release-artifact
           sha256sum * > SHA256SUMS
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.environment }}-${{ github.sha }}
+          name: experimental-${{ matrix.environment }}-${{ github.event.pull_request.head.sha || github.sha }}
           path: release-artifact/
           if-no-files-found: error
+          retention-days: 14

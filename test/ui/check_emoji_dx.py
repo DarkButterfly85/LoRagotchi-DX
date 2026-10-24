@@ -38,12 +38,12 @@ int main(){
 
   shortPress(KEY_NEXT);shortPress(KEY_NEXT);assert(loRaFishDXContactIndex==5);
   loRaFishMeshNodeName="Local 🐠";
-  assert(!strcmp(loRaFishDisplayName(),"Local ><>") && !strcmp(loRaFishProtocolName(),"Local 🐠"));
+  assert(!strcmp(loRaFishDisplayName(),"Local ><>") && !strcmp(loRaFishProtocolName(),"Local"));
   task.handleLongPress(KEY_ENTER);
   assert(the_mesh.dxSends==1 && the_mesh.lastDestination==5);
   assert(loragotchiDXHome.destinationIndex==5 && loRaFishDXDestinationKnown);
   assert(!strcmp(loragotchiDXHome.destinationName,"Gamma 🐡"));
-  assert(the_mesh.lastMessage.find("|Local 🐠")!=std::string::npos);
+  assert(the_mesh.lastMessage.find("|Local")!=std::string::npos);
   pass("filtered row maps to the original contact; display fallback never leaks into protocol names");
 
   // Host removes its marker and moves to a different table slot during the trip.

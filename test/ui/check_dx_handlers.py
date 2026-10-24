@@ -38,6 +38,7 @@ LoRaFishGuestReturn loragotchiDXGuestReturn;
 LoRaFishVisit loragotchiDXVisit;LoRaFishReservation loragotchiDXReservation;
 bool loragotchiDXLocalColorCapable=false,loragotchiDXLocalHasColorGenes=true,loragotchiDXReturnedFromMonochrome=false;
 uint8_t loragotchiDXLocalColorIndex=1,loragotchiDXLocalScalesColorIndex=2,loragotchiDXLocalEyesColorIndex=3;
+bool loragotchiEggMessage(const uint8_t*,const char*,char*,size_t){return false;}
 static unsigned saves=0;
 void loragotchiDXSave(){++saves;}
 class MyMesh {
@@ -188,6 +189,12 @@ int main(){
    loRaFishObserveTravelTransitions();assert(fish.happiness==85 && loRaFishHappiness.aquariumCooldownMs==0);
  }
  puts("PASS ordinary and malformed community markers return the fish without awarding a bonus");
+ loragotchiDXGuest={};loragotchiDXGuestReturn={};loragotchiDXReservation={};
+ m.receive(owner,"LFG1|REQ|100|101|2|Hue fish");
+ m.receive(owner,"LFG1|COMMIT|100|101|C|5|4|6|65535|H1|220|120|6");
+ assert(loragotchiDXGuest.color==220 && loragotchiDXGuest.scalesColor==120 && loragotchiDXGuest.eyesColor==6);
+ m.receive(owner,"LFG1|COMMIT|100|101");assert(loragotchiDXGuest.color==220);
+ puts("PASS production receiver applies H1 genes and short legacy retry preserves them");
 }
 '''
 methods='\n'.join(block(name) for name in [

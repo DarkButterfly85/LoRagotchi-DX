@@ -6,7 +6,7 @@
 #include <helpers/UTF8Helpers.h>
 
 // Display-only fallback for the small built-in ASCII fonts. Keep raw names in
-// contacts/adverts/protocol messages; never feed UTF-8 bytes directly to a panel.
+// contacts/adverts; protocolName sanitises only the outgoing fish label.
 namespace LoRaFishText {
 
 inline uint32_t next(const char* text, size_t capacity, size_t& pos) {
@@ -62,6 +62,57 @@ inline void display(char* dest, size_t size, const char* text, size_t capacity) 
     }
   }
   dest[out] = 0;
+}
+
+// Discovery always examines the original contact name, never the wire fish name.
+inline bool hasEgg(const char* text, size_t capacity) {
+  if (!text) return false;
+  for (size_t pos=0; pos<capacity && text[pos]; )
+    if (next(text,capacity,pos)==0x1F95A) return true;
+  return false;
+}
+
+inline bool emoji(uint32_t c) {
+  return (c>=0x1F000 && c<=0x1FAFF) || (c>=0x2600 && c<=0x27BF) ||
+      (c>=0x2300 && c<=0x23FF) || (c>=0x2B00 && c<=0x2BFF) ||
+      (c>=0x2190 && c<=0x21FF) || c==0xA9 || c==0xAE || c==0x203C ||
+      c==0x2049 || c==0x2122 || c==0x2139 || c==0x3030 || c==0x303D ||
+      c==0x3297 || c==0x3299 || c==0x24C2 || c==0x25AA || c==0x25AB ||
+      c==0x25B6 || c==0x25C0 || (c>=0x25FB && c<=0x25FE) || c==0x2934 || c==0x2935;
+}
+
+// Bounded UTF-8 fish label, not a mutation of the MeshCore node name.
+inline void protocolName(char* dest, size_t size, const char* text, size_t capacity) {
+  if (!dest || !size) return;
+  size_t out=0; bool space=false;
+  if (text) for (size_t pos=0; pos<capacity && text[pos]; ) {
+    const size_t start=pos;
+    const uint32_t c=next(text,capacity,pos);
+    if ((c>='0' && c<='9') || c=='#' || c=='*') {
+      size_t peek=pos;
+      uint32_t following=peek<capacity && text[peek] ? next(text,capacity,peek) : 0;
+      if (following==0xFE0F && peek<capacity && text[peek]) following=next(text,capacity,peek);
+      if (following==0x20E3) { pos=peek; continue; }
+    }
+    if (emoji(c) || c==0xFFFD || c==0x200D || c==0x200C || c==0x20E3 ||
+        (c>=0xFE00 && c<=0xFE0F) || (c>=0xE0000 && c<=0xE01EF) ||
+        (c>=0x200B && c<=0x200F) || (c>=0x202A && c<=0x202E) ||
+        (c>=0x2060 && c<=0x206F) || c==0xFEFF) continue;
+    if (c<=32 || (c>=0x7F && c<=0x9F) || c=='|' || c==0xA0 ||
+        (c>=0x2000 && c<=0x200A) || c==0x2028 || c==0x2029 || c==0x3000) {
+      space=out>0; continue;
+    }
+    const size_t length=pos-start;
+    if (out+length+(space?1:0)>=size) break;
+    if (space) dest[out++]=' ';
+    memcpy(dest+out,text+start,length);out+=length;space=false;
+  }
+  dest[out]=0;
+  if (!out) {
+    const char fallback[]="DX Fish";
+    const size_t count=size-1<sizeof(fallback)-1 ? size-1 : sizeof(fallback)-1;
+    memcpy(dest,fallback,count);dest[count]=0;
+  }
 }
 
 // Preserve valid raw UTF-8 in the existing bounded DX name field, without

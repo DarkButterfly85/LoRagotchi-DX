@@ -29,6 +29,7 @@ def declaration(name):
 
 parts = [r'''
 #include <algorithm>
+#include "examples/companion_radio/LoRaFishColour.h"
 #include <cassert>
 #include <cstdint>
 #include <cstdio>
@@ -106,7 +107,7 @@ names = '''LORAFISH_MAGIC LORAFISH_MAGIC_V1 LORAFISH_EGG_MINUTES
 LORAFISH_LIFESPAN_MINUTES LORAFISH_PACKETS_PER_FEED LORAFISH_MONOCHROME_COLOR
 LORAFISH_MAX_POOP fish fishLastMinute fishLastSave fishReaction fishReactionUntil
 loRaFishGeneration loRaFishPendingEgg loRaFishEggAppearance loRaFishMemorialEggSide
-loRaFishColor loRaFishScaleColor loRaFishEyeColor loRaFishNeedsAppearanceSetup
+loRaFishAdoptionEligible loRaFishColor loRaFishScaleColor loRaFishEyeColor loRaFishNeedsAppearanceSetup
 loRaFishEvolutionFlashUntil loRaFishHatchMelodyPlayed loRaFishPoopCount
 loRaFishNextPoopAt loRaFishCleaning loRaFishFeeding loRaFishFeedChasing
 loRaFishFeedLastXValid loRaFishFeedStarted loRaFishNextAutoFeed loRaFishPage
@@ -129,6 +130,7 @@ markers = [
     'static bool breedLoRaFishWithGuest(',
     'static uint8_t fishEvolutionForAge(',
     'static void encodeLoRaFishSettings(',
+    'static const char* loRaFishRecordKey(',
     'static bool writeLoRaFishRecord(',
     'static void saveLoRaFishSettings() {',
     'static void loadLoRaFishSettings() {',
@@ -157,7 +159,7 @@ static void resetAt(uint32_t age, bool egg=false) {
   loRaFishMemorialEggSide=-1;
   loRaFishColorDisplay=false; loRaFishSimulationMode=false;
   loragotchiDXHome={}; loragotchiDXGuest={false,true,2,3,4,5};
-  settingsWrites=0;
+  settingsWrites=0;loRaFishAdoptionEligible=false;
 }
 static void minute() { clockMs+=60000; tickLoRaFish(); }
 static void traits(uint8_t scales, uint8_t body, uint8_t eyes) {
@@ -261,7 +263,7 @@ int main() {
   minute(); assert(!loRaFishPendingEgg && fish.ageMinutes==LORAFISH_LIFESPAN_MINUTES-1);
   pass("young fish and paused appearance setup never auto-breed");
 
-  for (randomChoice=0; randomChoice<2; ++randomChoice) {
+  for (randomChoice=0; randomChoice<=240; randomChoice+=240) {
     resetAt(5000);
     assert(!breedLoRaFishWithGuest() && !loRaFishPendingEgg);
     loragotchiDXGuest.present=true;

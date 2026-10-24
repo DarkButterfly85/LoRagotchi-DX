@@ -569,6 +569,14 @@ ContactInfo*  MyMesh::processAck(const uint8_t *data) {
 void MyMesh::queueMessage(const ContactInfo &from, uint8_t txt_type, mesh::Packet *pkt,
                           uint32_t sender_timestamp, const uint8_t *extra, int extra_len, const char *text) {
 #ifdef LORAFISH_UI
+  if (text && strncmp(text,"LEG1|",5)==0) {
+    char reply[80]={};
+    if (loragotchiEggMessage(from.id.pub_key,text,reply,sizeof(reply)) && reply[0]) {
+      uint32_t hash=0,timeout=0;
+      sendMessage(from,getRTCClock()->getCurrentTime(),0,reply,hash,timeout);
+    }
+    return;
+  }
   if (text && strncmp(text,"LFG1|",5)==0) {
     expireLoRaFishReservation();
     unsigned long tx=0,fid=0;
@@ -654,16 +662,23 @@ void MyMesh::queueMessage(const ContactInfo &from, uint8_t txt_type, mesh::Packe
               loragotchiDXReservation.expired ? "|CANCEL1" : "");
           uint32_t hash=0,timeout=0;sendMessage(from,getRTCClock()->getCurrentTime(),0,returned,hash,timeout);return;
         }
-            char colorMode='M'; unsigned bodyColor=0,scalesColor=0,eyesColor=0,monoPixelTint=0xFFFF;
-            const int fields=sscanf(text+12,"%lu|%lu|%c|%u|%u|%u|%u",
-              &tx,&fid,&colorMode,&bodyColor,&scalesColor,&eyesColor,&monoPixelTint);
-      if(fields>=7 || !loragotchiDXGuest.present) {
-      loragotchiDXGuest.colorCapable=(fields>=4 && colorMode=='C');
-      loragotchiDXGuest.color=(fields>=4 && bodyColor<=6) ? (uint8_t)bodyColor : 6;
-      loragotchiDXGuest.scalesColor=(fields>=5 && scalesColor<=6) ? (uint8_t)scalesColor : loragotchiDXGuest.color;
-      loragotchiDXGuest.eyesColor=(fields>=6 && eyesColor<=6) ? (uint8_t)eyesColor : loragotchiDXGuest.color;
-            loragotchiDXGuest.monoPixelTint=(fields>=7 && monoPixelTint<=0xFFFF) ? (uint16_t)monoPixelTint : 0xFFFF;
-      }
+        char colorMode='M'; unsigned bodyColor=0,scalesColor=0,eyesColor=0,monoPixelTint=0xFFFF;
+        const int fields=sscanf(text+12,"%lu|%lu|%c|%u|%u|%u|%u",
+            &tx,&fid,&colorMode,&bodyColor,&scalesColor,&eyesColor,&monoPixelTint);
+        if (fields>=7 || !loragotchiDXGuest.present) {
+          uint8_t hueBody=0, hueScales=0, hueEyes=0;
+          const bool hasHues=fields>=7 && LoRaFishColour::extension(
+              strstr(text,"|H1|"),hueBody,hueScales,hueEyes);
+          loragotchiDXGuest.colorCapable=(fields>=4 && colorMode=='C');
+          loragotchiDXGuest.color=(fields>=4 && bodyColor<=6) ? (uint8_t)bodyColor : 6;
+          loragotchiDXGuest.scalesColor=(fields>=5 && scalesColor<=6) ? (uint8_t)scalesColor : loragotchiDXGuest.color;
+          loragotchiDXGuest.eyesColor=(fields>=6 && eyesColor<=6) ? (uint8_t)eyesColor : loragotchiDXGuest.color;
+          loragotchiDXGuest.monoPixelTint=(fields>=7 && monoPixelTint<=0xFFFF) ? (uint16_t)monoPixelTint : 0xFFFF;
+          if (hasHues) {
+            loragotchiDXGuest.color=hueBody; loragotchiDXGuest.scalesColor=hueScales;
+            loragotchiDXGuest.eyesColor=hueEyes;
+          }
+        }
         const bool firstArrival = !loragotchiDXGuest.present;
         loragotchiDXGuest.reserved=false;
         loragotchiDXGuest.present=true;
