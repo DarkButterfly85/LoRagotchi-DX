@@ -1433,8 +1433,80 @@ static void drawAdultFishSprite(DisplayDriver& display, int x, int y, bool right
 
   display.setColor(UIColor::primary_txt);
 }
+// Blend RGB565 channels independently; weights are eighths of genetic colour.
+// Presentation only: never modify the stored/wire alleles (including H1).
+static ColorVal loRaFishJuvenileTint(uint8_t allele, unsigned weight) {
+  const ColorVal color=loRaFishColorValue(allele);
+  if (!LoRaFishColour::valid(allele) || allele==LORAFISH_MONOCHROME_COLOR)
+    return color;
+  const ColorVal ivory=0xFFBC;
+  const unsigned r=(((color>>11)&31)*weight+((ivory>>11)&31)*(8-weight)+4)/8;
+  const unsigned g=(((color>>5)&63)*weight+((ivory>>5)&63)*(8-weight)+4)/8;
+  const unsigned b=((color&31)*weight+(ivory&31)*(8-weight)+4)/8;
+  return (ColorVal)((r<<11)|(g<<5)|b);
+}
+
+static bool drawJuvenileColourSprite(DisplayDriver& d,int x,int y,bool right,
+                                    bool young,const LoRaFishAppearance& appearance) {
+  // Keep OLEDs, fully Mono fish, guest pixel-tint and the white return flash
+  // on their existing rendering path. Eyes alone do not colour the body.
+  const bool bodyGene=LoRaFishColour::valid(appearance.body) && appearance.body!=LORAFISH_MONOCHROME_COLOR;
+  const bool scaleGene=LoRaFishColour::valid(appearance.scales) && appearance.scales!=LORAFISH_MONOCHROME_COLOR;
+  const bool eyeGene=LoRaFishColour::valid(appearance.eyes) && appearance.eyes!=LORAFISH_MONOCHROME_COLOR;
+  if (!loRaFishColorDisplay || appearance.body==0xFF ||
+      (!bodyGene && !scaleGene && !eyeGene)) return false;
+
+  const ColorVal body=loRaFishJuvenileTint(appearance.body,young ? 5 : 2);
+  const ColorVal fins=loRaFishJuvenileTint(young ? appearance.scales : appearance.body,
+                                         young ? 6 : 5);
+  // Neutral ink surrounds pale fills even on Paper; a Mono black body instead
+  // gets a light eye/border. Eye genetics first express in the adult sprite.
+  const unsigned light=((body>>11)&31)*299*2+((body>>5)&63)*587+(body&31)*114*2;
+  const ColorVal ink=light>=31500 ? 0x2104 : 0xDEFB;
+  const int rear=young ? -6 : -3, tail=young ? -11 : -8;
+  const int half=young ? 3 : 2, tailHalf=young ? 5 : 4;
+  const int front=young ? 5 : 3;
+  // All regions use the same body-local coordinates, including on turns.
+  auto line=[&](int ax,int ay,int bx,int by) {
+    fishLine(d,x+(right ? ax : -ax),y+ay,x+(right ? bx : -bx),y+by);
+  };
+  auto rect=[&](int ax,int ay,int w,int h) {
+    d.fillRect(x+(right ? ax : -ax-w+1),y+ay,w,h);
+  };
+  d.setColor(UIColor::window_bkg);
+  for (int i=-tailHalf;i<=tailHalf;++i) line(tail,i,rear,0);
+  if (young) {
+    for (int i=0;i<=3;++i) line(-1,-3,1,-6+i);
+    for (int i=0;i<=2;++i) line(-1,3,1,5-i);
+  }
+  d.setColor(fins);
+  line(rear,0,tail,-tailHalf);
+  line(tail,-tailHalf,tail,tailHalf);
+  line(tail,tailHalf,rear,0);
+  if (young) {
+    line(-1,-3,1,-6);
+    line(-1,3,1,5);
+  }
+  d.setColor(body);
+  rect(rear,-half,front-rear+1,half*2+1);
+  rect(front+1,-1,2,3);
+  d.setColor(ink);
+  line(rear,-half,front,-half);
+  line(rear,half,front,half);
+  line(rear,-half,rear,half);
+  line(front,-half,front,-1);
+  line(front,1,front,half);
+  line(front+1,-1,front+2,-1);
+  line(front+1,1,front+2,1);
+  line(front+2,-1,front+2,1);
+  line(young ? 3 : 2,-1,young ? 3 : 2,-1);
+  d.setColor(UIColor::primary_txt);
+  return true;
+}
+
 static void drawFryFishSprite(DisplayDriver& d, int x, int y, bool right,
                              const LoRaFishAppearance& appearance) {
+  if (drawJuvenileColourSprite(d,x,y,right,false,appearance)) return;
   const ColorVal bodyColor=loRaFishColorValue(appearance.body);
   const ColorVal scalesColor=loRaFishColorValue(appearance.scales);
   const ColorVal eyesColor=loRaFishColorValue(appearance.eyes);
@@ -1490,6 +1562,7 @@ static void drawFryFishSprite(DisplayDriver& d, int x, int y, bool right,
 
 static void drawYoungFishSprite(DisplayDriver& d, int x, int y, bool right,
                                const LoRaFishAppearance& appearance) {
+  if (drawJuvenileColourSprite(d,x,y,right,true,appearance)) return;
   const ColorVal bodyColor=loRaFishColorValue(appearance.body);
   const ColorVal scalesColor=loRaFishColorValue(appearance.scales);
   const ColorVal eyesColor=loRaFishColorValue(appearance.eyes);
@@ -1602,7 +1675,9 @@ static void drawElderFishSprite(DisplayDriver& d, int x, int y, bool right,
 static void drawCardputerFishDepth(DisplayDriver& d,int x,int y,bool right,uint8_t stage,
                                   const LoRaFishAppearance& appearance) {
   const int radius = stage==0 ? 5 : stage==1 ? 7 : stage==3 ? 11 : 9;
-  const ColorVal base=loRaFishColorValue(appearance.body);
+  const ColorVal base=stage<2 && loRaFishColorDisplay && appearance.body!=0xFF
+      ? loRaFishJuvenileTint(stage==0 ? appearance.body : appearance.scales,stage==0 ? 5 : 6)
+      : loRaFishColorValue(appearance.body);
   // A soft dark silhouette under the original sprite, preserving its distinctive details.
   d.setColor(0x0125);
   for(int yy=-radius/2;yy<=radius/2;yy++) {
