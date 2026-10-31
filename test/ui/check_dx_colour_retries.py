@@ -39,7 +39,7 @@ int main(int argc,char** argv) {
  loragotchiDXLocalHasColorGenes=true;loragotchiDXLocalColorIndex=5;
  loragotchiDXLocalScalesColorIndex=4;loragotchiDXLocalEyesColorIndex=2;
  the_mesh.receive(dest,"LFG1|ACK|7|8");
- const std::string first=the_mesh.sent.back();assert(first=="LFG1|COMMIT|7|8|C|5|4|2|65535");
+ const std::string first=the_mesh.sent.back();assert(first=="LFG1|COMMIT|7|8|C|5|4|2|31");
  assert(loragotchiDXHome.committing && !loragotchiDXHome.pending);
  IO io;lrx::Receiver r(io);r.begin(nullptr,0);r.receive(owner,"LFG1|REQ|7|8|2|Colour Fish",0);
  the_mesh.serviceLoRaFishVisit();now=loragotchiDXVisit.due-1;the_mesh.serviceLoRaFishVisit();assert(the_mesh.sent.size()==1);
@@ -75,16 +75,16 @@ int main(int argc,char** argv) {
  loragotchiDXLocalHasColorGenes=false;loragotchiDXLocalColorIndex=6;
  loragotchiDXLocalScalesColorIndex=6;loragotchiDXLocalEyesColorIndex=6;
  the_mesh.receive(dest,"LFG1|ACK|9|10");
- assert(the_mesh.sent.back()=="LFG1|COMMIT|9|10|M|6|6|6|65535");
+ assert(the_mesh.sent.back()=="LFG1|COMMIT|9|10|M|6|6|6|31");
  r.receive(owner,"LFG1|REQ|9|10|2|Mono Fish",now);r.receive(owner,the_mesh.sent.back().c_str(),now+1);
- assert(r.data.slots[1].mode=='M' && r.data.slots[1].body==6 && r.data.slots[1].tint==65535);
+ assert(r.data.slots[1].mode=='M' && r.data.slots[1].body==6 && r.data.slots[1].tint==31);
  puts("PASS next visit replaces cache; genuine monochrome appearance remains monochrome");
 
  LoRaFishCommitFrame frame;assert(!frame.forVisit(dest.id.pub_key,0,0));
  frame.prepare(dest.id.pub_key,UINT32_MAX,UINT32_MAX,true,0,6,5,65535);
- assert(std::string(frame.forVisit(dest.id.pub_key,UINT32_MAX,UINT32_MAX))=="LFG1|COMMIT|4294967295|4294967295|C|0|6|5|65535");
+ assert(std::string(frame.forVisit(dest.id.pub_key,UINT32_MAX,UINT32_MAX))=="LFG1|COMMIT|4294967295|4294967295|C|0|6|5|65535|P1|0|S1|0");
  frame.prepare(dest.id.pub_key,0,0,false,6,6,6,0x03B0);
- assert(std::string(frame.forVisit(dest.id.pub_key,0,0))=="LFG1|COMMIT|0|0|M|6|6|6|944");
+ assert(std::string(frame.forVisit(dest.id.pub_key,0,0))=="LFG1|COMMIT|0|0|M|6|6|6|944|P1|0|S1|0");
  puts("PASS maximum IDs, mixed mono alleles and V4 OLED tint fit complete frame without truncation");
 
  // No local packet is invented for a retry after a fresh process boot.

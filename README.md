@@ -1,4 +1,8 @@
-# LoRaGotchi DX 🐟📡
+# LoRaGotchi DX Water 🐟💦
+
+This feature branch is **Water candidate 1**, the 14-species habitat edition.
+See [Water controls, mysteries and compatibility](WATER-EDITION.md).
+Not a published release; underlying MeshCore remains v1.18.0.
 
 **LoRaGotchi DX v1.0 — M0YNW** is a virtual LoRa fish built on the MeshCore transport. Your fish grows through pet stages, lives in a small aquarium UI, and can travel over the mesh to visit another LoRaGotchi device before being recalled home.
 

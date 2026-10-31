@@ -23,3 +23,7 @@ platformio.local.ini
 .pio/
 .vscode/
 *.bin
+
+# Python host-test/generated cache
+__pycache__/
+*.pyc

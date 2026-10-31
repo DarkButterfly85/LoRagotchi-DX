@@ -46,7 +46,7 @@ struct Mesh {
 #include "examples/companion_radio/ui-new/LoRaFishAdoption.h"
 static void init() {
  resetAt(0);files.clear();shortPath.clear();badReadPath.clear();clockMs=10000;
- loRaFishAdoptionEligible=true;loRaFishNeedsAppearanceSetup=true;loRaFishColorDisplay=true;
+ loRaFishAdoptionEligible=true;loRaFishNeedsAppearanceSetup=true;loRaFishNeedsPetSetup=true;loRaFishMysterySeed=123;loRaFishSpecies=9;loRaFishColorDisplay=true;
  loRaFishEggSession={};loRaFishEggReceipt={};loRaFishEggBank=-1;loRaFishEggStorageHealthy=true;
  loRaFishEggApplying=false;loRaFishEggWindowStarted=false;loRaFishEggSaveDue=0;loRaFishEggSaveScheduled=false;
  the_mesh={};ContactInfo c;c.id.pub_key[0]=9;the_mesh.contacts={c};loadLoRaFishEggReceipt();
@@ -77,9 +77,10 @@ int main() {
  pass("capability required, full-key/nonce binding, strict MCU-width numeric grammar and skip closure");
  init();auto p=offer();auto sends=the_mesh.sent.size();serviceLoRaFishAdoption(true);
  assert(!loRaFishAdoptionEligible && !loRaFishNeedsAppearanceSetup && fish.ageMinutes==0);
+ assert(!loRaFishNeedsPetSetup && !loRaFishSpecies && !loRaFishMysterySeed);
  assert(loRaFishColor==220 && loRaFishScaleColor==120 && loRaFishEyeColor==6 && loRaFishGeneration==12);
  assert(loRaFishEggReceipt.valid() && loRaFishEggReceipt.bytes[8]==2 && the_mesh.sent.size()==sends+1);
- assert(the_mesh.recipients.back()[0]==9 && files["/lorafish.cfg"].size()==54);
+ assert(the_mesh.recipients.back()[0]==9 && files["/lorafish.cfg"].size()==LORAFISH_SETTINGS_SIZE);
  auto saved=files;std::string reply;fish.ageMinutes=45;
  assert(receive(p,&reply) && reply.find("LEG1|SAVED|")==0 && files==saved && fish.ageMinutes==45);
  loRaFishEggReceipt={};loRaFishEggBank=-1;loadLoRaFishEggReceipt();assert(receive(p,&reply));

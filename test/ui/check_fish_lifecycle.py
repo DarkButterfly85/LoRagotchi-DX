@@ -30,6 +30,7 @@ def declaration(name):
 parts = [r'''
 #include <algorithm>
 #include "examples/companion_radio/LoRaFishColour.h"
+#include "examples/companion_radio/LoRaFishSpecies.h"
 #include <cassert>
 #include <cstdint>
 #include <cstdio>
@@ -95,6 +96,7 @@ static void tickLoRaFish();
 struct { bool away=false, pending=false, committing=false; } loragotchiDXHome;
 struct {
   bool present=false, colorCapable=true;
+  uint16_t species=0;
   uint8_t stage=2, scalesColor=3, color=4, eyesColor=5;
 } loragotchiDXGuest;
 #include "examples/companion_radio/LoRaFishGuestReturn.h"
@@ -103,7 +105,7 @@ static LoRaFishGuestReturn loragotchiDXGuestReturn;
 
 parts += [block('struct ' + name + ' {') + ';' for name in
           ['LoRaFishStateV1', 'LoRaFishState', 'LoRaFishAppearance']]
-names = '''LORAFISH_MAGIC LORAFISH_MAGIC_V1 LORAFISH_EGG_MINUTES
+names = '''loRaFishSpecies loRaFishEggSpecies loRaFishMysterySeed loRaFishNeedsPetSetup loRaFishPetSetupField LORAFISH_PET_SETUP_PAGE loRaFishMonoDisplayColour loRaFishMonoDisplayColourKnown LORAFISH_MONO_DISPLAY_COLOUR_COUNT LORAFISH_MAGIC LORAFISH_MAGIC_V1 LORAFISH_EGG_MINUTES
 LORAFISH_LIFESPAN_MINUTES LORAFISH_PACKETS_PER_FEED LORAFISH_MONOCHROME_COLOR
 LORAFISH_MAX_POOP fish fishLastMinute fishLastSave fishReaction fishReactionUntil
 loRaFishGeneration loRaFishPendingEgg loRaFishEggAppearance loRaFishMemorialEggSide
@@ -146,7 +148,8 @@ markers += ['static void hatchLoRaFishOffspring(', 'static void advanceLoRaFishH
 parts += [block(marker) for marker in markers]
 parts.append(r'''
 static void resetAt(uint32_t age, bool egg=false) {
-  files.clear();
+  files.clear(); loRaFishNeedsPetSetup=false; loRaFishMysterySeed=0;
+  loRaFishSpecies=loRaFishEggSpecies=0;
   clockMs=0; fishLastMinute=fishLastSave=0;
   haveLastWrittenLoRaFish=false; haveLastWrittenLoRaFishSettings=false;
   loRaFishSaveFailed=loRaFishSettingsSaveFailed=false;
@@ -158,7 +161,7 @@ static void resetAt(uint32_t age, bool egg=false) {
   loRaFishColor=4; loRaFishScaleColor=5; loRaFishEyeColor=6;
   loRaFishMemorialEggSide=-1;
   loRaFishColorDisplay=false; loRaFishSimulationMode=false;
-  loragotchiDXHome={}; loragotchiDXGuest={false,true,2,3,4,5};
+  loragotchiDXHome={}; loragotchiDXGuest={false,true,0,2,3,4,5};
   settingsWrites=0;loRaFishAdoptionEligible=false;
 }
 static void minute() { clockMs+=60000; tickLoRaFish(); }

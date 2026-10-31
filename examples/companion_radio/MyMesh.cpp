@@ -31,6 +31,7 @@ uint8_t loragotchiDXLocalColorIndex = 0;
 uint8_t loragotchiDXLocalScalesColorIndex = 0;
 uint8_t loragotchiDXLocalEyesColorIndex = 0;
 uint8_t loragotchiDXLocalMonoPanel = 0;
+uint16_t loragotchiDXLocalSpecies = LoRaFishSpecies::TropicalFish;
 uint16_t loragotchiDXLocalMonoPixelTint = LORAFISH_MONO_PIXEL_TINT_RGB565;
 bool loragotchiDXReturnedFromMonochrome = false;
 
@@ -616,7 +617,7 @@ void MyMesh::queueMessage(const ContactInfo &from, uint8_t txt_type, mesh::Packe
             loragotchiDXReservation.start(millis());
             loragotchiDXSave();
           }
-          snprintf(reply,sizeof(reply),"LFG1|ACK|%lu|%lu",tx,fid);
+          snprintf(reply,sizeof(reply),"LFG1|ACK|%lu|%lu|S1",tx,fid);
         } else {
           snprintf(reply,sizeof(reply),"LFG1|BUSY|%lu|%lu",tx,fid);
         }
@@ -632,7 +633,8 @@ void MyMesh::queueMessage(const ContactInfo &from, uint8_t txt_type, mesh::Packe
       loRaFishCommitFrame.prepare(from.id.pub_key, tx, fid,
         loragotchiDXLocalHasColorGenes, loragotchiDXLocalColorIndex,
         loragotchiDXLocalScalesColorIndex, loragotchiDXLocalEyesColorIndex,
-        loragotchiDXLocalMonoPixelTint, loragotchiDXLocalMonoPanel);
+        loragotchiDXLocalMonoPixelTint, loragotchiDXLocalMonoPanel, loragotchiDXLocalSpecies,
+        LoRaFishSpecies::acknowledged(text));
       // Duplicate acceptance cannot reset the retry budget or appearance.
       loragotchiDXVisit.begin(LoRaFishVisit::Commit, millis());
       int r=sendLoRaFishCommit(from);
@@ -664,6 +666,11 @@ void MyMesh::queueMessage(const ContactInfo &from, uint8_t txt_type, mesh::Packe
               loragotchiDXReservation.expired ? "|CANCEL1" : "");
           uint32_t hash=0,timeout=0;sendMessage(from,getRTCClock()->getCurrentTime(),0,returned,hash,timeout);return;
         }
+        uint16_t incomingSpecies=0; bool hasSpecies=false;
+        if (!LoRaFishSpecies::extension(text,incomingSpecies,hasSpecies)) return;
+        // First accepted metadata owns identity. Short/full duplicate retries
+        // cannot downgrade or mutate it. Peer/key checks above still apply.
+        if (!loragotchiDXGuest.present) loragotchiDXGuest.species=incomingSpecies;
         char colorMode='M'; unsigned bodyColor=0,scalesColor=0,eyesColor=0,monoPixelTint=0xFFFF;
         const int fields=sscanf(text+12,"%lu|%lu|%c|%u|%u|%u|%u",
             &tx,&fid,&colorMode,&bodyColor,&scalesColor,&eyesColor,&monoPixelTint);

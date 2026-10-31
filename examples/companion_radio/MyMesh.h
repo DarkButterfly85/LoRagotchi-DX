@@ -3,6 +3,7 @@
 #include <stddef.h>
 #include "LoRaFishGuestReturn.h"
 #include "LoRaFishVisit.h"
+#include "LoRaFishSpecies.h"
 
 
 extern float lorafish_last_rssi;
@@ -26,6 +27,7 @@ struct LoRaGotchiDXGuestState {
   bool reserved=false, present=false;
   uint8_t ownerKey[32]={}; bool ownerKnown=false;
   uint32_t txid=0, fishid=0;
+  uint16_t species=LoRaFishSpecies::TropicalFish;
   uint8_t stage=2;
   uint8_t color=0;
   uint8_t scalesColor=0;
@@ -48,6 +50,7 @@ extern uint8_t loragotchiDXLocalColorIndex;
 extern uint8_t loragotchiDXLocalScalesColorIndex;
 extern uint8_t loragotchiDXLocalEyesColorIndex;
 extern uint8_t loragotchiDXLocalMonoPanel;
+extern uint16_t loragotchiDXLocalSpecies;
 extern uint16_t loragotchiDXLocalMonoPixelTint;
 extern bool loragotchiDXReturnedFromMonochrome;
 bool loragotchiEggMessage(const uint8_t* key, const char* text, char* reply, size_t size);

@@ -95,8 +95,9 @@ int main(){
   beginLoRaFishNameNotice();assert(loRaFishNameNotice);
   pass("boot reminder is bounded, dismisses without action or save, and returns on the next unmarked boot");
 
-  for(const char* name:{"🐟 Home","Home 🐠","Home 🐡️","🦈"}) {
+  for(const char* name:{"🐟 Home","Home 🐠","Home 🐡️","🦈","🐬","🐳","🐋","🦭","🦐","🦑","🦞","🦀","🐙","🪼","🐚","💦"}) {
     loRaFishMeshNodeName=name;beginLoRaFishNameNotice();assert(!loRaFishNameNotice);
+    auto waterContact=contact(name,1,0);assert(loRaFishDXEligible(waterContact));
   }
   loRaFishMeshNodeName=nullptr;beginLoRaFishNameNotice();assert(loRaFishNameNotice);
   loRaFishMeshNodeName="No marker";beginLoRaFishNameNotice();

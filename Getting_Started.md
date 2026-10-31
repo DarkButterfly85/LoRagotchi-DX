@@ -1,3 +1,8 @@
+> **Water candidate 1:** All 14 Water species, independent new-game Mystery egg/
+> Mystery colours, and negotiated S1 visits. Existing pets migrate to fish;
+> LEG1 adopted eggs preserve accepted fish identity/genetics and bypass Mystery
+> setup. Read [Water controls/compatibility](WATER-EDITION.md) before mixed-version tests.
+
 ## Getting Started with LoRaGotchi DX
 
 Thank you for downloading and trying our firmware! LoRaGotchi DX is a virtual pet running as a MeshCore BLE companion. The firmware uses the device's LoRa radio and display for the aquarium, and can exchange visiting fish with compatible LoRaGotchi DX peers over the mesh.

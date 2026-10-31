@@ -38,7 +38,7 @@ LoRaFishGuestReturn loragotchiDXGuestReturn;
 LoRaFishVisit loragotchiDXVisit;LoRaFishReservation loragotchiDXReservation;
 bool loragotchiDXLocalColorCapable=false,loragotchiDXLocalHasColorGenes=true,loragotchiDXReturnedFromMonochrome=false;
 uint8_t loragotchiDXLocalColorIndex=1,loragotchiDXLocalScalesColorIndex=2,loragotchiDXLocalEyesColorIndex=3,loragotchiDXLocalMonoPanel=2;
-uint16_t loragotchiDXLocalMonoPixelTint=31;
+uint16_t loragotchiDXLocalMonoPixelTint=31,loragotchiDXLocalSpecies=0;
 bool loragotchiEggMessage(const uint8_t*,const char*,char*,size_t){return false;}
 static unsigned saves=0;
 void loragotchiDXSave(){++saves;}
@@ -68,19 +68,20 @@ ui_globals=r'''
 struct LoRaFishAppearance {};
 #include "examples/companion_radio/ui-new/LoRaFishHappiness.h"
 static LoRaFishHappiness loRaFishHappiness;
-static bool loRaFishNeedsAppearanceSetup=false;
+static bool loRaFishNeedsAppearanceSetup=false,loRaFishNeedsPetSetup=false;
 static constexpr uint32_t LORAFISH_EGG_MINUTES=5,LORAFISH_LIFESPAN_MINUTES=10080;
 struct LoRaFishTravelAnimation {int queues=0;};
 static LoRaFishTravelAnimation loRaFishHomeTravelAnimation,loRaFishGuestTravelAnimation;
 static bool loRaFishTravelStateInitialized=false,loRaFishLastHomeAway=false,loRaFishLastGuestPresent=false;
 static uint8_t loRaFishLastGuestStage=0;
+static uint16_t loRaFishSpecies=0,loRaFishLastGuestSpecies=0;
 static LoRaFishAppearance loRaFishLastGuestAppearance;
 static struct {uint32_t dxVisits=0;uint8_t evolution=2;uint32_t ageMinutes=60;uint8_t happiness=80;} fish;
 static int petSaves=0;
 void saveLoRaFish(){++petSaves;}
 LoRaFishAppearance loRaFishGuestRenderAppearance(){return {};}
 LoRaFishAppearance loRaFishLocalAppearance(){return {};}
-void loRaFishQueueTravelAnimation(LoRaFishTravelAnimation& animation,bool,uint8_t,const LoRaFishAppearance&){++animation.queues;}
+void loRaFishQueueTravelAnimation(LoRaFishTravelAnimation& animation,bool,uint8_t,const LoRaFishAppearance&,uint16_t=0){++animation.queues;}
 '''
 main=r'''
 int main(){

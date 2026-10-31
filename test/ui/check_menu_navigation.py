@@ -18,6 +18,13 @@ def declaration(name):
 pre=r'''
 #include <cassert>
 #include "examples/companion_radio/LoRaFishColour.h"
+#include "examples/companion_radio/LoRaFishSpecies.h"
+static long random(long lo,long){return lo+42;}
+static uint16_t loRaFishSpecies=0;
+static uint32_t loRaFishMysterySeed=0;
+static bool loRaFishNeedsPetSetup=false;
+static uint8_t loRaFishPetSetupField=0;
+static constexpr uint8_t LORAFISH_PET_SETUP_PAGE=20;
 #include "examples/companion_radio/LoRaFishEgg.h"
 static bool loRaFishAdoptionEligible=false,loRaFishEggApplying=false;
 static bool loRaFishMonoDisplayNotice=false,loRaFishMonoDisplayColourKnown=false;
@@ -166,14 +173,14 @@ parts += [block('struct LoRaFishThemePalette')+';',declaration('loRaFishThemes')
  source[source.index('static constexpr bool loRaFishHasSound'):source.index('#endif',source.index('static constexpr bool loRaFishHasSound'))+len('#endif')]]
 for name in ['static void beginLoRaFishChannelNotice(', 'static bool dismissLoRaFishNotice(', 'static void drawLoRaFishChannelNotice(', 'static void beginLoRaFishNameNotice(', 'static const char* loRaFishDisplayName(', 'static const char* loRaFishProtocolName(', 'static uint8_t loRaFishThemeCount(', 'static uint8_t loRaFishDisplayOptionCount(',
  'static uint8_t loRaFishOptionCount(', 'static void returnToLoRaFishOptions(',
- 'static void cancelLoRaFishValue(', 'static void openLoRaFishValue(', 'static void selectLoRaFishValue(',
+ 'static void cancelLoRaFishValue(', 'static void openLoRaFishValue(', 'static void ensureLoRaFishMysterySeed(', 'static void chooseLoRaFishMysteryColours(', 'static void selectLoRaFishValue(',
  'static void loRaFishFormatUtcOffset(', 'static void drawLoRaFishHeader(',
  'static const char* loRaFishOptionLabel(', 'static void drawLoRaFishMenuHint(',
  'static bool loRaFishDXDestination(', 'static bool loRaFishDXEligible(', 'static uint32_t loRaFishDXContactCount(', 'static bool loRaFishDXGetContact(', 'static void moveLoRaFishDXContact(', 'static void drawLoRaFishName(', 'static void drawLoRaFishNameNotice(', 'static void drawLoRaFishDX(',
  'static void drawLoRaFishValuePicker(', 'static void drawLoRaFishOptions(',
  'static void closeLoRaFishAdvertMenu(', 'static void drawLoRaFishAdvertMenu(',
  'static void cancelLoRaFishReset(', 'static void drawLoRaFishResetConfirmation(',
- 'static void drawLoRaFishDisplayMenu(', 'static void drawLoRaFishColorMenu(',
+ 'static void drawLoRaFishDisplayMenu(', 'static void drawLoRaFishPetSetup(', 'static void drawLoRaFishColorMenu(',
  'static void drawLoRaFishTimeMenu(', 'static void drawLoRaFishTimeoutMenu(',
  'static void drawLoRaFishGuessGame(']:
     parts.append(block(name))
@@ -212,11 +219,40 @@ short=block('bool handleInput(char c) override',home).replace('bool handleInput(
 parts.append(short)
 parts.append(r'''
 static uint8_t pageFor(LoRaFishSetting key){
-  const uint8_t pages[]={8,13,15,9,9,9,10,10,10,11,11,11,14,14,14,14,15};
+  const uint8_t pages[]={8,13,15,9,9,9,10,10,10,11,11,11,14,14,14,14,15,15};
   return pages[static_cast<uint8_t>(key)];
 }
 int main(){
   UITask task;
+  // New-game picker enters only after notices/adoption; browsing/cancel never rolls.
+  for(bool colour:{false,true}) {
+    loRaFishColorDisplay=colour;loRaFishNeedsPetSetup=true;loRaFishNeedsAppearanceSetup=colour;
+    loRaFishPage=LORAFISH_PET_SETUP_PAGE;loRaFishPetSetupField=0;loRaFishMysterySeed=0;loRaFishSpecies=0;
+    task.display.clearBounds();drawLoRaFishPetSetup(task.display);
+    task.handleLongPress(KEY_ENTER);assert(loRaFishValuePicker.key()==LoRaFishSetting::Species);
+    for(int i=0;i<14;++i)shortPress(KEY_NEXT);
+    assert(loRaFishMysterySeed==0);task.handleDoubleClick(KEY_PREV);assert(!loRaFishMysterySeed);
+    task.handleLongPress(KEY_ENTER);
+    for(int i=0;i<14;++i)shortPress(KEY_NEXT);
+    task.handleLongPress(KEY_ENTER);auto mystery=loRaFishSpecies;auto seed=loRaFishMysterySeed;
+    assert(seed && mystery<14);shortPress(KEY_NEXT);assert(loRaFishPetSetupField==1);
+    task.handleLongPress(KEY_ENTER);auto b=loRaFishColor,sc=loRaFishScaleColor,e=loRaFishEyeColor;
+    task.handleLongPress(KEY_ENTER);assert(b==loRaFishColor && sc==loRaFishScaleColor && e==loRaFishEyeColor);
+    assert(seed==loRaFishMysterySeed && mystery==loRaFishSpecies);
+    task.handleDoubleClick(KEY_PREV);assert(loRaFishPage==LORAFISH_PET_SETUP_PAGE);
+    if(colour) {
+      loRaFishPetSetupField=2;task.handleLongPress(KEY_ENTER);assert(loRaFishPage==9);
+      task.display.clearBounds();drawLoRaFishColorMenu(task.display);
+      for(int i=0;i<3;++i)shortPress(KEY_NEXT);
+      assert(loRaFishColorField==3);task.handleLongPress(KEY_ENTER);task._alert_expiry=0;
+      assert(loRaFishPage==LORAFISH_PET_SETUP_PAGE && loRaFishNeedsPetSetup);
+      loRaFishPetSetupField=1;
+    }
+    shortPress(KEY_NEXT);shortPress(KEY_NEXT);assert(loRaFishPetSetupField==3);
+    task.handleLongPress(KEY_ENTER);assert(loRaFishPage==0 && !loRaFishNeedsPetSetup && !loRaFishNeedsAppearanceSetup);
+  }
+  puts("PASS initial pet chooser mono/colour routes, independent mysteries, cancel no-reroll and explicit Start pet");
+
   // Start at the aquarium, not an injected Options page: cover the complete entry route.
   for(int contacts:{0,1,3}) for(int state=0;state<4;++state) {
     the_mesh.contacts=contacts;

@@ -66,8 +66,17 @@ inline bool extension(const char* p, uint8_t& body, uint8_t& scales, uint8_t& ey
   if (!p || strncmp(p, "|H1|", 4)) return false;
   p += 4;
   uint32_t b, s, e;
-  if (!number(p,b,247,'|') || !number(p,s,247,'|') || !number(p,e,247,0) ||
+  if (!number(p,b,247,'|') || !number(p,s,247,'|') || !number(p,e,247,strchr(p,'|') ? '|' : 0) ||
       !valid(b) || !valid(s) || !valid(e)) return false;
+  bool panelSeen=false,speciesSeen=false;
+  while (*p) {
+    uint32_t ignored=0,maximum=0;
+    if (!strncmp(p,"P1|",3) && !panelSeen) {panelSeen=true;maximum=2;}
+    else if (!strncmp(p,"S1|",3) && !speciesSeen) {speciesSeen=true;maximum=65535;}
+    else return false;
+    p+=3;
+    if (!number(p,ignored,maximum,strchr(p,'|') ? '|' : 0)) return false;
+  }
   body=b; scales=s; eyes=e; return true;
 }
 }

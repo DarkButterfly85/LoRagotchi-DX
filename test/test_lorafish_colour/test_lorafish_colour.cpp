@@ -25,6 +25,7 @@ TEST(LoRaFishColour, ExtensionIsStrictAndDoesNotModifyOnFailure) {
   uint8_t b=0,s=1,e=2;
   EXPECT_TRUE(LoRaFishColour::extension("|H1|247|8|6",b,s,e));
   EXPECT_EQ(b,247);EXPECT_EQ(s,8);EXPECT_EQ(e,6);
+  EXPECT_TRUE(LoRaFishColour::extension("|H1|247|8|6|P1|2|S1|13",b,s,e));
   for(const char* x:{"|H1|7|8|6","|H1|248|8|6","|H1|1|2|3|tail","|H1|-1|2|3","|H1|4294967296|2|3","|H2|1|2|3"}) {
     EXPECT_FALSE(LoRaFishColour::extension(x,b,s,e));EXPECT_EQ(b,247);
   }
