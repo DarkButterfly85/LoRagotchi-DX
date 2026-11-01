@@ -1,4 +1,111 @@
 #include "UITask.h"
+#if defined(LORAFISH_TDECK_TOUCH_TEST) && defined(LILYGO_TDECK)
+#include <Wire.h>
+// Original T-Deck GT911 touch diagnostic. Shares the board's existing I2C bus
+// (SDA=18, SCL=8). Do not reinitialise Wire: keyboard/sensors also use it.
+static uint8_t tdeckTouchAddr = 0;
+static bool tdeckTouchProbed = false;
+static bool tdeckTouchDown = false;
+static uint16_t tdeckTouchX = 0, tdeckTouchY = 0;
+static uint32_t tdeckTouchNextPoll = 0;
+static uint16_t tdeckTouchStartX = 0, tdeckTouchStartY = 0;
+static uint32_t tdeckTouchStartMs = 0;
+static bool tdeckTouchEventReady = false;
+static uint16_t tdeckTouchEndX = 0, tdeckTouchEndY = 0;
+static int16_t tdeckTouchDeltaX = 0, tdeckTouchDeltaY = 0;
+static bool tdeckTouchRead(uint8_t addr, uint16_t reg, uint8_t* out, size_t len) {
+  Wire.beginTransmission(addr);
+  Wire.write((uint8_t)(reg >> 8)); // GT911 uses high byte first
+  Wire.write((uint8_t)(reg & 0xFF));
+  if (Wire.endTransmission(false) != 0) return false;
+  if (Wire.requestFrom(addr, (uint8_t)len) != len) return false;
+  for (size_t i = 0; i < len; ++i) out[i] = Wire.read();
+  return true;
+}
+static bool tdeckTouchWrite(uint8_t addr, uint16_t reg, uint8_t value) {
+  Wire.beginTransmission(addr);
+  Wire.write((uint8_t)(reg >> 8));
+  Wire.write((uint8_t)(reg & 0xFF));
+  Wire.write(value);
+  return Wire.endTransmission() == 0;
+}
+static void tdeckTouchPoll() {
+  const uint32_t now = millis();
+  if ((int32_t)(now - tdeckTouchNextPoll) < 0) return;
+  tdeckTouchNextPoll = now + 50;
+  if (!tdeckTouchProbed) {
+    // Retry discovery periodically: the GT911 may boot after the UI task.
+    static uint32_t lastProbe = 0;
+    if (lastProbe && (uint32_t)(now - lastProbe) < 2000) return;
+    lastProbe = now;
+    // WadaMesh original T-Deck: peripheral power rail must be enabled.
+    static bool busConfigured = false;
+    if (!busConfigured) {
+      pinMode(10, OUTPUT);
+      digitalWrite(10, HIGH);
+      delay(120);
+      // ESP32 Wire.begin() does not reliably re-route an already-started bus.
+      Wire.end();
+      Wire.begin(18, 8);
+      Wire.setClock(400000);
+      Wire.setTimeOut(20);
+      pinMode(16, INPUT); // GT911 interrupt
+      busConfigured = true;
+      Serial.println("[TDECK TOUCH] GPIO10 peripheral power ON; I2C reinitialised SDA18 SCL8");
+    }
+    for (uint8_t probeAddr : { (uint8_t)0x55, (uint8_t)0x5D, (uint8_t)0x14 }) {
+      Wire.beginTransmission(probeAddr);
+      Serial.printf("[TDECK TOUCH] I2C 0x%02X: %s\n", probeAddr,
+                    Wire.endTransmission() == 0 ? "ACK" : "no response");
+    }
+    for (uint8_t addrIndex = 0; addrIndex < 2; ++addrIndex) {
+      const uint8_t addr = addrIndex == 0 ? 0x5D : 0x14;
+      uint8_t id[4] = {};
+      if (tdeckTouchRead(addr, 0x8140, id, sizeof(id))) {
+        tdeckTouchAddr = addr;
+        Serial.printf("[TDECK TOUCH] GT911 at 0x%02X product ID: %c%c%c%c\n",
+          addr, id[0], id[1], id[2], id[3]);
+        break;
+      }
+    }
+    if (!tdeckTouchAddr) Serial.println("[TDECK TOUCH] GT911 NOT FOUND at 0x5D or 0x14; retrying in 2s");
+    else tdeckTouchProbed = true;
+  }
+  if (!tdeckTouchAddr) return;
+  uint8_t status = 0;
+  if (!tdeckTouchRead(tdeckTouchAddr, 0x814E, &status, 1)) return;
+  if (!(status & 0x80)) return; // no new touch data
+  const uint8_t count = status & 0x0F;
+  if (count > 0 && count <= 5) {
+    uint8_t point[8] = {};
+    if (tdeckTouchRead(tdeckTouchAddr, 0x8150, point, sizeof(point))) {
+      // GT911 coordinate record at 0x8150 starts with X low/high, then Y low/high.
+      const uint16_t x = (uint16_t)point[0] | ((uint16_t)point[1] << 8);
+      const uint16_t y = (uint16_t)point[2] | ((uint16_t)point[3] << 8);
+      if (!tdeckTouchDown || x != tdeckTouchX || y != tdeckTouchY) {
+        tdeckTouchX = x; tdeckTouchY = y;
+        Serial.printf("[TDECK TOUCH] raw x=%u y=%u contacts=%u bytes=%02X %02X %02X %02X %02X %02X %02X %02X\n", x, y, count, point[0],point[1],point[2],point[3],point[4],point[5],point[6],point[7]);
+      }
+      if (!tdeckTouchDown) {
+        tdeckTouchStartX = x; tdeckTouchStartY = y;
+        tdeckTouchStartMs = now;
+      }
+      tdeckTouchDown = true;
+    }
+  } else if (count == 0 && tdeckTouchDown) {
+    tdeckTouchDown = false;
+    // Emit one gesture on release, not one action per 50 ms sample.
+    if ((uint32_t)(now - tdeckTouchStartMs) < 1200) {
+      tdeckTouchEndX = tdeckTouchX; tdeckTouchEndY = tdeckTouchY;
+      tdeckTouchDeltaX = (int16_t)tdeckTouchEndX - (int16_t)tdeckTouchStartX;
+      tdeckTouchDeltaY = (int16_t)tdeckTouchEndY - (int16_t)tdeckTouchStartY;
+      tdeckTouchEventReady = true;
+    }
+    Serial.println("[TDECK TOUCH] released");
+  }
+  tdeckTouchWrite(tdeckTouchAddr, 0x814E, 0); // acknowledge processed frame
+}
+#endif
 #include "PetResetConfirmation.h"
 #include "AdvertMenu.h"
 #include "LoRaFishMenu.h"
@@ -4473,6 +4580,9 @@ static void drawUIAlertBox(DisplayDriver& display, const char* alert) {
 }
 
 void UITask::loop() {
+#if defined(LORAFISH_TDECK_TOUCH_TEST) && defined(LILYGO_TDECK)
+  tdeckTouchPoll();
+#endif
 #ifdef LORAFISH_UI
   // A hidden/interrupted prompt must never leave a destructive choice armed.
   if (loRaFishPage == LORAFISH_RESET_CONFIRM_PAGE &&
@@ -4565,6 +4675,29 @@ void UITask::loop() {
   }
 #endif
   char c = 0;
+#if defined(LORAFISH_TDECK_TOUCH_TEST) && defined(LILYGO_TDECK)
+  // Touch v1: top strip = Back; left/right thirds = Previous/Next;
+  // centre = Select. Horizontal swipes also navigate. Existing keyboard and
+  // trackball remain active. Wake-up consumes the first gesture.
+  if (tdeckTouchEventReady && _display) {
+    tdeckTouchEventReady = false;
+    const int w = _display->width(), h = _display->height();
+    if (tdeckTouchEndX < w && tdeckTouchEndY < h) {
+      if (!_display->isOn()) {
+        checkDisplayOn(0);
+      } else if (abs(tdeckTouchDeltaX) >= 45 &&
+                 abs(tdeckTouchDeltaX) > abs(tdeckTouchDeltaY) * 2) {
+        c = checkDisplayOn(tdeckTouchDeltaX < 0 ? KEY_NEXT : KEY_PREV);
+      } else if (abs(tdeckTouchDeltaX) < 25 && abs(tdeckTouchDeltaY) < 25) {
+        if (tdeckTouchEndY < 24) c = handleDoubleClick(KEY_PREV);
+        else if (tdeckTouchEndX < w / 3) c = checkDisplayOn(KEY_PREV);
+        else if (tdeckTouchEndX >= (w * 2) / 3) c = checkDisplayOn(KEY_NEXT);
+        else c = handleLongPress(KEY_ENTER);
+      }
+      _next_refresh = 0;
+    }
+  }
+#endif
 #if defined(M5STACK_CARDPUTER) && defined(LORAFISH_UI)
   // Dedicated Cardputer keyboard path. Fn + ; / . / , / / are the hardware arrows.
   // W/A/S/D also work without holding Fn.
@@ -4755,6 +4888,7 @@ void UITask::loop() {
         _display->startFrame();
         delay_millis = curr->render(*_display);
         if (millis() < _alert_expiry) drawUIAlertBox(*_display, _alert);  // render alert popup
+
         _display->endFrame();
       }
       if (millis() < _alert_expiry) {
