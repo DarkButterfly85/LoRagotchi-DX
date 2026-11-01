@@ -34,3 +34,13 @@ arrives. Failed experimental jobs do not cancel the remaining board jobs. Standa
 public GitHub-hosted Ubuntu runners are used; no self-hosted homelab runner or paid
 larger runner is configured. Hardware testing remains a separate status from build
 success, including for the previously exercised V3/V4/T096 targets.
+
+## Explicit DX / Water edition regression images
+
+The Water owner-board workflow now builds eight selected profiles: both editions
+of V3, V4 OLED and T096, plus both experimental RAK4630-module aliases. It runs
+its default/Water native and production host checks before compiling. Only the
+explicit water_* names select Water; existing standard/experimental names remain
+DX. See README for the full alias table and docs/RAK4630-EXPERIMENTAL.md for RAK
+hardware prerequisites. A listed alias is not automatically included in this
+bounded CI matrix, and a previous candidate build does not validate new source.

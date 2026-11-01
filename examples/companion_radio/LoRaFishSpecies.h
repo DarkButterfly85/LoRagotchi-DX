@@ -2,6 +2,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <string.h>
+#include "LoRaGotchiVersion.h"
 
 // Water registry v1. IDs are permanent protocol identities, not menu positions.
 namespace LoRaFishSpecies {

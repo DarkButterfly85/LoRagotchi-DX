@@ -1,9 +1,24 @@
-# LoRagotchi-DX Water — candidate 1
+# LoRagotchi-DX Water — v1.1.0 source candidate
 
-Water candidate 1 in the shared LoRagotchi-DX repository; not a published
+Water edition in the shared LoRagotchi-DX repository; not a published
 firmware release. The underlying MeshCore remains **v1.18.0**; this is not LFG2
 or MeshCore 1.19. Host tests do not imply board binaries, hardware acceptance
 or release publication.
+
+## Edition and version selection
+
+`LoRaGotchiVersion.h` defaults `LORAGOTCHI_WATER_EDITION` to 0 (DX).
+The explicit `water_*` aliases set it to 1. Product candidate v1.1.0 is the
+version already present in the owner's unfinished upload, not an invented release.
+The boot label and current README use that header's product version; MeshCore's
+separate FIRMWARE_VERSION and historical release documents are not renumbered.
+
+DX hides species selection/setup and renders the original fish. DX does not
+advertise S1 capability; when sending to an S1-capable peer it identifies itself
+as tropical fish. Water retains species negotiation/art/chooser. Loading Water
+settings in DX preserves species/seed bytes, but suppresses an unfinished Water
+chooser; a later DX settings save clears its pending flag. This is a display
+fallback, not full lossless cross-edition gameplay: a DX reset starts a fish egg.
 
 ## Catalogue and controls
 
@@ -159,18 +174,17 @@ proof**; only the explicit transaction-bound ACK controls extensions.
 
 ## Build and validation
 
-Unchanged owner targets:
+Use the [explicit Water aliases and build commands in README](README.md#water-edition-build-targets).
+The original environment names now build DX; they must not be used as Water
+selection instructions. V3/V4 OLED/T096 are the owner regression profiles; the
+other new aliases require their own current-revision build/hardware validation.
+RAK aliases remain explicitly experimental with external OLED and input required.
 
-- Heltec_v3_LoRaFish_companion_ble → application BIN
-- heltec_v4_LoRaFish_companion_ble → application BIN (V4 OLED)
-- Heltec_t096_LoRaFish_companion_ble, create_uf2 target → UF2
-
-The [owner-board workflow](.github/workflows/water-owner-builds.yml) runs host
-checks and builds these three profiles on `main` and `feature/water-edition`, or
-when manually dispatched. Existing workflows are retained. Builds use read-only
-permissions, at most three parallel jobs, and 14-day artifacts with exact source
-SHA/dependencies/config/ELF/partitions/checksums. Artifacts are compile evidence,
-not releases or hardware acceptance. No flash or physical result is implied.
+The [owner-board workflow](.github/workflows/water-owner-builds.yml) gates both
+editions on V3, V4 OLED, T096 and experimental RAK behind host checks. It runs on
+main, feature/water-edition and the scoped integration branch, or manual dispatch.
+Existing workflows are retained. Read-only permissions, three parallel build jobs
+and 14-day artifacts remain. No release, merge, flash or hardware result is implied.
 
 Run native tests plus all test/ui/check_*.py. The Water tests cover real settings
 migration/corrupt tails/mystery state, all 14 production sprites/stages/mirroring/

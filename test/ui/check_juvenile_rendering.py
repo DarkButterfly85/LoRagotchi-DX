@@ -170,6 +170,7 @@ int main(int argc,char** argv){
         (path / 'render.cpp').write_text(cpp)
         command = ['g++', '-std=c++17', '-Wall', '-Wextra', '-Werror',
                    '-Wno-unused-function', '-I', str(ROOT), str(path/'render.cpp'), '-o', str(path/'render')]
+        if water: command.append('-DLORAGOTCHI_WATER_EDITION=1')
         if variant != 'plain':
             command.append('-D' + variant)
         if verify:
