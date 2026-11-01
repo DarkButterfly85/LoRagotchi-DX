@@ -20,6 +20,12 @@ static ContactInfo contact(const char* name,uint8_t type,uint32_t key) {
 }
 static void pass(const char* name){printf("PASS: %s\n",name);fflush(stdout);}
 int main(){
+  assert(loRaFishDXEligible(contact("LRX1 Tank 🐟",2,0)));
+  assert(!loRaFishDXEligible(contact("LRX1 Tank 🐟",3,0)));
+  assert(!loRaFishDXEligible(contact("Ordinary Repeater 🐟",2,0)));
+  assert(!loRaFishDXEligible(contact("LRX1 No marker",2,0)));
+  assert(!loRaFishDXEligible(contact("LRX1Tank 🐟",2,0)));
+  pass("explicit LRX fish-marked repeaters are eligible without advertising a false companion role");
   UITask task;tick=100000;task.ui_started_at=0;
   loRaFishPage=0;
   the_mesh.useCustom=true;

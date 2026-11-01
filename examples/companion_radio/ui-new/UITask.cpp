@@ -2359,7 +2359,13 @@ static bool loRaFishDXDestination(ContactInfo& c) {
 }
 
 static bool loRaFishDXEligible(const ContactInfo& c) {
-  return c.type == ADV_TYPE_CHAT && LoRaFishText::hasFish(c.name, sizeof(c.name));
+  // A tank remains an honest MeshCore repeater advert, not a companion that
+  // silently forwards. Only explicitly marked tanks join the visit picker.
+  // Names are discovery hints, not authentication; the transaction still binds
+  // to the selected full public key and requires the normal LFG1 handshake.
+  const bool tank = c.type == ADV_TYPE_REPEATER &&
+      !strncmp(c.name, "LRX1 ", 5);
+  return (c.type == ADV_TYPE_CHAT || tank) && LoRaFishText::hasFish(c.name, sizeof(c.name));
 }
 
 static uint32_t loRaFishDXContactCount(uint32_t* selectedRow = nullptr) {
