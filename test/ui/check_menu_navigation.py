@@ -93,7 +93,7 @@ static void loRaFishClock(char* time,size_t tsize,char* date,size_t dsize){
 }
 static constexpr uint32_t MAX_ANON_CONTACTS=2;
 static constexpr size_t PUB_KEY_SIZE=32;
-static constexpr uint8_t ADV_TYPE_CHAT=1;
+static constexpr uint8_t ADV_TYPE_CHAT=1, ADV_TYPE_REPEATER=2;
 struct ContactInfo {char name[32];uint32_t index;uint8_t type=ADV_TYPE_CHAT;
   struct {uint8_t pub_key[PUB_KEY_SIZE]={};} id;
 };
