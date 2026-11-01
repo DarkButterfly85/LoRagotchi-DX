@@ -104,6 +104,9 @@ public:
 #include "icons.h"
 
 
+#ifdef LORAFISH_UI
+// Pet state, rendering and adoption require the LoRagotchi-enabled MyMesh API.
+// Generic MeshCore companion targets still compile this shared translation unit.
 static mesh::RTCClock* loRaFishRTC = nullptr;
 
 static const char* loRaFishMeshNodeName = nullptr;
@@ -3094,6 +3097,8 @@ static void drawLoRaFish(DisplayDriver& display, UITask* task) {
       break;
   }
 }
+
+#endif  // LORAFISH_UI: pet implementation
 
 class SplashScreen : public UIScreen {
   UITask* _task;
