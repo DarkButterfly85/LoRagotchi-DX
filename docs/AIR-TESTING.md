@@ -2,22 +2,33 @@
 
 ## Revisions and authority
 
-Runtime/art/tests source commit: **080ab12ceed7c526649fed602f77f8591ad8b788**.
+Runtime/art/tests source commit: **945717cec7df7a21196996d39a9c97dee4f11dc6**.
 This document and the manual owner-build workflow are a separate automation/docs
 commit; they do not change the tested firmware tree.
 
-Branch feature/air-edition, isolated worktree loragotchi-dx-air. Base:
-**1dfe536184e83b1f0947f23f4347c3950fca30ec**, current owner-fork integration branch.
-Owner-fork main at inspection: **251e63134f5d7735cd2b146843fecb023c5edf6a**.
-No open owner-fork PR returned; juvenile-colour PR16 and older feature PRs were
-merged. Water/default/RAK and repeater/CI integration are present on the chosen
-integration branch, not all on main. This Air branch is **stacked**, not an
-independent patch against main. Do not silently retarget it or drop those parents.
+Branch feature/air-edition, isolated worktree loragotchi-dx-air. Final base is
+**53cc11633988dc68de87721074dcc0db529e44bd**, the newest observed owner-fork main.
 
-Owner origin only was refreshed. The original DarkButterfly repository was not
-cloned/fetched/synced. Existing dirty worktrees were not edited. The later
-no-feature-loss-size experiment is deliberately NOT an ancestor: its compiler
-flags increased image sizes and did not resolve the three tight profiles.
+At task start, main was 251e631 and the newest compatible integration branch was
+1dfe536. Final ref verification detected that owner main had advanced during the
+work, containing that integration plus the prior size-trial commits and new
+T-Watch S3 support. The initial tested Air commits are retained on the local
+feature/air-edition-pre-owner-refresh backup. Only our unpublished Air commits
+were rebased onto 53cc116; no owner branch was rewritten, pushed or merged.
+
+Two narrow rebase conflicts were resolved: README retains the owner's T-Watch
+guide plus Air instructions, and Air scene selection wraps the owner's unchanged
+LORAFISH_SCENERY_CANVAS Cardputer/T-Watch call. All owner T-Watch drivers, input,
+radio, headers, profiles and conditional UI behavior remain present. Final Air
+is now directly based on current main, not stacked on an unmerged integration.
+The prior compiler trial is already part of owner main and is retained, not
+claimed as a successful size fix. No Air-specific T-Watch qualification is made.
+
+Owner origin only was refreshed. DarkButterfly was not cloned/fetched/synced;
+newly imported upstream commits arrived through the owner's permitted origin.
+Existing dirty worktrees were not edited. All host/native/config and current
+RX/PC checks were rerun after the baseline refresh; historical logs remain
+attributed to their original source instead of being relabelled.
 
 No push, PR, merge, release, new hosted run, local firmware compilation or flash.
 The user's no-push boundary and existing GitHub firmware-compilation policy mean
@@ -76,7 +87,7 @@ are not Air evidence and are not substituted for new builds.
   7bcd473a6afef59e0ef0c2905a1fa57a82f1a1477d368fb679456def89bd1a12).
   Production-frame mono/colour catalogue PNGs were visually inspected; GIFs
   retain both real animation phases. They are host pixels, not board photos.
-- Full PlatformIO resolution: **685 existing environments unchanged**, exactly
+- Full PlatformIO resolution: **688 existing environments unchanged**, exactly
   ten new Air aliases plus native_air. Forty-two canonical experimental profile
   audits still pass; edition aliases are audited separately, not counted as new
   hardware. RF/pins/display/memory/dependency settings preserved.
@@ -95,8 +106,8 @@ files/radio/display boundaries; they are not electrical peripheral emulation.
 No firmware target has been compiled at the Air source revision. The prepared
 minimum hosted matrix is Air/DX/Water × V3, V4 OLED and T096 (nine images).
 All other Air aliases are config/host-only coverage, including experimental RAK,
-T114, Cardputer, T-Deck USB/BLE and ThinkNode. Existing three tight experimental
-DX images remain independently oversized: TBeam1W, Station G2 and Station G3.
+T114, Cardputer, T-Deck USB/BLE and ThinkNode. The last measured three tight experimental
+DX images were oversized (new Air revision unbuilt): TBeam1W, Station G2 and Station G3.
 No partition/feature/validation tradeoff was made or approved.
 
 After explicit publication/CI permission: require exact-SHA terminal checks/builds;

@@ -153,8 +153,10 @@ integration evidence is separate. Existing workflows/triggers remain unchanged.
 **This task does not authorize push. Under the recorded GitHub-compilation policy,
 exact-Air firmware builds are blocked until publication/CI permission.** No local
 firmware build substitutes for that gate; no existing baseline image proves Air.
-Current tight-flash experimental TBeam1W/Station G2/G3 remain independently
-oversized; the unsuccessful compiler-flag experiment was deliberately not used.
+The last measured tight-flash experimental TBeam1W/Station G2/G3 images were
+oversized. Owner main advanced during this task and now includes the prior
+compiler-flag trial; that owner baseline is retained unchanged, not presented as
+a successful size fix. No new Air profile fit has been measured.
 No repartitioning, feature removal or suppressed size validation.
 
 After authorized CI, validate ESP32 checksum/hash/partition fit or UF2 family/
