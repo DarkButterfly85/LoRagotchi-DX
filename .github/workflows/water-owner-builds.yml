@@ -1,7 +1,7 @@
-name: Water owner-board test images
+name: DX and Water owner-board test images
 on:
   push:
-    branches: [main, feature/water-edition]
+    branches: [main, feature/water-edition, integration/dx-water-default-20261101]
   workflow_dispatch:
 permissions:
   contents: read
@@ -18,18 +18,23 @@ jobs:
         with:
           python-version: '3.12'
       - run: pip install platformio==6.1.19
-      - run: pio test -e native -e native_kiss_modem
+      - run: pio test -e native -e native_water -e native_kiss_modem
+      - run: python3 test/boards/check_edition_targets.py
+      - run: python3 test/boards/check_experimental_screens.py
       - name: Self-contained production host checks
         run: |
           set -euo pipefail
           python3 - <<'PY'
-          import subprocess
+          import os, subprocess
           from pathlib import Path
           for test in sorted(Path('test/ui').glob('check_*.py')):
               if test.name in {'check_dx_colour_retries.py','check_busy_mesh.py'}:
                   print(f'NOT RUN standalone: {test.name} requires independent RX/Aquarium checkout',flush=True)
                   continue
               subprocess.run(['python3',str(test)],check=True)
+              if test.name in {'check_menu_navigation.py','check_emoji_dx.py'}:
+                  subprocess.run(['python3',str(test)],check=True,
+                      env=dict(os.environ,LORAGOTCHI_TEST_EDITION='1'))
           subprocess.run(['python3','test/ble/check_pairing_pin.py'],check=True)
           PY
   build:
@@ -41,6 +46,21 @@ jobs:
       max-parallel: 3
       matrix:
         include:
+          - environment: water_heltec_v3_ble
+            target: build
+            format: bin
+          - environment: water_heltec_v4_oled_ble
+            target: build
+            format: bin
+          - environment: water_heltec_t096_ble
+            target: create_uf2
+            format: uf2
+          - environment: RAK_4630_LoRaGotchi_DX_ble
+            target: create_uf2
+            format: uf2
+          - environment: water_rak4630_ble
+            target: create_uf2
+            format: uf2
           - environment: Heltec_v3_LoRaFish_companion_ble
             target: build
             format: bin
@@ -82,7 +102,7 @@ jobs:
           git rev-parse HEAD > artifact/source-sha.txt
           pio project config --json-output > artifact/platformio-config.json
           pio pkg list -e "$BUILD_ENV" > artifact/dependencies.txt
-          cp WATER-EDITION.md artifact/
+          cp WATER-EDITION.md docs/RAK4630-EXPERIMENTAL.md artifact/
           echo 'Compilation only. Not hardware acceptance. ESP32 app BIN is not a merged installer. Validate image/partition/linker bounds before flashing.' > artifact/BUILD-NOTES.txt
           cd artifact
           sha256sum * > SHA256SUMS

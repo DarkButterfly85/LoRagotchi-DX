@@ -6,7 +6,9 @@
 #include "LoRaFishText.h"
 #include "../LoRaFishColour.h"
 #include "../LoRaFishSpecies.h"
+#if LORAGOTCHI_WATER_EDITION
 #include "LoRaFishWaterSprite.h"
+#endif
 #include "../MyMesh.h"
 #include "../LoRagotchiChannelStatus.h"
 #ifdef ESP32
@@ -436,7 +438,7 @@ static uint32_t loRaFishScreenTimeoutMs() {
   return loRaFishTimeoutValues[min((uint8_t)5,setting)];
 }
 static uint8_t loRaFishDisplayOptionCount() {
-  return 6;
+  return 5 + (LORAGOTCHI_WATER_EDITION ? 1 : 0);
 }
 static bool loRaFishCanBreed() {
 #ifdef LORAFISH_UI
@@ -471,7 +473,12 @@ static void cancelLoRaFishValue() {
 static void openLoRaFishValue(LoRaFishSetting setting) {
   uint8_t value = 0, count = 0;
   switch (setting) {
-    case LoRaFishSetting::Species: value = LoRaFishSpecies::known(loRaFishSpecies) ? loRaFishSpecies : 0; count = LoRaFishSpecies::count + (loRaFishNeedsPetSetup ? 1 : 0); break;
+    case LoRaFishSetting::Species:
+#if LORAGOTCHI_WATER_EDITION
+      value = LoRaFishSpecies::known(loRaFishSpecies) ? loRaFishSpecies : 0;
+      count = LoRaFishSpecies::count + (loRaFishNeedsPetSetup ? 1 : 0);
+#endif
+      break;
     case LoRaFishSetting::Theme: value = loRaFishTheme; count = loRaFishThemeCount(); break;
     case LoRaFishSetting::Brightness: value = loRaFishBrightnessSetting; count = 4; break;
     case LoRaFishSetting::Rendering: value = loRaFishSimulationMode; count = 2; break;
@@ -511,8 +518,10 @@ static void selectLoRaFishValue() {
   tickLoRaFish();
   switch (loRaFishValuePicker.key()) {
     case LoRaFishSetting::Species:
+#if LORAGOTCHI_WATER_EDITION
       if (value==LoRaFishSpecies::count) { ensureLoRaFishMysterySeed(); loRaFishSpecies=LoRaFishSpecies::mystery(loRaFishMysterySeed); }
       else loRaFishSpecies=value;
+#endif
       break;
     case LoRaFishSetting::Theme: loRaFishTheme = value; applyLoRaFishTheme(); break;
     case LoRaFishSetting::Brightness:
@@ -692,7 +701,7 @@ static void resetLoRaFishPet() {
   loRaFishCleaning = false;
   loRaFishGeneration = 1;
   loRaFishSpecies=loRaFishEggSpecies=LoRaFishSpecies::TropicalFish;
-  loRaFishMysterySeed=0; loRaFishNeedsPetSetup=true; loRaFishPetSetupField=0;
+  loRaFishMysterySeed=0; loRaFishNeedsPetSetup=(LORAGOTCHI_WATER_EDITION!=0); loRaFishPetSetupField=0;
   loRaFishPendingEgg = false;
   loRaFishMemorialEggSide = 0;
   loRaFishNeedsAppearanceSetup=loRaFishColorDisplay;
@@ -1024,6 +1033,7 @@ static void loadLoRaFishSettings() {
     if (f.read(speciesTail,sizeof(speciesTail))==sizeof(speciesTail))
       LoRaFishSpecies::decode(speciesTail,sizeof(speciesTail),loRaFishSpecies,
           loRaFishEggSpecies,loRaFishMysterySeed,loRaFishNeedsPetSetup);
+    if (!LORAGOTCHI_WATER_EDITION) loRaFishNeedsPetSetup=false;
     if (loRaFishNeedsPetSetup && !loRaFishAdoptionEligible) loRaFishPage=LORAFISH_PET_SETUP_PAGE;
     lastWrittenLoRaFishHappiness = loRaFishHappiness;
     uint8_t canonical[LORAFISH_SETTINGS_SIZE];
@@ -1115,7 +1125,7 @@ static void loadLoRaFish() {
     f.close();
   }
 #endif
-  loRaFishNeedsPetSetup=!restored; loRaFishPetSetupField=0;
+  loRaFishNeedsPetSetup=(LORAGOTCHI_WATER_EDITION!=0) && !restored; loRaFishPetSetupField=0;
   loRaFishAdoptionEligible=!restored;
   loRaFishNeedsAppearanceSetup=!restored && loRaFishColorDisplay;
   if (loRaFishNeedsAppearanceSetup) {
@@ -1782,6 +1792,7 @@ static void drawCardputerTankDepth(DisplayDriver& d) {
 
 static void drawFishSpriteForStage(DisplayDriver& d,int x,int y,bool right,uint8_t stage,
                                   const LoRaFishAppearance& appearance,uint16_t species=0) {
+#if LORAGOTCHI_WATER_EDITION
   species=LoRaFishSpecies::renderId(species);
   if (species) {
     ColorVal body=loRaFishColorValue(appearance.body), fins=loRaFishColorValue(appearance.scales);
@@ -1799,6 +1810,9 @@ static void drawFishSpriteForStage(DisplayDriver& d,int x,int y,bool right,uint8
         body,fins,eyes,UIColor::window_bkg);
     d.setColor(UIColor::primary_txt); return;
   }
+#else
+  (void)species;
+#endif
 #if defined(LORAFISH_TDECK_PIXEL_ART)
   // Two-tone pixel shadow and animated sparkle; original evolution sprites
   // and colour genetics remain untouched.
@@ -2982,7 +2996,8 @@ static void drawLoRaFishNameNotice(DisplayDriver& display) {
   const int x = display.width() / 2;
   drawLoRaFishHeader(display, "GET FOUND BY FRIENDS", "");
   display.setColor(UIColor::primary_txt);
-  display.drawTextCentered(x, 18, "Add a Water emoji to");
+  display.drawTextCentered(x, 18, LORAGOTCHI_WATER_EDITION ?
+      "Add a Water emoji to" : "Add a fish emoji to");
   display.drawTextCentered(x, 27, "your MeshCore name");
   display.drawTextCentered(x, 36, "to appear as a");
   display.drawTextCentered(x, 45, "LoRagotchi-DX tank.");
@@ -3097,8 +3112,8 @@ public:
 
   //=============== startup screen ====================================
   int render(DisplayDriver& display) override {
-    // LoRaGotchi DX v1.0 splash. Render the title with the display font rather
-    // than an XBM logo so it stays crisp on both M2 and Heltec V3 OLEDs.
+    // Product identity is separate from MeshCore's transport version.
+    // Use the display font so the title stays crisp on M2/V3 OLEDs.
     const int cx = display.width() / 2;
     display.setColor(UIColor::primary_txt);
     display.setTextSize(2);
@@ -3107,7 +3122,7 @@ public:
     // Tiny pixel-fish motif, deliberately kept inside the title area.
     display.setTextSize(1);
     display.drawTextCentered(cx, 21, "><((o>");
-    display.drawTextCentered(cx, 33, "DX v1.0");
+    display.drawTextCentered(cx, 33, LORAGOTCHI_EDITION_NAME " " LORAGOTCHI_PRODUCT_VERSION);
 
     display.setColor(UIColor::secondary_txt);
     display.drawTextCentered(cx, 44, "M0YNW");
@@ -4613,7 +4628,8 @@ char UITask::handleLongPress(char c) {
     checkDisplayOn(0);  // Refresh the inactivity timer; a sleeping screen only wakes.
     if (reset) {
       resetLoRaFishPet();
-      loRaFishPage = LORAFISH_PET_SETUP_PAGE;
+      loRaFishPage = loRaFishNeedsPetSetup ? LORAFISH_PET_SETUP_PAGE :
+          (loRaFishNeedsAppearanceSetup ? 9 : 0);
       loRaFishOption = LoRaFishOption::Advert;
       loRaFishHatchMelodyPlayed = false;
       if (!loRaFishNeedsAppearanceSetup) showAlert("New egg!", 900);
@@ -4702,7 +4718,7 @@ char UITask::handleLongPress(char c) {
     } else if (loRaFishDisplayOption == 3) {
       loRaFishPage = 15;
       openLoRaFishValue(LoRaFishSetting::MonoDisplayColour);
-    } else if (loRaFishDisplayOption == 5) {
+    } else if (LORAGOTCHI_WATER_EDITION && loRaFishDisplayOption == 5) {
       loRaFishPage = 15; openLoRaFishValue(LoRaFishSetting::Species);
     } else if (loRaFishDisplayOption == 4) {
       loRaFishPage = 15;

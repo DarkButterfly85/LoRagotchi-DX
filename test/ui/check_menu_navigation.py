@@ -6,7 +6,7 @@ actual function bodies, so regressions in handler dispatch are exercised, not a
 parallel reimplementation of the navigation rules. Builds with and without sound.
 """
 from pathlib import Path
-import re, subprocess, tempfile
+import os, re, subprocess, tempfile
 root=Path(__file__).resolve().parents[2]; source=(root/'examples/companion_radio/ui-new/UITask.cpp').read_text()
 def block(marker, text=source):
     start=text.index(marker);op=text.index('{',start);end=op+1;depth=1
@@ -224,6 +224,8 @@ static uint8_t pageFor(LoRaFishSetting key){
 }
 int main(){
   UITask task;
+  assert(loRaFishDisplayOptionCount()==(LORAGOTCHI_WATER_EDITION ? 6 : 5));
+#if LORAGOTCHI_WATER_EDITION
   // New-game picker enters only after notices/adoption; browsing/cancel never rolls.
   for(bool colour:{false,true}) {
     loRaFishColorDisplay=colour;loRaFishNeedsPetSetup=true;loRaFishNeedsAppearanceSetup=colour;
@@ -253,6 +255,11 @@ int main(){
   }
   puts("PASS initial pet chooser mono/colour routes, independent mysteries, cancel no-reroll and explicit Start pet");
 
+#else
+  // DX cannot open the Water-only species picker, even with a stale row index.
+  loRaFishPage=12;loRaFishDisplayOption=5;task.handleLongPress(KEY_ENTER);
+  assert(!loRaFishValuePicker.active() && loRaFishPage==12);
+#endif
   // Start at the aquarium, not an injected Options page: cover the complete entry route.
   for(int contacts:{0,1,3}) for(int state=0;state<4;++state) {
     the_mesh.contacts=contacts;
@@ -425,7 +432,7 @@ if __name__ == '__main__':
         cpp=Path(temporary)/'menu-host-check.cpp';cpp.write_text('\n'.join(parts))
         for sound in [False,True]:
             out=Path(temporary)/f'menu-host-check-{int(sound)}'
-            cmd=['g++','-std=c++17','-I',str(root),'-I',str(root/'src'),str(cpp),'-o',str(out)]
+            cmd=['g++','-std=c++17','-DLORAGOTCHI_WATER_EDITION='+os.environ.get('LORAGOTCHI_TEST_EDITION','0'),'-I',str(root),'-I',str(root/'src'),str(cpp),'-o',str(out)]
             if sound:cmd+=['-DPIN_BUZZER=6']
             subprocess.run(cmd,check=True)
             subprocess.run([str(out)],check=True)

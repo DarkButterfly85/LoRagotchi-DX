@@ -45,7 +45,7 @@ int main() {
 '''
 with tempfile.TemporaryDirectory(prefix='water-wire-') as tmp:
     p=Path(tmp);(p/'test.cpp').write_text(code)
-    subprocess.run(['g++','-std=c++17','-I',str(f.root),str(p/'test.cpp'),'-o',str(p/'test')],check=True)
+    subprocess.run(['g++','-std=c++17','-DLORAGOTCHI_WATER_EDITION=1','-I',str(f.root),str(p/'test.cpp'),'-o',str(p/'test')],check=True)
     subprocess.run([str(p/'test')],check=True)
 legacy_main=r'''
 int main() {
@@ -64,5 +64,5 @@ int main() {
 '''
 with tempfile.TemporaryDirectory(prefix='water-legacy-') as tmp:
     p=Path(tmp);(p/'test.cpp').write_text(f.pre+f.structs+f.globals+'\n#define LoRaFishColour LegacyLoRaFishColour\n'+(f.root/'test/ui/legacy_lorafish_colour.inc').read_text().replace('#pragma once','')+'\n#undef LoRaFishColour\n'+(f.root/'test/ui/legacy_lfg1_receive.inc').read_text().replace('LoRaFishColour::','LegacyLoRaFishColour::')+f.methods+legacy_main)
-    subprocess.run(['g++','-std=c++17','-I',str(f.root),str(p/'test.cpp'),'-o',str(p/'test')],check=True)
+    subprocess.run(['g++','-std=c++17','-DLORAGOTCHI_WATER_EDITION=1','-I',str(f.root),str(p/'test.cpp'),'-o',str(p/'test')],check=True)
     subprocess.run([str(p/'test')],check=True)

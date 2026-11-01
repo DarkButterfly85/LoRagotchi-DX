@@ -38,7 +38,9 @@ for row in manifest['targets']:
         '-UENV_INCLUDE_' + sensor for sensor in row.get('disabled_optional_sensors', [])], name
     assert 'GPS' not in row.get('disabled_optional_sensors', []), name
     assert row['target'] == ('create_uf2' if '-D NRF52_PLATFORM' in flags else 'build'), name
+# Edition/module aliases are audited separately by check_edition_targets.py.
 assert seen == {s[4:] for s in config if s.startswith('env:') and
+                not s.startswith('env:water_') and s != 'env:RAK_4630_LoRaGotchi_DX_ble' and
                 '-D LORAGOTCHI_EXPERIMENTAL=1' in config[s].get('build_flags', [])}
 assert len(seen) == 42
 print(f'PASS: {len(seen)} resolved TFT/OLED DX profiles; original hardware/RF/memory options preserved')

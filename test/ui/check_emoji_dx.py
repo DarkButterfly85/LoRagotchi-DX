@@ -5,6 +5,7 @@ Mock only the contact store, radio and display boundary; start at the aquarium.
 The glyph bounds check targets the smallest 128x64 display, with/without buzzer.
 """
 from pathlib import Path
+import os
 import runpy
 import subprocess
 import tempfile
@@ -96,8 +97,9 @@ int main(){
   pass("boot reminder is bounded, dismisses without action or save, and returns on the next unmarked boot");
 
   for(const char* name:{"🐟 Home","Home 🐠","Home 🐡️","🦈","🐬","🐳","🐋","🦭","🦐","🦑","🦞","🦀","🐙","🪼","🐚","💦"}) {
-    loRaFishMeshNodeName=name;beginLoRaFishNameNotice();assert(!loRaFishNameNotice);
-    auto waterContact=contact(name,1,0);assert(loRaFishDXEligible(waterContact));
+    const bool accepted=LoRaFishText::hasFish(name,strlen(name));
+    loRaFishMeshNodeName=name;beginLoRaFishNameNotice();assert(loRaFishNameNotice==!accepted);
+    auto waterContact=contact(name,1,0);assert(loRaFishDXEligible(waterContact)==accepted);
   }
   loRaFishMeshNodeName=nullptr;beginLoRaFishNameNotice();assert(loRaFishNameNotice);
   loRaFishMeshNodeName="No marker";beginLoRaFishNameNotice();
@@ -133,7 +135,7 @@ with tempfile.TemporaryDirectory(prefix='lorafish-emoji-') as directory:
     cpp=Path(directory)/'emoji.cpp';cpp.write_text('\n'.join(parts))
     for sound in (False,True):
         exe=Path(directory)/f'emoji-{int(sound)}'
-        args=['g++','-std=c++17','-I',str(root),'-I',str(root/'src'),str(cpp),'-o',str(exe)]
+        args=['g++','-std=c++17','-DLORAGOTCHI_WATER_EDITION='+os.environ.get('LORAGOTCHI_TEST_EDITION','0'),'-I',str(root),'-I',str(root/'src'),str(cpp),'-o',str(exe)]
         if sound:args+=['-DPIN_BUZZER=6']
         subprocess.run(args,check=True)
         print(f'Emoji/DX production checks: sound={int(sound)}',flush=True)

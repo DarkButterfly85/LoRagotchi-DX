@@ -1,4 +1,6 @@
-# Water candidate 1 local verification
+# Water verification history and edition-split checks
+
+## Historical Water candidate 1 (856d420)
 
 Baseline: owner-local f310240 (monochrome panel profiles) plus the accepted
 juvenile-colour change 7254316 cherry-picked unchanged as 35ce94a. Both extend the
@@ -47,21 +49,36 @@ They are host rendering, not photographs, device framebuffer comparisons or RF
 measurements. No physical panel/frame-time, radio/power-cut, board flash/RAM or
 battery-life result is claimed.
 
-## Firmware build blocker
+## Reconciled v1.1.0 source candidate
 
-The owner requested GitHub-hosted compilation to conserve local resources and has
-not authorised pushing this new source branch. Therefore **zero board firmware
-builds have run for Water candidate 1 and no firmware binaries exist for it**.
-The branch-scoped Water workflow is prepared for V3 BLE BIN, V4 OLED BLE BIN and
-T096 BLE UF2. A source-branch push to the owner's fork is needed to start those
-builds; it does not require a PR, merge or release. Do not bypass that permission
-boundary by compiling locally or publishing source elsewhere.
+The supplied ZIP includes owner main 251e631 plus an unfinished, uncommitted
+edition split. Most other file differences are CRLF conversion, not code changes.
+Only intentional source/docs/new aliases were reconciled; archive Git metadata
+and cache files were not imported. Current source keeps original target names DX
+and makes Water opt-in. Historical counts above belong to 856d420, not this delta.
 
-After permission: push the exact tested branch, identify the matching Actions SHA,
-wait for terminal checks/build jobs, download the three exact-SHA artifacts,
-validate ESP32 chip/checksum/hash/partition fit and T096 UF2 family/block/linker
-bounds, then package images/checksums/instructions for owner hardware testing.
-Report any failed profile without claiming a complete matrix or usable binary.
+New gates:
+- native + native_water + native_kiss_modem test default and Water marker behavior.
+- check_editions.py compiles actual reset/load, wire and splash bodies for both
+  editions (ESP32/nRF52 RAM-storage mocks, 128x64 boot text bounds).
+- Menu/navigation and emoji harnesses run both editions, with and without sound.
+- Water state/protocol/rendering harnesses explicitly compile the Water edition.
+- check_edition_targets.py verifies all resolved aliases preserve their parents'
+  hardware, radio, memory and dependency settings. The original 42-profile
+  experimental inventory remains canonical; edition/module aliases are separate.
+
+## Firmware builds
+
+Historical main 251e631 completed Water-owner run 41263409197 and standard-images
+run 41263409250 successfully. Those binaries predate the edition split and version
+fix. They must not be presented as v1.1.0 or proof of the experimental RAK aliases.
+The current workflow requests eight selected DX/Water images. Check its exact-SHA
+terminal job results before claiming any current binary is available. Other aliases
+are configuration-validated only unless their own build result is recorded.
+
+Download the matching source-SHA artifact, not an unrelated latest success.
+Before use, validate ESP32 checksum/image/partition bounds or nRF UF2 family,
+blocks and application linker bounds. Builds are not hardware acceptance.
 
 ## Explicit current limitations
 

@@ -60,5 +60,5 @@ with tempfile.TemporaryDirectory(prefix='water-state-') as tmp:
     p=Path(tmp);(p/'test.cpp').write_text(code)
     for platform in ('ESP32','NRF52_PLATFORM'):
         exe=p/platform
-        subprocess.run(['g++','-std=c++17','-I',str(f.ROOT),'-D'+platform,str(p/'test.cpp'),'-o',str(exe)],check=True)
+        subprocess.run(['g++','-std=c++17','-DLORAGOTCHI_WATER_EDITION=1','-I',str(f.ROOT),'-D'+platform,str(p/'test.cpp'),'-o',str(exe)],check=True)
         subprocess.run([str(exe)],check=True)

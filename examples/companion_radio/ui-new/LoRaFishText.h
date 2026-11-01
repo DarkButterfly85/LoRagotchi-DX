@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <helpers/UTF8Helpers.h>
+#include "../LoRaGotchiVersion.h"
 
 // Display-only fallback for the small built-in ASCII fonts. Keep raw names in
 // contacts/adverts; protocolName sanitises only the outgoing fish label.
@@ -37,6 +38,7 @@ inline bool isFish(uint32_t code) {
 
 inline bool isWaterMarker(uint32_t code) {
   if (isFish(code)) return true;
+#if LORAGOTCHI_WATER_EDITION
   // Exact supported animals plus the owner's explicit Water marker, not all
   // water-related Unicode. No generic waves, droplets, stars or boating signs.
   switch(code) {
@@ -51,6 +53,9 @@ inline bool isWaterMarker(uint32_t code) {
       return true;
     default: return false;
   }
+#else
+  return false;
+#endif
 }
 // Historical API name kept for callers. Now tests the exact Water allowlist.
 inline bool hasFish(const char* text, size_t capacity) {

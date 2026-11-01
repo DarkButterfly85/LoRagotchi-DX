@@ -617,7 +617,10 @@ void MyMesh::queueMessage(const ContactInfo &from, uint8_t txt_type, mesh::Packe
             loragotchiDXReservation.start(millis());
             loragotchiDXSave();
           }
-          snprintf(reply,sizeof(reply),"LFG1|ACK|%lu|%lu|S1",tx,fid);
+          if (LORAGOTCHI_WATER_EDITION)
+            snprintf(reply,sizeof(reply),"LFG1|ACK|%lu|%lu|S1",tx,fid);
+          else
+            snprintf(reply,sizeof(reply),"LFG1|ACK|%lu|%lu",tx,fid);
         } else {
           snprintf(reply,sizeof(reply),"LFG1|BUSY|%lu|%lu",tx,fid);
         }
@@ -633,7 +636,8 @@ void MyMesh::queueMessage(const ContactInfo &from, uint8_t txt_type, mesh::Packe
       loRaFishCommitFrame.prepare(from.id.pub_key, tx, fid,
         loragotchiDXLocalHasColorGenes, loragotchiDXLocalColorIndex,
         loragotchiDXLocalScalesColorIndex, loragotchiDXLocalEyesColorIndex,
-        loragotchiDXLocalMonoPixelTint, loragotchiDXLocalMonoPanel, loragotchiDXLocalSpecies,
+        loragotchiDXLocalMonoPixelTint, loragotchiDXLocalMonoPanel,
+        LORAGOTCHI_WATER_EDITION ? loragotchiDXLocalSpecies : LoRaFishSpecies::TropicalFish,
         LoRaFishSpecies::acknowledged(text));
       // Duplicate acceptance cannot reset the retry budget or appearance.
       loragotchiDXVisit.begin(LoRaFishVisit::Commit, millis());

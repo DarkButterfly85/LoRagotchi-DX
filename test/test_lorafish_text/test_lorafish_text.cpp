@@ -102,6 +102,7 @@ TEST(LoRaFishText, WireNameTinyBuffersAndMalformedNonterminatedInput) {
 TEST(LoRaFishText, ExactWaterAnimalsAndExplicitMarkerAreBoundedAndKeepRawNames) {
   for(const char* glyph:{"🐬","🐳","🐋","🦭","🦐","🦑","🦞","🦀","🐙","🪼","🐚","💦"}) {
     const std::string raw=glyph;
+#if LORAGOTCHI_WATER_EDITION
     ASSERT_TRUE(LoRaFishText::hasFish(raw.data(),raw.size()));
     for(size_t n=0;n<raw.size();++n)EXPECT_FALSE(LoRaFishText::hasFish(raw.data(),n));
     char out[8];LoRaFishText::display(out,sizeof(out),raw.data(),raw.size());EXPECT_STREQ(out,"[W]");
@@ -109,6 +110,10 @@ TEST(LoRaFishText, ExactWaterAnimalsAndExplicitMarkerAreBoundedAndKeepRawNames) 
       memset(out,'!',sizeof(out));LoRaFishText::display(out,size,raw.data(),raw.size());
       EXPECT_EQ(out[size],'!');EXPECT_STREQ(out,size==4?"[W]":"");
     }
+#else
+    EXPECT_FALSE(LoRaFishText::hasFish(raw.data(),raw.size()));
+    char out[8];LoRaFishText::display(out,sizeof(out),raw.data(),raw.size());EXPECT_STREQ(out," ");
+#endif
     EXPECT_EQ(raw,glyph);LoRaFishText::protocolName(out,sizeof(out),raw.data(),raw.size());EXPECT_STREQ(out,"DX Fish");
   }
 }
