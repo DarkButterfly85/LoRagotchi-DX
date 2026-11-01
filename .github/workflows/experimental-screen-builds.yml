@@ -1,0 +1,116 @@
+name: Experimental TFT and OLED DX builds
+on:
+  push:
+    branches: [main, 'feature/experimental-screen-boards']
+  pull_request:
+    branches: [main, dev]
+    paths:
+      - 'examples/**'
+      - 'src/**'
+      - 'variants/**'
+      - 'boards/**'
+      - 'platformio.ini'
+      - 'test/**'
+      - 'docs/experimental-screen-targets.json'
+      - '.github/workflows/loragotchi-release-build.yml'
+      - '.github/workflows/experimental-screen-builds.yml'
+  workflow_dispatch:
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    outputs:
+      matrix: ${{ steps.matrix.outputs.value }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install platformio==6.1.19
+      - run: python3 test/boards/check_experimental_screens.py
+      - id: matrix
+        name: Read the explicit screen-only matrix
+        run: |
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          targets = json.loads(Path('docs/experimental-screen-targets.json').read_text())['targets']
+          rows = [{'environment': t['environment'], 'target': t['target']} for t in targets]
+          assert len({row['environment'] for row in rows}) == len(rows)
+          with open(os.environ['GITHUB_OUTPUT'],'a') as out:
+              out.write('value=' + json.dumps({'include':rows},separators=(',',':')) + '\n')
+          PY
+      - run: pio test -e native -e native_kiss_modem
+      - name: Production UI and transaction regressions
+        run: |
+          python3 test/ui/check_menu_navigation.py
+          python3 test/ui/check_arrival_recovery.py
+          python3 test/ui/check_dx_handlers.py
+          python3 test/ble/check_pairing_pin.py
+  build:
+    needs: checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      max-parallel: 10
+      matrix: ${{ fromJSON(needs.checks.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install platformio==6.1.19
+      - name: Build exact profile
+        env:
+          BUILD_ENV: ${{ matrix.environment }}
+          BUILD_TARGET: ${{ matrix.target }}
+        run: |
+          if [ "$BUILD_TARGET" = create_uf2 ]; then
+            pio run -e "$BUILD_ENV" -t create_uf2 -j 2
+          else
+            pio run -e "$BUILD_ENV" -j 2
+          fi
+      - name: Stage firmware and reproducible hardware metadata
+        env:
+          BUILD_ENV: ${{ matrix.environment }}
+          BUILD_TARGET: ${{ matrix.target }}
+        run: |
+          python3 - <<'PY'
+          import json, os, shutil, subprocess
+          from pathlib import Path
+          env = os.environ['BUILD_ENV']
+          out = Path('release-artifact'); out.mkdir()
+          cfg = {s:dict(o) for s,o in json.loads(subprocess.check_output(['pio','project','config','--json-output'],text=True))}['env:'+env]
+          (out/'resolved-config.json').write_text(json.dumps(cfg,indent=2))
+          board = cfg['board']
+          paths = [Path('boards')/(board+'.json')] + list((Path.home()/'.platformio/platforms').glob('*/boards/'+board+'.json'))
+          source = next(p for p in paths if p.is_file())
+          shutil.copy2(source,out/'board.json')
+          suffix = 'uf2' if os.environ['BUILD_TARGET']=='create_uf2' else 'bin'
+          shutil.copy2(Path('.pio/build')/env/('firmware.'+suffix),out)
+          if suffix=='bin': shutil.copy2(Path('.pio/build')/env/'partitions.bin',out)
+          else: shutil.copy2(cfg['board_build.ldscript'],out/'application.ld')
+          (out/'source-sha.txt').write_text(subprocess.check_output(['git','rev-parse','HEAD'],text=True))
+          (out/'dependencies.txt').write_text(subprocess.check_output(['pio','pkg','list','-e',env],text=True))
+          PY
+          echo "experimental build; compilation is not physical hardware acceptance. See source-sha.txt for the exact revision." > release-artifact/BUILD-NOTES.txt
+          cp EGG-ADOPTION.md release-artifact/
+          cd release-artifact
+          sha256sum * > SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: experimental-${{ matrix.environment }}-${{ github.event.pull_request.head.sha || github.sha }}
+          path: release-artifact/
+          if-no-files-found: error
+          retention-days: 14

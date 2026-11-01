@@ -109,4 +109,10 @@ public:
   }
   
   virtual void endFrame() = 0;
+
+  // Optional band (strip) rendering. Drivers that don't support it keep these defaults.
+  virtual int stripRows() const { return 0; }
+  virtual int physicalHeight() const { return 0; }
+  virtual void beginStrip(int physY0) { (void)physY0; }
+  virtual void endStrip() {}
 };

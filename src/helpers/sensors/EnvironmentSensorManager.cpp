@@ -642,6 +642,14 @@ bool EnvironmentSensorManager::begin() {
   MESH_DEBUG_PRINTLN("Second I2C initialized on pins SDA: %d SCL: %d", ENV_PIN_SDA, ENV_PIN_SCL);
   #endif
 
+  // T-Deck Launcher aquarium has no environmental I2C sensors enabled.
+  // Avoid scanning 112 absent addresses on a bus that can time out slowly.
+  // GPS setup above is retained.
+#if defined(LORAFISH_TDECK_SKIP_ENV_SCAN)
+  _active_sensor_count = 0;
+  return true;
+#endif
+
   // Scan the I2C bus before touching any sensor library.
   bool detected[128] = {};
   scanI2CBus(TELEM_WIRE, detected);

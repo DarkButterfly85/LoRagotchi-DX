@@ -1,5 +1,8 @@
 #pragma once
 #include <stdint.h>
+#include <stddef.h>
+#include "LoRaFishGuestReturn.h"
+#include "LoRaFishVisit.h"
 
 
 extern float lorafish_last_rssi;
@@ -13,11 +16,15 @@ struct LoRaGotchiDXHomeState {
   bool pending=false, committing=false, away=false, returned=false;
   uint32_t txid=0, fishid=0, destinationIndex=0;
   char destinationName[32]="";
+  uint8_t destinationKey[32]={}; bool destinationKnown=false;
+  bool completedVisit=false;  // Consumed once by the care loop, even on a very short visit.
+  bool communityVisit=false;
 };
 
 // Independent visitor slot. A node can have its own fish away while hosting one guest.
 struct LoRaGotchiDXGuestState {
   bool reserved=false, present=false;
+  uint8_t ownerKey[32]={}; bool ownerKnown=false;
   uint32_t txid=0, fishid=0;
   uint8_t stage=2;
   uint8_t color=0;
@@ -31,12 +38,16 @@ struct LoRaGotchiDXGuestState {
 
 extern LoRaGotchiDXHomeState loragotchiDXHome;
 extern LoRaGotchiDXGuestState loragotchiDXGuest;
+extern LoRaFishGuestReturn loragotchiDXGuestReturn;
+extern LoRaFishVisit loragotchiDXVisit;
+extern LoRaFishReservation loragotchiDXReservation;
 extern bool loragotchiDXLocalColorCapable;
 extern bool loragotchiDXLocalHasColorGenes;
 extern uint8_t loragotchiDXLocalColorIndex;
 extern uint8_t loragotchiDXLocalScalesColorIndex;
 extern uint8_t loragotchiDXLocalEyesColorIndex;
 extern bool loragotchiDXReturnedFromMonochrome;
+bool loragotchiEggMessage(const uint8_t* key, const char* text, char* reply, size_t size);
 void loragotchiDXLoad();
 void loragotchiDXSave();
 #endif
@@ -152,6 +163,21 @@ public:
   MyMesh(mesh::Radio &radio, mesh::RNG &rng, mesh::RTCClock &rtc, SimpleMeshTables &tables, DataStore& store);
 
   void begin();
+#ifdef LORAFISH_UI
+  int sendLoRaFishCommit(const ContactInfo& destination);
+  void trackLoRaFishRequest(const char* request, uint32_t timeout);
+  bool recallLoRaFish();
+  void serviceLoRaFishVisit();
+  void expireLoRaFishReservation();
+  bool loRaFishQueueReady() const;
+  bool loRaFishTxPending() const;
+  uint32_t loRaFishRandom();
+  bool acknowledgeLoRaFishArrival(uint32_t hash);
+  void serviceLoRaFishArrival();
+  bool returnLoRaFishGuest();
+  bool acknowledgeLoRaFishGuestReturn(uint32_t hash);
+  void serviceLoRaFishGuestReturn();
+#endif
   void startInterface(BaseSerialInterface &serial);
   void setListener(Listener* listener) { _listener = listener; }
 
@@ -162,7 +188,7 @@ public:
 
   void loop();
   void handleCmdFrame(size_t len);
-  bool advert();
+  bool advert(bool flood = false);
   void enterCLIRescue();
 
   int  getRecentlyHeard(AdvertPath dest[], int max_num);

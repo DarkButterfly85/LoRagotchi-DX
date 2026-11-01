@@ -49,7 +49,7 @@ public:
   bool begin();
   static const char* driverName() { return "NV3001B"; }
   static uint16_t physicalWidth() { return NV3001B_PANEL_WIDTH; }
-  static uint16_t physicalHeight() { return NV3001B_PANEL_HEIGHT; }
+  int physicalHeight() const override { return NV3001B_PANEL_HEIGHT; }
 
   bool isOn() override { return is_on; }
   void turnOn() override;

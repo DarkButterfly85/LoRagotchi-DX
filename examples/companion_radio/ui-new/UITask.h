@@ -111,7 +111,7 @@ public:
   void playFeedPip();
   void playCleanMelody();
   void playHatchMelody();
-  void cycleLoRaFishSoundSetting(uint8_t field);
+  void previewLoRaFishSoundSetting(uint8_t field);
 
 
   bool isBuzzerQuiet() { 

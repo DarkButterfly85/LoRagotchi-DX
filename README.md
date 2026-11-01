@@ -19,23 +19,38 @@ For setup, controls, menus, pet behavior, and DX travel, see [Getting Started](G
 - MeshCore remains the underlying radio/mesh transport
 - Buzzer support
 - Colour screen support
-- Higher/Lower game - 5 rounds. each win = 1 happy at the end of the game (Max +5 happy)
+- Higher/Lower game - 5 rounds; each correct guess adds 1 Happy (max +5 per game)
 
 ## Testing features:
+- Emoji-safe names and fish-marked DX discovery
+    - Fish markers 🐟 🐠 🐡 🦈 render as `><>`; unsupported Unicode renders as spaces
+    - The DX picker lists only saved companion contacts with a fish marker in their name
+    - Dismissible boot reminder for unmarked names; no automatic renaming
+- LoRagotchi-local flash and display savings
+    - Five-minute passive-counter checkpoints; immediate care/lifecycle/settings saves
+    - Identical-record suppression and bounded retries after failed file writes
+    - Shared five-second battery display cache using MeshCore's existing readings
+    - Unchanged static menus skip redraws; dimmed animation keeps its normal cadence
+    - Shared MeshCore, radio, board power configuration and save formats unchanged
 - Lifecycle improvements, basic fish-colour DNA, breeding & self-fertilization
     - Your fish now has generations > everyone starts with a 1st gen fish. old-age death no longer ends the LoRagotchi game
     - Your game will ask for what colour your fish should start as. breeding can evolve the fish.
 - happiness re-balance
-    - Fixed double-tap for happiness from an RF message
-    - Added basic time drain
-    - Added pooped-in-tank drain.
+    - RF interactions count toward meals, without a direct Happy bonus
+    - +3 Happy per ten-event meal, limited to one meal per hour; no queued backlog
+    - -1 Happy per 30 awake minutes, plus -1 per waste piece at the same interval
+    - Scheduled sleep, eggs and Memorial pause decay; turning the screen off does not
+    - Cleaning stays +3; new generations start at 80; Happy stays between 0 and 100
 - M2 Partition change - dropped 2nd app partition in favour of a larger primary app partition.
     - alleviates flash from 95.5% to about 42%, in line with other nodes.
     - retained NVS, Filesystem and Coredump partitions.
     - Disables OTA updates (not used or planned)
 - M5Stack CardPuter
     - Updated graphics and keyboard controls for the menu
-
+- LilyGo T-Deck
+    - Framebuffer for the display.
+ 
+  
 ## Supported LoRaGotchi targets in this tree
 
 | MeshCore Node | Build Environment |
@@ -46,6 +61,7 @@ For setup, controls, menus, pet behavior, and DX travel, see [Getting Started](G
 | M5Stack CardPuter | cardputer_loragotchi |
 | Heltec T114 | Heltec_t114_LoRaFish_companion_ble -t create_uf2 |
 | Heltec T096 | Heltec_t096_LoRaFish_companion_ble -t create_uf2 |
+| LilyGo T-Deck | LilyGo_TDeck_loragotchi_dx_ble / LilyGo_TDeck_loragotchi_dx_usb |
 
 | Untested nodes | build Environment |
 | --- | --- |
@@ -54,6 +70,12 @@ For setup, controls, menus, pet behavior, and DX travel, see [Getting Started](G
 | LilyGo T-Watch S3 (BLE) | TWatch_S3_LoRaFish_companion_ble
 | LilyGo T-Watch S3 (no Bluetooth) | TWatch_S3_LoRaFish_standalone
 | LilyGo T-Watch S3 SX1280 2.4 GHz (BLE) | TWatch_S3_1280_LoRaFish_companion_ble
+
+## Additional experimental TFT/OLED devices
+
+See the [experimental screen target matrix](docs/EXPERIMENTAL-SCREEN-TARGETS.md).
+These additional builds are **experimental and have not been tested on real hardware**.
+Screenless and e-ink variants are excluded; optional-display boards require a fitted panel and controls.
 
 ## Building
 
@@ -97,15 +119,15 @@ LoRaFish buzzer outputs are assigned per board:
 
 ### LilyGo T-Watch S3
 
-This section covers the T-Watch S3 builds: how the watch differs from the other boards, how to control it by touch, and what every screen and sub-menu does. For the pet itself (growth, meals, hygiene, sleep, DX visits and breeding), see [Getting Started](Getting_Started.md); the rules are the same on every board.
+This section covers the T-Watch S3 builds: how the watch differs from the other boards, and how its touch controls work with each screen and menu. The menus, settings and pet rules are the same as on every other board; see [Getting Started](Getting_Started.md) for the full details of each item, the pet itself (growth, meals, hygiene, sleep and breeding), DX visits and aquarium eggs.
 
 #### What is different on the watch
 
-- **Touch controls.** The watch has a touch screen and a single side button, so it uses taps and swipes instead of the click, double-click and long-press of the other boards (see Controls below).
+- **Touch controls.** The watch has a touch screen and a single side button, so it uses taps, swipes and holds instead of the click, double-click and long-press of the other boards (see Controls below).
 - **Full-screen colour aquarium.** The aquarium fills the screen with the Cardputer's colour tank scenery (water, light, reef, sand and seaweed). The fish wanders around the tank: it glides to new spots, hovers with a few bubbles, and now and then darts.
 - **Other screens are centred**, with their usual 128-pixel-wide layout scaled up to the width of the 240x240 screen.
 - **No buzzer**, so the Sound menu is hidden.
-- **No GNSS receiver**, so the GNSS page and the GNSS monitor option are left out. To put a position in your adverts, see Position in adverts below.
+- **No GNSS receiver**, so the GNSS page and the GNSS Monitor row in Options are left out. To put a position in your adverts, see Position in adverts below.
 
 #### Builds
 
@@ -125,59 +147,70 @@ Without a phone app, the no-Bluetooth build takes its time from the watch's cloc
 
 #### Controls
 
-| Gesture | Main screens (Aquarium to RF Monitor) | Lists (DX Visit, Options, Display) | Setting screens |
+| Gesture | Main screens (Aquarium to RF Monitor) | Lists (Options, Display, DX contacts, Send advert, Reset) | Rows and value pickers (settings) |
 | --- | --- | --- | --- |
-| Tap the top area (above the header, or the header itself) | Back: DX Visit goes to Options, the others go to the Aquarium | Back to the previous screen | Back to the parent menu (on the new-fish colour screen: confirm the fish) |
-| Tap the right half | Next screen | Next item | Change the value forward |
-| Tap the left half | Previous screen | Previous item | Change the value backward |
-| Swipe left / right | Next / previous screen | Next / previous screen | - |
-| Swipe down / up | - | Next / previous item | Next / previous row |
-| Hold a finger still for about a second | The screen's action (for example, clean the tank) | Open the item, or send or recall a DX visit | The screen's action (see each screen below) |
-| Short press of the side button | Next screen (and wakes the screen) | Next item | Change the value forward |
+| Tap the top area (above the header, or the header itself) | Back to the Aquarium (from RF Monitor, back to Options) | Back to the screen it was opened from | Back to the parent menu; in a value picker, cancel without saving |
+| Tap the right half | Next screen | Next item | Next row; in a value picker, next value |
+| Tap the left half | Previous screen | Previous item | Previous row; in a value picker, previous value |
+| Swipe left / right | Next / previous screen | - | - |
+| Swipe down / up | - | Next / previous item | Next / previous row or value |
+| Hold a finger still for about a second | The screen's action (for example, clean the tank, or open the DX contact list) | Open or carry out the highlighted item | Open the highlighted row's value picker; in a value picker, save |
+| Short press of the side button | Next screen (and wakes the screen) | Next item | Next row or value |
 
-- **Changing a setting:** on a setting screen with several rows (for example Schedule & time), swipe down or up to select the row you want, then tap the right half to increase the value or the left half to decrease it.
+- **Changing a setting:** browsing never saves anything. On a screen with rows (for example Schedule and Time), move to the row you want, then hold to open its value picker. Tap or swipe to choose a value, then hold to save it, or tap the top area to cancel. Brightness, Firmware theme and Game rendering open their value picker straight away.
+- **Options:** Options is one of the main screens and also a list. Taps and up or down swipes move the highlight; left or right swipes move to the next or previous screen.
+- **Start-up notices:** the watch may show a reminder to add a fish emoji to your node name, or a warning that the `#loragotchi-dx` channel could not be joined (see Getting Started). A tap, swipe or side-button press dismisses one notice and does nothing else.
+- **Aquarium eggs:** on the AQUARIUM EGGS screen (see Getting Started), tap either half to select another tank, and hold or tap the top area to skip. Swipes do nothing on that screen.
 - **Waking the watch:** taps are ignored while the screen is off, so a sleeve cannot wake it. Press the side button to wake it.
 - **Power:** hold the side button for 2 seconds to turn the watch on, and for 6 seconds to turn it off. When the battery runs low (about 3.1 V) the watch switches itself off, unless it is charging.
-- **Hints on screen:** the footer of each screen except the aquarium shows "<tap back" and "tap forward>". Most other hints on the screens (CLICK, LONG, 2X) are shared with the single-button boards. On the watch, read CLICK as a tap on the right half and LONG as a hold. 2X usually means a tap on the top area, except on Schedule & time and Screen timeout, where "2X: NEXT" means a swipe down to the next row.
+- **Hints on screen:** the footer of each screen except the aquarium shows "<tap back" and "tap forward>", for the left and right halves. The other hints are shared with the single-button boards. On the watch, read them like this:
+  - "1:NEXT" and "ENTER: next": tap the right half (or press the side button).
+  - "2:BACK": tap the top area.
+  - "L:OK", "L:OPEN", "L:SEND", "L:RECALL", "LONG" and "Hold": hold.
+  - "Click next/Hold skip" and "CLICK TO DISMISS": tap.
 - **Rescue mode:** holding a finger on the screen during the first 8 seconds after start-up opens MeshCore's serial rescue mode, the same as a long press on the other boards.
 
 #### Main screens
 
-Tap the right half or swipe left to move through the main screens in this order:
+Swipe left or right to move through the main screens in this order. Tapping the right half also moves forward, as far as Options, where taps move the Options highlight instead.
 
 1. **Aquarium.** Your fish in its tank. The header shows the node name, battery and time; the footer shows the fish's stage, the number of packets heard (PKT) and unread messages (UNR). Pop-ups appear when something happens on the mesh: "* MESSAGE *" for a received message, "* SENT *" for an acknowledged send, "* HELLO! *" for a new contact, and "* EVOLVED! *" when the fish grows. **Hold** to clean the tank when there is waste in it.
    - *Egg:* a new fish starts as an egg, with a grey "HATCHING IN m:ss" countdown above the footer. It hatches after 5 minutes.
-   - *Sleeping:* during the sleep hours set in Schedule & time, the fish sleeps and the footer reads "Sleeping".
+   - *Sleeping:* during the sleep hours set in Schedule and Time, the fish sleeps and the footer reads "Sleeping".
    - *Visitor:* a fish visiting from another LoRaGotchi DX node swims alongside yours, with its name shown.
-   - *Memorial:* after 7 days the fish reaches the end of its life. Use Options, Reset pet to start again, or wait for a bred egg to hatch.
+   - *Memorial:* after 7 days the fish reaches the end of its life. Five minutes later the next generation starts as an egg: one bred with a visitor if there is one, or else one the fish lays itself.
 2. **Stats.** Age, happiness, generation (G1, G2 and so on), mesh events (RF), messages (Msg), acknowledgements (ACK), and whether a phone is connected (BLE ON or OFF).
-3. **Clock.** Local time and date, using the UTC offset from Schedule & time. The header shows PHONE while the app is connected and MESH otherwise. The bottom line reads "RTC + LOCAL OFFSET" once the clock has been set, or "build-time fallback" if it has not.
-4. **Phone pairing.** The Bluetooth PIN for pairing with the MeshCore app (123456 by default). The no-Bluetooth build has nothing to pair, so it shows "No PIN configured".
-5. **DX Visit.** Send your fish to visit another LoRaGotchi DX node. Tap the right or left half, or swipe down or up, to choose a contact; **hold** to send the fish. While it is away the screen reads "FISH AWAY"; **hold** again to call it home. Other messages: "DELIVERING...", "CALLING...", "NO REPLY - RETRY" and "NO CONTACTS". A sleeping fish cannot travel. Tap the top area to go to Options.
-6. **Options.** The settings menu (see below). Swipe down or up, or tap, to move the highlight; **hold** to open the highlighted item.
+3. **Clock.** Local time and date, using the UTC offset from Schedule and Time. The header shows PHONE while the app is connected and MESH otherwise. The bottom line reads "RTC + LOCAL OFFSET" once the clock has been set, or "build-time fallback" if it has not.
+4. **Phone pairing.** The Bluetooth PIN for pairing with the MeshCore app. The BLE builds choose a new random PIN each time the watch starts, unless a PIN has been saved on the watch, so use the one shown on this screen (see the BLE pairing PIN section of Getting Started). The no-Bluetooth build has nothing to pair, so it shows "No PIN configured".
+5. **DX Visit.** Send your fish to visit another LoRaGotchi DX node. **Hold** to open the contact list, which only shows contacts with a fish emoji in their name. Tap either half, or swipe down or up, to choose a tank, then **hold** to send the fish. While it is away the screen reads "FISH AWAY"; open the contact list and **hold** again to call it home. Other messages include "CALLING...", "DELIVERING...", "NO REPLY - RETRY" and "NO FISH TANKS". Tap the top area to go from the contact list back to DX Visit. A sleeping fish cannot travel.
+6. **Options.** The settings menu (see below). Tap either half, or swipe down or up, to move the highlight; **hold** to open the highlighted item.
 7. **RF Monitor.** Signal strength (RSSI) and signal-to-noise ratio (SNR) of the last packet heard, a graph of recent signal strength, the battery level, and the time since the last packet.
 
 #### Options
 
+Tap the top area on any of these screens to go back to Options.
+
 | Item | What it does |
 | --- | --- |
+| Send Advert | Opens Send advert with three choices: Local (zero-hop), Flood (multi-hop) and Back. Tap or swipe to choose, then **hold**. Opening it sends nothing. |
+| Guess Game | Five rounds of higher or lower. Tap, or swipe down or up, to switch between HIGHER and LOWER, then **hold** to guess whether the next number will be higher or lower. Each correct guess adds one happiness point. After five rounds, **hold** to play again. |
+| Breed with visitor | Only appears when your fish and a visiting fish are both Adult or Elder and no egg is already waiting. **Hold** to store an egg whose colours are inherited from the two parents. |
+| Reset Pet | Opens "Start a new egg?" with Cancel highlighted. Tap or swipe to highlight "Yes, reset pet", then **hold** to confirm. Confirming starts a new egg at generation 1 but keeps your display and schedule settings; you then choose the new fish's colours. |
 | Display | Opens the Display menu (below). |
-| Reset pet | **Hold** to start a new egg. This resets the pet's progress and generation but keeps your display and schedule settings. You then choose the new fish's colours. |
-| RF monitor | Opens the RF Monitor screen. |
-| Schedule & time | Three rows: **Sleep** and **Wake** set the hours of the fish's nightly sleep (set them the same to keep it awake all day), and **Offset** sets your time zone as an offset from UTC, in 15-minute steps. Swipe down or up to pick a row, then tap right to increase or left to decrease. There is no automatic daylight saving: change the offset when your clocks change. |
-| Guess game | Five rounds of higher or lower. Tap to switch between HIGHER and LOWER, then **hold** to guess whether the next number will be higher or lower. Each correct guess adds one happiness point. After five rounds, **hold** to play again. |
-| Breed with visitor | Only appears when your fish and a visiting fish are both Adult or Elder and no egg is already waiting. **Hold** to store an egg whose colours mix both parents. When your fish reaches the end of its life, the egg waits beside the gravestone and hatches 5 minutes later as the next generation. |
+| Schedule and Time | Three rows: **Sleep** and **Wake** set the hours of the fish's nightly sleep (set them the same to keep it awake all day), and **UTC offset** sets your time zone as an offset from UTC, in 15-minute steps. There is no automatic daylight saving: change the offset when your clocks change. |
+| RF Monitor | Opens the RF Monitor screen. |
+| Send visitor home | Only appears while a visiting fish is in your tank. **Hold** to send it back to its owner. |
 
 #### Display menu
 
-Swipe down or up, or tap, to move the highlight; **hold** to open the highlighted item. On each of these screens, tap the top area to go back; holding also goes back, except on Fish color.
+Tap either half, or swipe down or up, to move the highlight; **hold** to open the highlighted item. Tap the top area to go back.
 
 | Item | What it does |
 | --- | --- |
-| Screen timeout | Three rows: **Fish Awake** and **Fish Asleep** set how long the screen stays on (15s, 30s, 1m, 2m, 3m or Always) while the fish is awake or asleep. **Always-On-Dim** (15s, 30s or 60s) sets how soon an always-on screen dims when you are not using it. Swipe down or up to pick a row, then tap right or left to change it. |
+| Screen timeout | Three rows: **Awake** and **Asleep** set how long the screen stays on (15s, 30s, 1m, 2m, 3m or Always) while the fish is awake or asleep. **Dim after** (15s, 30s or 60s) sets how soon an always-on screen dims when you are not using it. |
 | Brightness | 25%, 50%, 75% or 100%. |
 | Firmware theme | Midnight, Paper, Lagoon or Sunset. |
-| Fish color | The colour picker for the fish's Scales, Body / Border and Eyes: tap right or left to change the colour, and **hold** to move to the next part (or swipe down or up to move between parts). The colours are Coral, Tangerine, Gold, Mint, Lagoon, Orchid and Mono. When you start a new fish this screen appears on its own as "NEW FISH": tap the top area when you are happy with the colours. |
+| Fish color | Rows for the fish's **Scales**, **Body** and **Eyes**. Move to a row and **hold** to open its colours (Coral, Tangerine, Gold, Mint, Lagoon, Orchid and Mono), then **hold** again to save. When you start a new fish this screen appears on its own as "NEW FISH", with a fourth row, **Start fish**: move to it and **hold** when you are happy with the colours. Tapping the top area leaves without starting the fish; Fish color stays available here until you do. |
 | Game rendering | **Smooth** or **Simulation**: how often the aquarium is redrawn. Simulation redraws less often. |
 
 #### Position in adverts

@@ -16,6 +16,19 @@ class ST7789LCDDisplay : public DisplayDriver {
   uint16_t _color;
   RefCountedDigitalPin* _peripher_power;
 
+  // Band buffer for strip redraw: when active, drawing goes into a small
+  // off-screen band instead of straight to the panel, so the panel is never
+  // blanked for the whole frame. Only used when LORAFISH_STRIP_REDRAW is set.
+#ifdef LORAFISH_TDECK_FRAMEBUFFER
+  GFXcanvas16* _frame = nullptr;
+  bool _frameActive = false;
+#endif
+  GFXcanvas16* _band = nullptr;
+  bool _bandActive = false;
+  int _bandY0 = 0;
+  int bandOffset() const { return _bandActive ? _bandY0 : 0; }
+  Adafruit_GFX& gfx();
+
   bool i2c_probe(TwoWire& wire, uint8_t addr);
 public:
 #ifdef USE_PIN_TFT
@@ -67,4 +80,9 @@ public:
   void drawXbm(int x, int y, const uint8_t* bits, int w, int h) override;
   uint16_t getTextWidth(const char* str) override;
   void endFrame() override;
+
+  int stripRows() const override;
+  int physicalHeight() const override;
+  void beginStrip(int physY0) override;
+  void endStrip() override;
 };
