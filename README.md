@@ -163,11 +163,7 @@ Without a phone app, the no-Bluetooth build takes its time from the watch's cloc
 - **Aquarium eggs:** on the AQUARIUM EGGS screen (see Getting Started), tap either half to select another tank, and hold or tap the top area to skip. Swipes do nothing on that screen.
 - **Waking the watch:** taps are ignored while the screen is off, so a sleeve cannot wake it. Press the side button to wake it.
 - **Power:** hold the side button for 2 seconds to turn the watch on, and for 6 seconds to turn it off. When the battery runs low (about 3.1 V) the watch switches itself off, unless it is charging.
-- **Hints on screen:** the footer of each screen except the aquarium shows "<tap back" and "tap forward>", for the left and right halves. The other hints are shared with the single-button boards. On the watch, read them like this:
-  - "1:NEXT" and "ENTER: next": tap the right half (or press the side button).
-  - "2:BACK": tap the top area.
-  - "L:OK", "L:OPEN", "L:SEND", "L:RECALL", "LONG" and "Hold": hold.
-  - "Click next/Hold skip" and "CLICK TO DISMISS": tap.
+- **Hints on screen:** the footer of each screen except the aquarium shows "<tap back" and "tap forward>", for the left and right halves. Above it, most screens show what a hold does there, such as "LONG HOLD:OPEN", "LONG HOLD:SELECT", "LONG HOLD:SEND" or "LONG HOLD:RECALL". On the Guess Game, "TAP:SWAP VALUE" switches between HIGHER and LOWER, and "HOLD:PICK" makes your guess. The start-up notices show "TAP TO DISMISS", and the aquarium eggs screen shows "Tap next/Hold skip".
 - **Rescue mode:** holding a finger on the screen during the first 8 seconds after start-up opens MeshCore's serial rescue mode, the same as a long press on the other boards.
 
 #### Main screens

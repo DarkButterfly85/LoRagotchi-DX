@@ -197,13 +197,15 @@ static bool loRaFishSimulationMode = false;
 static uint8_t loRaFishTimeField = 0;
 static uint8_t loRaFishTimeoutField = 0;
 static uint8_t loRaFishSoundField = 0;
-#if defined(LORAFISH_NO_GNSS_PAGE)
+// The 8-page line comes first: the host checks in test/ui read the first
+// LORAFISH_PAGE_COUNT declaration in this file.
+#if !defined(LORAFISH_NO_GNSS_PAGE)
+static constexpr uint8_t LORAFISH_PAGE_COUNT = 8;
+#else
 // LilyGo T-Watch S3: no GNSS receiver, so the GNSS page (7, the last main
 // page) is left out, and the GNSS Monitor row is filtered out of Options
 // (see loRaFishWatchHidesOption).
 static constexpr uint8_t LORAFISH_PAGE_COUNT = 7;
-#else
-static constexpr uint8_t LORAFISH_PAGE_COUNT = 8;
 #endif
 static constexpr uint8_t LORAFISH_RESET_CONFIRM_PAGE = 17;
 static PetResetConfirmation loRaFishResetConfirmation;
@@ -2058,7 +2060,12 @@ static const char* loRaFishOptionLabel(LoRaFishOption option) {
 
 static void drawLoRaFishMenuHint(DisplayDriver& display) {
   display.setColor(UIColor::secondary_txt);
+#if defined(LORAFISH_WATCH_TOUCH)
+  // LilyGo T-Watch S3: the footer already shows the taps; only hold needs a hint.
+  display.drawTextCentered(display.width()/2, 56, "LONG HOLD:SELECT");
+#else
   display.drawTextCentered(display.width()/2, 56, "1:NEXT 2:BACK L:OK");
+#endif
 }
 
 static void drawLoRaFishValuePicker(DisplayDriver& display) {
@@ -2156,7 +2163,12 @@ static void drawLoRaFishWatchOptions(DisplayDriver& display) {
     display.setCursor(3, 18 + row*9);
     display.print(line);
   }
+#if defined(LORAFISH_WATCH_TOUCH)
+  display.setColor(UIColor::secondary_txt);
+  display.drawTextCentered(display.width()/2, 56, "LONG HOLD:OPEN");
+#else
   drawLoRaFishMenuHint(display);
+#endif
 }
 #endif
 
@@ -2279,27 +2291,42 @@ static void drawLoRaFishGuessGame(DisplayDriver& display) {
     display.drawTextCentered(w/2,26,scoreLine);
     display.drawTextCentered(w/2,40,"HAPPY +1 PER WIN");
     display.setColor(UIColor::secondary_txt);
+#if defined(LORAFISH_WATCH_TOUCH)
+    display.drawTextCentered(w/2,55,"LONG HOLD:PLAY AGAIN");
+#else
     display.drawTextCentered(w/2,55,"LONG: PLAY AGAIN");
+#endif
     return;
   }
 
+#if defined(LORAFISH_WATCH_TOUCH)
+  // LilyGo T-Watch S3: lines moved up to make room for the tap hint.
+  const int resultY=18, correctY=27, numberY=22, roundY=36;
+#else
+  const int resultY=21, correctY=31, numberY=25, roundY=42;
+#endif
   char numberLine[20];
   if (loRaFishGuessResultShown) {
     snprintf(numberLine,sizeof(numberLine),"%u -> %u",
              (unsigned)loRaFishGuessPrevious,(unsigned)loRaFishGuessNumber);
-    display.drawTextCentered(w/2,21,numberLine);
-    display.drawTextCentered(w/2,31,loRaFishGuessCorrect?"CORRECT":"MISS");
+    display.drawTextCentered(w/2,resultY,numberLine);
+    display.drawTextCentered(w/2,correctY,loRaFishGuessCorrect?"CORRECT":"MISS");
   } else {
     snprintf(numberLine,sizeof(numberLine),"NUMBER %u",(unsigned)loRaFishGuessNumber);
-    display.drawTextCentered(w/2,25,numberLine);
+    display.drawTextCentered(w/2,numberY,numberLine);
   }
 
   char roundLine[24];
   snprintf(roundLine,sizeof(roundLine),"ROUND %u/5  SCORE %u",
            (unsigned)(loRaFishGuessRounds+1),(unsigned)loRaFishGuessScore);
-  display.drawTextCentered(w/2,42,roundLine);
+  display.drawTextCentered(w/2,roundY,roundLine);
   display.setColor(UIColor::secondary_txt);
+#if defined(LORAFISH_WATCH_TOUCH)
+  display.drawTextCentered(w/2,46,"TAP:SWAP VALUE");
+  display.drawTextCentered(w/2,55,loRaFishGuessHigher?"HIGHER # HOLD:PICK":"LOWER # HOLD:PICK");
+#else
   display.drawTextCentered(w/2,55,loRaFishGuessHigher?"HIGHER  LONG: PICK":"LOWER  LONG: PICK");
+#endif
 }
 
 static void drawLoRaFishDisplayMenu(DisplayDriver& display) {
@@ -2500,7 +2527,9 @@ static void drawLoRaFishDX(DisplayDriver& display) {
   } else if (!choosingContact) {
     display.drawTextCentered(w/2,27,loragotchiDXVisit.phase == LoRaFishVisit::NoReply ? "NO REPLY - RETRY" : returnStatus);
     display.setColor(UIColor::secondary_txt);
+#if !defined(LORAFISH_WATCH_TOUCH)   // LilyGo T-Watch S3: the hold hint is at the bottom
     display.drawTextCentered(w/2,39,"Hold to choose");
+#endif
   } else {
     ContactInfo c;
     if(loRaFishDXGetContact(c)) {
@@ -2518,12 +2547,22 @@ static void drawLoRaFishDX(DisplayDriver& display) {
     }
   }
   display.setColor(UIColor::secondary_txt);
+#if defined(LORAFISH_WATCH_TOUCH)
+  // LilyGo T-Watch S3: the footer already shows the taps; only hold needs a hint.
+  const char* hint = "LONG HOLD:OPEN";
+  if (choosingContact) {
+    if (loragotchiDXHome.away || loragotchiDXHome.committing) hint = "LONG HOLD:RECALL";
+    else if (loragotchiDXHome.pending) hint = "";   // nothing to hold for while waiting
+    else hint = "LONG HOLD:SEND";
+  }
+#else
   const char* hint = "1:NEXT 2:BACK L:OPEN";
   if (choosingContact) {
     if (loragotchiDXHome.away || loragotchiDXHome.committing) hint = "2:BACK L:RECALL";
     else if (loragotchiDXHome.pending) hint = "2:BACK";
     else hint = "1:NEXT 2:BACK L:SEND";
   }
+#endif
   display.drawTextCentered(w/2,h-9,hint);
 }
 
@@ -2985,12 +3024,16 @@ static void drawLoRaFishPairing(DisplayDriver& display) {
     display.setTextSize(1);
     display.setColor(UIColor::secondary_txt);
     display.drawTextCentered(w/2,45,"PIN for phone");
+#if !defined(LORAFISH_WATCH_TOUCH)   // LilyGo T-Watch S3: no Enter key on the touch screen
     display.drawTextCentered(w/2,55,"ENTER: next");
+#endif
   } else {
     display.setColor(UIColor::secondary_txt);
     display.drawTextCentered(w/2,32,"No PIN configured");
     display.drawTextCentered(w/2,47,"BLE security off");
+#if !defined(LORAFISH_WATCH_TOUCH)   // LilyGo T-Watch S3: no Enter key on the touch screen
     display.drawTextCentered(w/2,63,"ENTER: next");
+#endif
   }
 }
 
@@ -3041,7 +3084,11 @@ static void drawLoRaFishChannelNotice(DisplayDriver& display) {
   display.drawTextCentered(x, 26, "No free channel slot");
   display.drawTextCentered(x, 38, "Channels unchanged");
   display.setColor(UIColor::secondary_txt);
+#if defined(LORAFISH_WATCH_TOUCH)
+  display.drawTextCentered(x, 56, "TAP TO DISMISS");
+#else
   display.drawTextCentered(x, 56, "CLICK TO DISMISS");
+#endif
 }
 
 static void drawLoRaFishNameNotice(DisplayDriver& display) {
@@ -3053,7 +3100,11 @@ static void drawLoRaFishNameNotice(DisplayDriver& display) {
   display.drawTextCentered(x, 36, "to appear as a");
   display.drawTextCentered(x, 45, "LoRagotchi-DX tank.");
   display.setColor(UIColor::secondary_txt);
+#if defined(LORAFISH_WATCH_TOUCH)
+  display.drawTextCentered(x, 56, "TAP TO DISMISS");
+#else
   display.drawTextCentered(x, 56, "CLICK TO DISMISS");
+#endif
 }
 
 static void drawLoRaFishAdoption(DisplayDriver& display) {
@@ -3065,7 +3116,11 @@ static void drawLoRaFishAdoption(DisplayDriver& display) {
   display.drawTextEllipsized(3,29,display.width()-6,loRaFishEggTankName);
   display.drawTextCentered(display.width()/2,41,saving ? "Retrying if needed" :
       loRaFishEggSession.phase==LoRaFishEgg::Choose ? "Choose egg in app" : "Checking support");
+#if defined(LORAFISH_WATCH_TOUCH)
+  display.drawTextCentered(display.width()/2,55,saving ? "Please wait" : "Tap next/Hold skip");
+#else
   display.drawTextCentered(display.width()/2,55,saving ? "Please wait" : "Click next/Hold skip");
+#endif
 }
 
 static void drawLoRaFish(DisplayDriver& display, UITask* task) {
