@@ -55,7 +55,19 @@ These are BLE companion builds. Existing supported DX images remain in the regul
 
 ## Tight-flash profiles
 
-T-LoRa V2.1, Station G2 and Station G3 omit optional environmental/I2C sensor add-on drivers to fit the pet UI in their existing application partitions. Board battery readings, radio limits/pins, display/input, storage layouts, BLE, and configured GPS support are retained. These images do not support those optional environmental sensor add-ons; no repartitioning is required.
+T-LoRa V2.1, Station G2 and Station G3 omit optional environmental/I2C sensor add-on drivers to reduce pet UI image size while retaining their existing application partitions. Board battery readings, radio limits/pins, display/input, storage layouts, BLE, and configured GPS support are retained. These images do not support those optional environmental sensor add-ons. This is not a guarantee that every newer revision still fits.
+
+### Current size blockers (2026-11-01)
+
+The [owner-fork main CI run at `251e631`](https://github.com/DrToxic/LoRagotchi-DX/actions/runs/41263409150) passed 39 of 42 experimental firmware builds. These three images exceeded their unchanged 1,310,720-byte application limit:
+
+| Environment | Program bytes | Over limit |
+| --- | ---: | ---: |
+| `LilyGo_TBeam_1W_LoRaGotchi_DX_ble` | 1,319,581 | 8,861 |
+| `Station_G2_LoRaGotchi_DX_ble` | 1,324,353 | 13,633 |
+| `Station_G3_ESP32_LoRaGotchi_DX_ble` | 1,325,985 | 15,265 |
+
+These profiles are blocked at that revision; do not treat a partial matrix as a new all-board release. The local reconciled candidate includes the separately tested default-DX/Water edition gates from `f740b4f`, so the above byte counts must not be presented as a new measurement of that candidate. A separate measured size-reduction decision and successful exact-revision builds are required. No partition enlargement, flash-size override, feature removal, or disabled size validation is implied. Older experimental-release build results remain tied to their original source revision.
 
 ## Not enabled
 

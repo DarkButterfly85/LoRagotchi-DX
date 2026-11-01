@@ -1,11 +1,13 @@
 # Repeater tank destinations
 
-Local branch feature/repeater-tank-destinations, based on Water 856d420 in
-DrToxic/LoRagotchi-DX. No upstream sync, push, release or flash.
+Integrated locally on integration/current-dx-20261101 from owner-fork main
+251e631, default-DX/Water/RAK f740b4f, and repeater picker cfaef06.
+No upstream sync, remote merge, release or flash.
 
 Stock MeshCore repeater adverts must remain ADV_TYPE_REPEATER. The visit picker
 now also accepts saved repeaters whose raw name begins with exact "LRX1 " and
-contains a supported fish/Water marker. Ordinary fish-marked chat peers are
+contains a marker supported by its edition: fish for DX; the exact Water
+allowlist for Water. Ordinary fish-marked chat peers are
 unchanged. Other repeaters/room nodes are excluded. The name is a discovery hint,
 not attestation; the active full public key, capability negotiation, transaction
 binding, rich retry metadata, recall and return paths are unchanged.
