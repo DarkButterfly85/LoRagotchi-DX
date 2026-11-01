@@ -67,7 +67,7 @@ The [owner-fork main CI run at `251e631`](https://github.com/DrToxic/LoRagotchi-
 | `Station_G2_LoRaGotchi_DX_ble` | 1,324,353 | 13,633 |
 | `Station_G3_ESP32_LoRaGotchi_DX_ble` | 1,325,985 | 15,265 |
 
-These profiles are blocked at that revision; do not treat a partial matrix as a new all-board release. A separate measured size-reduction decision and successful exact-revision builds are required. No partition enlargement, flash-size override, feature removal, or disabled size validation is implied. Older experimental-release build results remain tied to their original source revision.
+These profiles are blocked at that revision; do not treat a partial matrix as a new all-board release. The local reconciled candidate includes the separately tested default-DX/Water edition gates from `f740b4f`, so the above byte counts must not be presented as a new measurement of that candidate. A separate measured size-reduction decision and successful exact-revision builds are required. No partition enlargement, flash-size override, feature removal, or disabled size validation is implied. Older experimental-release build results remain tied to their original source revision.
 
 ## Not enabled
 

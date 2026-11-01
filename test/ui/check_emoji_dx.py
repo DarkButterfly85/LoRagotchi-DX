@@ -22,6 +22,9 @@ static ContactInfo contact(const char* name,uint8_t type,uint32_t key) {
 static void pass(const char* name){printf("PASS: %s\n",name);fflush(stdout);}
 int main(){
   assert(loRaFishDXEligible(contact("LRX1 Tank 🐟",2,0)));
+  assert(loRaFishDXEligible(contact("LRX1 Tank 🦑",2,0))==bool(LORAGOTCHI_WATER_EDITION));
+  assert(!loRaFishDXEligible(contact("LRX1 Tank 🌊",2,0)));
+  assert(!loRaFishDXEligible(contact("LRX1 Tank 🦑",3,0)));
   assert(!loRaFishDXEligible(contact("LRX1 Tank 🐟",3,0)));
   assert(!loRaFishDXEligible(contact("Ordinary Repeater 🐟",2,0)));
   assert(!loRaFishDXEligible(contact("LRX1 No marker",2,0)));
