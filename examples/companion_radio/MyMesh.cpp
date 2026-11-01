@@ -30,6 +30,9 @@ bool loragotchiDXLocalHasColorGenes = false;
 uint8_t loragotchiDXLocalColorIndex = 0;
 uint8_t loragotchiDXLocalScalesColorIndex = 0;
 uint8_t loragotchiDXLocalEyesColorIndex = 0;
+uint8_t loragotchiDXLocalMonoPanel = 0;
+uint16_t loragotchiDXLocalSpecies = LoRaFishSpecies::TropicalFish;
+uint16_t loragotchiDXLocalMonoPixelTint = LORAFISH_MONO_PIXEL_TINT_RGB565;
 bool loragotchiDXReturnedFromMonochrome = false;
 
 static constexpr uint32_t LORAFISH_DX_STATE_MAGIC = 0x4C464732UL; // "LFG2"
@@ -614,7 +617,10 @@ void MyMesh::queueMessage(const ContactInfo &from, uint8_t txt_type, mesh::Packe
             loragotchiDXReservation.start(millis());
             loragotchiDXSave();
           }
-          snprintf(reply,sizeof(reply),"LFG1|ACK|%lu|%lu",tx,fid);
+          if (LORAGOTCHI_WATER_EDITION)
+            snprintf(reply,sizeof(reply),"LFG1|ACK|%lu|%lu|S1",tx,fid);
+          else
+            snprintf(reply,sizeof(reply),"LFG1|ACK|%lu|%lu",tx,fid);
         } else {
           snprintf(reply,sizeof(reply),"LFG1|BUSY|%lu|%lu",tx,fid);
         }
@@ -630,7 +636,9 @@ void MyMesh::queueMessage(const ContactInfo &from, uint8_t txt_type, mesh::Packe
       loRaFishCommitFrame.prepare(from.id.pub_key, tx, fid,
         loragotchiDXLocalHasColorGenes, loragotchiDXLocalColorIndex,
         loragotchiDXLocalScalesColorIndex, loragotchiDXLocalEyesColorIndex,
-        LORAFISH_MONO_PIXEL_TINT_RGB565);
+        loragotchiDXLocalMonoPixelTint, loragotchiDXLocalMonoPanel,
+        LORAGOTCHI_WATER_EDITION ? loragotchiDXLocalSpecies : LoRaFishSpecies::TropicalFish,
+        LoRaFishSpecies::acknowledged(text));
       // Duplicate acceptance cannot reset the retry budget or appearance.
       loragotchiDXVisit.begin(LoRaFishVisit::Commit, millis());
       int r=sendLoRaFishCommit(from);
@@ -662,6 +670,11 @@ void MyMesh::queueMessage(const ContactInfo &from, uint8_t txt_type, mesh::Packe
               loragotchiDXReservation.expired ? "|CANCEL1" : "");
           uint32_t hash=0,timeout=0;sendMessage(from,getRTCClock()->getCurrentTime(),0,returned,hash,timeout);return;
         }
+        uint16_t incomingSpecies=0; bool hasSpecies=false;
+        if (!LoRaFishSpecies::extension(text,incomingSpecies,hasSpecies)) return;
+        // First accepted metadata owns identity. Short/full duplicate retries
+        // cannot downgrade or mutate it. Peer/key checks above still apply.
+        if (!loragotchiDXGuest.present) loragotchiDXGuest.species=incomingSpecies;
         char colorMode='M'; unsigned bodyColor=0,scalesColor=0,eyesColor=0,monoPixelTint=0xFFFF;
         const int fields=sscanf(text+12,"%lu|%lu|%c|%u|%u|%u|%u",
             &tx,&fid,&colorMode,&bodyColor,&scalesColor,&eyesColor,&monoPixelTint);
@@ -674,6 +687,10 @@ void MyMesh::queueMessage(const ContactInfo &from, uint8_t txt_type, mesh::Packe
           loragotchiDXGuest.scalesColor=(fields>=5 && scalesColor<=6) ? (uint8_t)scalesColor : loragotchiDXGuest.color;
           loragotchiDXGuest.eyesColor=(fields>=6 && eyesColor<=6) ? (uint8_t)eyesColor : loragotchiDXGuest.color;
           loragotchiDXGuest.monoPixelTint=(fields>=7 && monoPixelTint<=0xFFFF) ? (uint16_t)monoPixelTint : 0xFFFF;
+          const char* panel=strstr(text, "|P1|"); unsigned panelValue=0;
+          if (panel && sscanf(panel, "|P1|%u", &panelValue)==1 && panelValue < 3)
+            loragotchiDXGuest.monoPanel=(uint8_t)panelValue;
+          else loragotchiDXGuest.monoPanel=0;
           if (hasHues) {
             loragotchiDXGuest.color=hueBody; loragotchiDXGuest.scalesColor=hueScales;
             loragotchiDXGuest.eyesColor=hueEyes;

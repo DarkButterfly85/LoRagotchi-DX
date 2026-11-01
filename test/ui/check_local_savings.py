@@ -65,7 +65,7 @@ struct UITask {
 '''
 source += block('void UITask::handleLoRaFishMessage() {')
 for name in '''loRaFishBatteryValid loRaFishBatterySampledAt loRaFishBatteryMilliVolts
-loRaFishChannelNotice loRaFishNameNotice loRaFishStaticFrameValid loRaFishStaticFrame loRaFishOption loRaFishDisplayOption
+loRaFishChannelNotice loRaFishNameNotice loRaFishMonoDisplayNotice loRaFishStaticFrameValid loRaFishStaticFrame loRaFishOption loRaFishDisplayOption
 loRaFishTimeField loRaFishTimeoutField loRaFishSoundField loRaFishValuePicker
 loRaFishResetConfirmation loRaFishAdvertMenu loRaFishScreenDimmed
 loRaFishBrightnessNeedsApply loRaFishTimeoutSleepStateKnown loRaFishTimeoutSleepState
@@ -216,7 +216,8 @@ int main() {
       0x34,0x12,1,6,5,4,1,1,0x31,0x50,0x41,0x48,3,2,1,0,4,3,2,0,
       0x41,0x51,0x55,0x31,0,0,0,0,
       0x48,0x55,0x45,0x31,3,4,5,5,6,4};
-  assert(files["/lorafish.cfg"]==expected);
+  assert(files["/lorafish.cfg"].size()==LORAFISH_SETTINGS_SIZE);
+  assert(std::equal(expected.begin(),expected.end(),files["/lorafish.cfg"].begin()));
   reboot();clearCounts();saveLoRaFishSettings();assert(saves.empty());
   pass("settings encoding retains every byte of the legacy prefix and HAP1 tail");
 

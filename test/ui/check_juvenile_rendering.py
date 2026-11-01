@@ -23,7 +23,7 @@ def block(source, marker):
     return source[start:end]
 
 
-def run(source, variant, output, verify):
+def run(source, variant, output, verify, water=False):
     names = [
         'static ColorVal loRaFishColorValue(',
         'static inline void fishPixel(', 'static void fishLine(',
@@ -43,6 +43,8 @@ def run(source, variant, output, verify):
 #include <cstdlib>
 #include <string>
 #include "examples/companion_radio/LoRaFishColour.h"
+#include "examples/companion_radio/ui-new/LoRaFishWaterSprite.h"
+static uint16_t loRaFishSpecies=0;
 using ColorVal=uint16_t;
 namespace UIColor { ColorVal window_bkg=0,primary_txt=1; }
 static bool loRaFishColorDisplay;
@@ -58,6 +60,7 @@ static LoRaFishAppearance home;
 static LoRaFishAppearance loRaFishLocalAppearance(){return home;}
 struct LoRaFishTravelAnimation {
  bool pending=false,active=false,entering=false;
+ uint16_t species=0;
  uint8_t stage=2;
  LoRaFishAppearance appearance={0,0,0};
  unsigned long started=0;
@@ -160,11 +163,14 @@ int main(int argc,char** argv){
 #endif
 }
 '''
+    if water:
+        cpp=cpp[:cpp.index('int main(')]+(ROOT/'test/ui/water_render_cases.inc').read_text()
     with tempfile.TemporaryDirectory(prefix='dx-juvenile-render-') as tmp:
         path = Path(tmp)
         (path / 'render.cpp').write_text(cpp)
         command = ['g++', '-std=c++17', '-Wall', '-Wextra', '-Werror',
                    '-Wno-unused-function', '-I', str(ROOT), str(path/'render.cpp'), '-o', str(path/'render')]
+        if water: command.append('-DLORAGOTCHI_WATER_EDITION=1')
         if variant != 'plain':
             command.append('-D' + variant)
         if verify:

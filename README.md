@@ -1,10 +1,23 @@
-# LoRaGotchi DX 🐟📡
+# LoRaGotchi-DX — DX and Water editions
 
-**LoRaGotchi DX v1.0 — M0YNW** is a virtual LoRa fish built on the MeshCore transport. Your fish grows through pet stages, lives in a small aquarium UI, and can travel over the mesh to visit another LoRaGotchi device before being recalled home.
+Current product source candidate: **v1.1.0**, separate from underlying MeshCore
+**v1.18.0** and the **Water v1** species registry. This version was already chosen
+in the supplied in-progress source; it is not a claim that a v1.1.0 release exists.
+The splash now reads **DX v1.1.0** or **WATER v1.1.0** from one shared header.
+Historical v1.0 release notes remain historical.
+
+**Existing target names stay DX by default.** Water is opt-in through the explicit
+aliases below. DX retains the original fish art, four fish-name markers, five-row
+Display menu and colour setup; Water adds 14 species, the new-game chooser and
+Water markers. Both use the same mesh transport and compatible saved prefix.
+See [Water controls and compatibility](WATER-EDITION.md).
+
+LoRaGotchi is a virtual LoRa fish built on MeshCore, originally by M0YNW,
+with contributor work retained in this repository.
 
 For setup, controls, menus, pet behavior, and DX travel, see [Getting Started](Getting_Started.md).
 
-## v1.0 highlights
+## Historical v1.0 highlights
 - LoRaGotchi virtual-pet aquarium and evolution/gameplay
 - DX fish visiting using the LFG1 protocol
     - LFG1 protocol upgraded to include colour information
@@ -67,6 +80,48 @@ For setup, controls, menus, pet behavior, and DX travel, see [Getting Started](G
 | --- | --- |
 | T-Beam (SX1262) | Tbeam_SX1262_LoRaFish_companion_ble
 | T-Beam (SX1276) | Tbeam_SX1276_LoRaFish_companion_ble
+| RAK WisBlock RAK4631 / RAK4630-module carrier (experimental; compile-tested, hardware unverified) | `RAK_4631_LoRaGotchi_DX_ble` / `RAK_4630_LoRaGotchi_DX_ble` -t create_uf2 |
+
+The RAK4630 alias reuses the RAK4631 target; see the [experimental RAK build and hardware prerequisites](docs/RAK4630-EXPERIMENTAL.md).
+
+## Water edition build targets
+
+Water is selected by the following aliases, not by the original DX environment.
+All aliases inherit the matching board, radio, display, dependencies and memory
+layout; only the edition define changes. An alias is not hardware certification.
+
+| Board/profile | Water environment | Output |
+| --- | --- | --- |
+| ThinkNode M2 BLE | `water_thinknode_m2_ble` | BIN |
+| Heltec V3 BLE | `water_heltec_v3_ble` | BIN |
+| Heltec V4 OLED BLE | `water_heltec_v4_oled_ble` | BIN |
+| M5Stack Cardputer | `water_m5stack_cardputer` | BIN |
+| Heltec T114 BLE | `water_heltec_t114_ble` | UF2 |
+| Heltec T096 BLE | `water_heltec_t096_ble` | UF2 |
+| LilyGo T-Deck BLE / USB | `water_lilygo_tdeck_ble` / `water_lilygo_tdeck_usb` | BIN |
+| RAK4631-compatible / RAK4630-module carrier, experimental | `water_rak4631_ble` / `water_rak4630_ble` | UF2 |
+
+The RAK DX module-name alias is `RAK_4630_LoRaGotchi_DX_ble`, identical to the
+existing experimental `RAK_4631_LoRaGotchi_DX_ble`. Read the required
+[OLED, controls, carrier and bootloader prerequisites](docs/RAK4630-EXPERIMENTAL.md).
+A bare RAK4630 module or a different carrier is not plug-and-play support.
+
+Run from the repository root, selecting one target explicitly:
+
+~~~sh
+pio run -e water_heltec_v3_ble -j 2
+pio run -e water_heltec_t096_ble -t create_uf2 -j 2
+pio run -e RAK_4630_LoRaGotchi_DX_ble -t create_uf2 -j 2
+pio run -e water_rak4630_ble -t create_uf2 -j 2
+~~~
+
+Outputs are in `.pio/build/<environment>/`. ESP32 BINs are application-only,
+not merged installers. UF2 files require the matching board bootloader/layout.
+The [owner-board workflow](.github/workflows/water-owner-builds.yml) now requests
+both editions on V3, V4 OLED and T096, plus both experimental RAK module aliases.
+It does not compile every alias above. Check the exact source SHA and each job;
+older successful Water-candidate builds do not validate this changed revision.
+Artifacts expire after 14 days and are not releases or hardware acceptance.
 
 ## Additional experimental TFT/OLED devices
 

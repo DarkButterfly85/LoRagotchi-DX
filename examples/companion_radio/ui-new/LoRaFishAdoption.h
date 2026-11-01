@@ -63,7 +63,7 @@ static void closeLoRaFishAdoption() {
   if (loRaFishEggApplying) return; // Accepted durable intent must finish/recover.
   loRaFishEggSession.close();loRaFishAdoptionEligible=false;loRaFishEggWindowStarted=false;
   loRaFishEggSaveScheduled=false;
-  loRaFishPage=loRaFishNeedsAppearanceSetup?9:0;fishLastMinute=millis();
+  loRaFishPage=loRaFishNeedsPetSetup?LORAFISH_PET_SETUP_PAGE:(loRaFishNeedsAppearanceSetup?9:0);fishLastMinute=millis();
 }
 static bool selectLoRaFishEggTank(bool next) {
   const int count=the_mesh.getNumContacts();int start=0;
@@ -113,6 +113,9 @@ static void serviceLoRaFishAdoption(bool visible) {
     resetLoRaFishPet();
     loRaFishGeneration=accepted.generation;loRaFishColor=accepted.body;
     loRaFishScaleColor=accepted.scales;loRaFishEyeColor=accepted.eyes;
+    // LEG1/H1 eggs predate species: explicit tropical fish, never mystery.
+    loRaFishSpecies=loRaFishEggSpecies=LoRaFishSpecies::TropicalFish;
+    loRaFishMysterySeed=0;loRaFishNeedsPetSetup=false;
     loRaFishNeedsAppearanceSetup=false;loRaFishSyncDXAppearance();
     loRaFishSettingsLastAttempt=loRaFishLastAttempt=now-LORAFISH_SAVE_RETRY_MS;
     saveLoRaFishSettings();saveLoRaFish();
