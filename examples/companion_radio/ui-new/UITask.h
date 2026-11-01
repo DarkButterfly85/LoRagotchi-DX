@@ -89,6 +89,9 @@ class UITask : public AbstractUITask {
 #ifdef LORAFISH_UI
   void handleLoRaFishMessage();
 #endif
+#if defined(LORAFISH_UI) && defined(LORAFISH_WATCH_TOUCH)
+  char handleWatchTouch(int gesture);   // LilyGo T-Watch S3 touch navigation
+#endif
 
 public:
 

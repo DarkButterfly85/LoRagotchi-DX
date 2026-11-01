@@ -216,7 +216,16 @@ static bool loRaFishSimulationMode = false;
 static uint8_t loRaFishTimeField = 0;
 static uint8_t loRaFishTimeoutField = 0;
 static uint8_t loRaFishSoundField = 0;
+// The 8-page line comes first: the host checks in test/ui read the first
+// LORAFISH_PAGE_COUNT declaration in this file.
+#if !defined(LORAFISH_NO_GNSS_PAGE)
 static constexpr uint8_t LORAFISH_PAGE_COUNT = 8;
+#else
+// LilyGo T-Watch S3: no GNSS receiver, so the GNSS page (7, the last main
+// page) is left out, and the GNSS Monitor row is filtered out of Options
+// (see loRaFishWatchHidesOption).
+static constexpr uint8_t LORAFISH_PAGE_COUNT = 7;
+#endif
 static constexpr uint8_t LORAFISH_RESET_CONFIRM_PAGE = 17;
 static PetResetConfirmation loRaFishResetConfirmation;
 static constexpr uint8_t LORAFISH_ADVERT_PAGE = 18;
@@ -581,8 +590,85 @@ static constexpr unsigned long LORAFISH_FEED_DONE_MS =
   LORAFISH_FEED_DROP_MS + LORAFISH_FEED_EAT_MS + LORAFISH_FEED_RETURN_MS;
 static constexpr uint32_t LORAFISH_PACKETS_PER_FEED = 10;
 
+#if defined(LORAFISH_FISH_WANDER) && defined(LORAFISH_TALL_TANK)
+// LilyGo T-Watch S3 (tall tank): the fish wanders instead of patrolling
+// wall to wall. Time is split into segments; in each one the fish glides to a
+// new spot (x anywhere inside the tank margins, y within the middle band that
+// TWatchS3TankView moves to the centre of the tall tank), then hovers for the
+// rest of the segment. About one segment in six is a quick dart. Every spot is
+// derived from the segment number, so the path is still a pure function of
+// millis(): feeding, visitors and travel animations keep working unchanged.
+struct LoRaFishWanderInfo {
+  bool hovering;
+  unsigned long hoverElapsed;
+};
+
+static uint32_t loRaFishWanderHash(uint32_t n, uint32_t salt) {
+  uint32_t h = n * 2654435761UL ^ salt * 0x9E3779B9UL;
+  h ^= h >> 15; h *= 0x85EBCA6BUL;
+  h ^= h >> 13; h *= 0xC2B2AE35UL;
+  h ^= h >> 16;
+  return h;
+}
+
+static void loRaFishWanderPoint(uint32_t n, uint8_t stage, int w, int& x, int& y) {
+  const uint32_t h = loRaFishWanderHash(n, 0x51EDUL + stage);
+  const int margin = 20;                 // same sprite-safe margin as the patrol path
+  const int span = max(1, w - margin * 2);
+  x = margin + (int)(h % (uint32_t)(span + 1));
+  y = 30 + (int)((h >> 16) % 19U);       // rows 30-48: keeps every stage's sprite in rows 16-63
+}
+
+static void loRaFishWanderPosition(int w, uint8_t stage, unsigned long phaseOffset,
+                                   int& x, int& y, bool& right, LoRaFishWanderInfo* info) {
+  const unsigned long segMs = stage == 0 ? 5000UL : stage == 1 ? 6000UL : stage >= 3 ? 9500UL : 7500UL;
+  const unsigned long t = millis() + phaseOffset;
+  const uint32_t n = (uint32_t)(t / segMs);
+  const unsigned long into = t % segMs;
+
+  int x0, y0, x1, y1;
+  loRaFishWanderPoint(n - 1, stage, w, x0, y0);
+  loRaFishWanderPoint(n, stage, w, x1, y1);
+
+  const uint32_t h = loRaFishWanderHash(n, 0xD1CEUL + stage);
+  const bool dart = (h % 6U) == 0;
+  const unsigned long moveMs = dart ? 500UL : segMs * (50UL + (h >> 8) % 26U) / 100UL;
+  float e = 1.0f;
+  if (into < moveMs) {
+    const float p = into / (float)moveMs;
+    e = dart ? 1.0f - (1.0f - p) * (1.0f - p) * (1.0f - p)   // burst, then coast
+             : p * p * (3.0f - 2.0f * p);                     // ease in and out
+  }
+  x = x0 + (int)((x1 - x0) * e);
+  y = y0 + (int)((y1 - y0) * e) + (int)(1.0f * sinf((millis() + phaseOffset) / 650.0f));
+  right = x1 >= x0;
+  if (info) {
+    info->hovering = into >= moveMs;
+    info->hoverElapsed = info->hovering ? into - moveMs : 0;
+  }
+}
+
+// A couple of small bubbles drift up from the fish's mouth while it hovers.
+static void drawLoRaFishWanderBubbles(DisplayDriver& d, int x, int y, bool right, uint8_t stage,
+                                      const LoRaFishWanderInfo& info) {
+  if (!info.hovering) return;
+  static const int mouth[] = {9, 12, 15, 18};
+  const int mx = x + (right ? mouth[min((uint8_t)3, stage)] : -mouth[min((uint8_t)3, stage)]);
+  d.setColor(UIColor::secondary_txt);
+  for (int i = 0; i < 2; i++) {
+    const long age = (long)info.hoverElapsed - 250L - i * 450L;
+    if (age < 0 || age > 1800L) continue;
+    const int rise = (int)(age / 110L);
+    d.drawRect(mx + (i ? 2 : 0) + (int)(1.5f * sinf(age / 260.0f)), y - 3 - rise, i ? 2 : 3, i ? 2 : 3);
+  }
+}
+#endif
+
 static void loRaFishNaturalPositionForStage(int w, uint8_t stage, unsigned long phaseOffset,
                                              int& x, int& y, bool& right) {
+#if defined(LORAFISH_FISH_WANDER) && defined(LORAFISH_TALL_TANK)
+  loRaFishWanderPosition(w, stage, phaseOffset, x, y, right, nullptr);
+#else
   // Keep every fish inside the actual aquarium area.  Visitors use the same
   // smooth triangular swim path as the home fish, just phase-shifted so two
   // fish do not sit on top of each other.
@@ -600,6 +686,7 @@ static void loRaFishNaturalPositionForStage(int w, uint8_t stage, unsigned long 
   x=right ? margin+(int)(span*phase*2.0f)
           : margin+(int)(span*(1.0f-phase)*2.0f);
   y=38+(int)(2.0f*sinf((millis()+phaseOffset)/650.0f));
+#endif
 }
 
 static void loRaFishNaturalPosition(int w, int& x, int& y, bool& right) {
@@ -1729,6 +1816,13 @@ static void drawElderFishSprite(DisplayDriver& d, int x, int y, bool right,
 
 // Cardputer-only lightweight 2.5D effects. Other boards compile none of this.
 #if defined(LORAFISH_CARDPUTER_25D)
+#if defined(LORAFISH_TALL_TANK)
+// LilyGo T-Watch S3: on the tall aquarium canvas, draw the scenery over the
+// whole tank with no rows moved (see TWatchS3TankView).
+#define LORAFISH_SCENERY_CANVAS(d) (&(d) == &tank_display ? (DisplayDriver&)tank_scenery_display : (d))
+#else
+#define LORAFISH_SCENERY_CANVAS(d) (d)
+#endif
 static void drawCardputerFishDepth(DisplayDriver& d,int x,int y,bool right,uint8_t stage,
                                   const LoRaFishAppearance& appearance) {
   const int radius = stage==0 ? 5 : stage==1 ? 7 : stage==3 ? 11 : 9;
@@ -2028,6 +2122,19 @@ static void drawLoRaFishEgg(DisplayDriver& display,UITask* task) {
   drawLoRaFishTankBattery(display,task,tb);
   drawLoRaFishEggSprite(display,w/2,24);
   display.fillRect(2,h-15,w-4,1);
+#if defined(LORAFISH_TALL_TANK)
+  // LilyGo T-Watch S3: hatching countdown in the tall tank, above the footer line.
+  {
+    const long msLeft=(long)(LORAFISH_EGG_MINUTES-fish.ageMinutes)*60000L-(long)(millis()-fishLastMinute);
+    if (msLeft>0) {
+      const long secsLeft=(msLeft+999)/1000;
+      char countdown[24];
+      snprintf(countdown,sizeof(countdown),"HATCHING IN %ld:%02ld",secsLeft/60,secsLeft%60);
+      display.setColor(UIColor::secondary_txt);
+      display.drawTextCentered(w/2,h-25,countdown);
+    }
+  }
+#endif
   drawLoRaFishTankStatusBar(display,"0",task);
 }
 
@@ -2068,7 +2175,12 @@ static const char* loRaFishOptionLabel(LoRaFishOption option) {
 
 static void drawLoRaFishMenuHint(DisplayDriver& display) {
   display.setColor(UIColor::secondary_txt);
+#if defined(LORAFISH_WATCH_TOUCH)
+  // LilyGo T-Watch S3: the footer already shows the taps; only hold needs a hint.
+  display.drawTextCentered(display.width()/2, 56, "LONG HOLD:SELECT");
+#else
   display.drawTextCentered(display.width()/2, 56, "1:NEXT 2:BACK L:OK");
+#endif
 }
 
 static void drawLoRaFishValuePicker(DisplayDriver& display) {
@@ -2114,7 +2226,74 @@ static void drawLoRaFishValuePicker(DisplayDriver& display) {
   drawLoRaFishMenuHint(display);
 }
 
+#if defined(LORAFISH_NO_GNSS_PAGE) || defined(LORAFISH_WATCH_TOUCH)
+// LilyGo T-Watch S3: rows the watch leaves out of Options. It has no GNSS
+// receiver, so the GNSS Monitor row is filtered out. LoRaFishOptions itself is
+// unchanged, so every other board keeps its full list.
+static bool loRaFishWatchHidesOption(LoRaFishOption option) {
+#if defined(LORAFISH_NO_GNSS_PAGE)
+  return option == LoRaFishOption::GNSS;
+#else
+  (void)option;
+  return false;
+#endif
+}
+
+// Move the Options highlight one row forward or back, stepping over hidden rows.
+static void loRaFishWatchStepOption(bool previous) {
+  const bool breed = loRaFishCanBreed();
+  const uint8_t count = loRaFishOptionCount();
+  uint8_t row = LoRaFishOptions::index(loRaFishOption, loRaFishHasSound, breed, loragotchiDXGuest.present);
+  for (uint8_t tries = 0; tries < count; ++tries) {
+    row = (row + (previous ? count - 1 : 1)) % count;
+    const auto option = LoRaFishOptions::at(row, loRaFishHasSound, breed, loragotchiDXGuest.present);
+    if (!loRaFishWatchHidesOption(option)) {
+      loRaFishOption = option;
+      return;
+    }
+  }
+}
+#endif
+
+#if defined(LORAFISH_NO_GNSS_PAGE)
+// LilyGo T-Watch S3: the Options list drawn without the hidden rows.
+static void drawLoRaFishWatchOptions(DisplayDriver& display) {
+  const bool breed = loRaFishCanBreed();
+  if (!LoRaFishOptions::available(loRaFishOption, loRaFishHasSound, breed, loragotchiDXGuest.present) ||
+      loRaFishWatchHidesOption(loRaFishOption))
+    loRaFishOption = LoRaFishOption::Advert;
+  LoRaFishOption rows[static_cast<uint8_t>(LoRaFishOption::Count)];
+  uint8_t count = 0, selected = 0;
+  for (uint8_t row = 0; row < loRaFishOptionCount() && count < static_cast<uint8_t>(LoRaFishOption::Count); ++row) {
+    const auto option = LoRaFishOptions::at(row, loRaFishHasSound, breed, loragotchiDXGuest.present);
+    if (loRaFishWatchHidesOption(option)) continue;
+    if (option == loRaFishOption) selected = count;
+    rows[count++] = option;
+  }
+  const uint8_t first = selected > 3 ? selected - 3 : 0;
+  drawLoRaFishHeader(display, "OPTIONS", "");
+  display.setColor(UIColor::primary_txt);
+  for (uint8_t row = 0; row < 4 && first + row < count; ++row) {
+    const auto option = rows[first + row];
+    char line[24];
+    snprintf(line, sizeof(line), "%c %s", option == loRaFishOption ? '>' : ' ', loRaFishOptionLabel(option));
+    display.setCursor(3, 18 + row*9);
+    display.print(line);
+  }
+#if defined(LORAFISH_WATCH_TOUCH)
+  display.setColor(UIColor::secondary_txt);
+  display.drawTextCentered(display.width()/2, 56, "LONG HOLD:OPEN");
+#else
+  drawLoRaFishMenuHint(display);
+#endif
+}
+#endif
+
 static void drawLoRaFishOptions(DisplayDriver& display, UITask* task) {
+#if defined(LORAFISH_NO_GNSS_PAGE)
+  // LilyGo T-Watch S3: same list with the GNSS row filtered out.
+  drawLoRaFishWatchOptions(display);
+#else
   const bool breed = loRaFishCanBreed();
   if (!LoRaFishOptions::available(loRaFishOption, loRaFishHasSound, breed, loragotchiDXGuest.present))
     loRaFishOption = LoRaFishOption::Advert;
@@ -2131,6 +2310,7 @@ static void drawLoRaFishOptions(DisplayDriver& display, UITask* task) {
     display.print(line);
   }
   drawLoRaFishMenuHint(display);
+#endif
 }
 
 static void closeLoRaFishAdvertMenu() {
@@ -2228,27 +2408,42 @@ static void drawLoRaFishGuessGame(DisplayDriver& display) {
     display.drawTextCentered(w/2,26,scoreLine);
     display.drawTextCentered(w/2,40,"HAPPY +1 PER WIN");
     display.setColor(UIColor::secondary_txt);
+#if defined(LORAFISH_WATCH_TOUCH)
+    display.drawTextCentered(w/2,55,"LONG HOLD:PLAY AGAIN");
+#else
     display.drawTextCentered(w/2,55,"LONG: PLAY AGAIN");
+#endif
     return;
   }
 
+#if defined(LORAFISH_WATCH_TOUCH)
+  // LilyGo T-Watch S3: lines moved up to make room for the tap hint.
+  const int resultY=18, correctY=27, numberY=22, roundY=36;
+#else
+  const int resultY=21, correctY=31, numberY=25, roundY=42;
+#endif
   char numberLine[20];
   if (loRaFishGuessResultShown) {
     snprintf(numberLine,sizeof(numberLine),"%u -> %u",
              (unsigned)loRaFishGuessPrevious,(unsigned)loRaFishGuessNumber);
-    display.drawTextCentered(w/2,21,numberLine);
-    display.drawTextCentered(w/2,31,loRaFishGuessCorrect?"CORRECT":"MISS");
+    display.drawTextCentered(w/2,resultY,numberLine);
+    display.drawTextCentered(w/2,correctY,loRaFishGuessCorrect?"CORRECT":"MISS");
   } else {
     snprintf(numberLine,sizeof(numberLine),"NUMBER %u",(unsigned)loRaFishGuessNumber);
-    display.drawTextCentered(w/2,25,numberLine);
+    display.drawTextCentered(w/2,numberY,numberLine);
   }
 
   char roundLine[24];
   snprintf(roundLine,sizeof(roundLine),"ROUND %u/5  SCORE %u",
            (unsigned)(loRaFishGuessRounds+1),(unsigned)loRaFishGuessScore);
-  display.drawTextCentered(w/2,42,roundLine);
+  display.drawTextCentered(w/2,roundY,roundLine);
   display.setColor(UIColor::secondary_txt);
+#if defined(LORAFISH_WATCH_TOUCH)
+  display.drawTextCentered(w/2,46,"TAP:SWAP VALUE");
+  display.drawTextCentered(w/2,55,loRaFishGuessHigher?"HIGHER # HOLD:PICK":"LOWER # HOLD:PICK");
+#else
   display.drawTextCentered(w/2,55,loRaFishGuessHigher?"HIGHER  LONG: PICK":"LOWER  LONG: PICK");
+#endif
 }
 
 static void drawLoRaFishDisplayMenu(DisplayDriver& display) {
@@ -2464,7 +2659,9 @@ static void drawLoRaFishDX(DisplayDriver& display) {
   } else if (!choosingContact) {
     display.drawTextCentered(w/2,27,loragotchiDXVisit.phase == LoRaFishVisit::NoReply ? "NO REPLY - RETRY" : returnStatus);
     display.setColor(UIColor::secondary_txt);
+#if !defined(LORAFISH_WATCH_TOUCH)   // LilyGo T-Watch S3: the hold hint is at the bottom
     display.drawTextCentered(w/2,39,"Hold to choose");
+#endif
   } else {
     ContactInfo c;
     if(loRaFishDXGetContact(c)) {
@@ -2482,12 +2679,22 @@ static void drawLoRaFishDX(DisplayDriver& display) {
     }
   }
   display.setColor(UIColor::secondary_txt);
+#if defined(LORAFISH_WATCH_TOUCH)
+  // LilyGo T-Watch S3: the footer already shows the taps; only hold needs a hint.
+  const char* hint = "LONG HOLD:OPEN";
+  if (choosingContact) {
+    if (loragotchiDXHome.away || loragotchiDXHome.committing) hint = "LONG HOLD:RECALL";
+    else if (loragotchiDXHome.pending) hint = "";   // nothing to hold for while waiting
+    else hint = "LONG HOLD:SEND";
+  }
+#else
   const char* hint = "1:NEXT 2:BACK L:OPEN";
   if (choosingContact) {
     if (loragotchiDXHome.away || loragotchiDXHome.committing) hint = "2:BACK L:RECALL";
     else if (loragotchiDXHome.pending) hint = "2:BACK";
     else hint = "1:NEXT 2:BACK L:SEND";
   }
+#endif
   display.drawTextCentered(w/2,h-9,hint);
 }
 
@@ -2732,7 +2939,7 @@ static void drawLoRaFishAquarium(DisplayDriver& display, UITask* task) {
   char tb[8], db[24];
   loRaFishClock(tb,sizeof(tb),db,sizeof(db));
 #if defined(LORAFISH_CARDPUTER_25D)
-  drawCardputerTankDepth(display);
+  drawCardputerTankDepth(LORAFISH_SCENERY_CANVAS(display));
 #elif defined(LORAFISH_TDECK_PIXEL_ART)
   drawTDeckPixelAquarium(display);
 #endif
@@ -2827,6 +3034,13 @@ static void drawLoRaFishAquarium(DisplayDriver& display, UITask* task) {
       display.setCursor(min(w-4,sleepX+19), max(12,sleepY-16)); display.print("Z");
     } else if (!homeTraveling && !loRaFishHomeTravelAnimation.active) {
       drawHomeFishSprite(display,x,y,right);
+#if defined(LORAFISH_FISH_WANDER) && defined(LORAFISH_TALL_TANK)
+      if (!loRaFishFeeding) {
+        int wx, wy; bool wright; LoRaFishWanderInfo info;
+        loRaFishWanderPosition(w, fish.evolution, 0, wx, wy, wright, &info);
+        drawLoRaFishWanderBubbles(display, x, y, right, fish.evolution, info);
+      }
+#endif
     }
   } else {
     const bool homeLeaving=loRaFishHomeTravelAnimation.active &&
@@ -2942,12 +3156,16 @@ static void drawLoRaFishPairing(DisplayDriver& display) {
     display.setTextSize(1);
     display.setColor(UIColor::secondary_txt);
     display.drawTextCentered(w/2,45,"PIN for phone");
+#if !defined(LORAFISH_WATCH_TOUCH)   // LilyGo T-Watch S3: no Enter key on the touch screen
     display.drawTextCentered(w/2,55,"ENTER: next");
+#endif
   } else {
     display.setColor(UIColor::secondary_txt);
     display.drawTextCentered(w/2,32,"No PIN configured");
     display.drawTextCentered(w/2,47,"BLE security off");
+#if !defined(LORAFISH_WATCH_TOUCH)   // LilyGo T-Watch S3: no Enter key on the touch screen
     display.drawTextCentered(w/2,63,"ENTER: next");
+#endif
   }
 }
 
@@ -2961,7 +3179,7 @@ static void drawLoRaFishSleeping(DisplayDriver& display, UITask* task) {
   char tb[8], db[24];
   loRaFishClock(tb,sizeof(tb),db,sizeof(db));
 #if defined(LORAFISH_CARDPUTER_25D)
-  drawCardputerTankDepth(display);
+  drawCardputerTankDepth(LORAFISH_SCENERY_CANVAS(display));
   drawLoRaFishBubbles(display);
 #elif defined(LORAFISH_TDECK_PIXEL_ART)
   // Sleeping fish stays inside the same aquarium as the awake fish.
@@ -2998,7 +3216,11 @@ static void drawLoRaFishChannelNotice(DisplayDriver& display) {
   display.drawTextCentered(x, 26, "No free channel slot");
   display.drawTextCentered(x, 38, "Channels unchanged");
   display.setColor(UIColor::secondary_txt);
+#if defined(LORAFISH_WATCH_TOUCH)
+  display.drawTextCentered(x, 56, "TAP TO DISMISS");
+#else
   display.drawTextCentered(x, 56, "CLICK TO DISMISS");
+#endif
 }
 
 static void drawLoRaFishNameNotice(DisplayDriver& display) {
@@ -3011,7 +3233,11 @@ static void drawLoRaFishNameNotice(DisplayDriver& display) {
   display.drawTextCentered(x, 36, "to appear as a");
   display.drawTextCentered(x, 45, "LoRagotchi-DX tank.");
   display.setColor(UIColor::secondary_txt);
+#if defined(LORAFISH_WATCH_TOUCH)
+  display.drawTextCentered(x, 56, "TAP TO DISMISS");
+#else
   display.drawTextCentered(x, 56, "CLICK TO DISMISS");
+#endif
 }
 
 static void drawLoRaFishMonoDisplayNotice(DisplayDriver& display) {
@@ -3034,7 +3260,11 @@ static void drawLoRaFishAdoption(DisplayDriver& display) {
   display.drawTextEllipsized(3,29,display.width()-6,loRaFishEggTankName);
   display.drawTextCentered(display.width()/2,41,saving ? "Retrying if needed" :
       loRaFishEggSession.phase==LoRaFishEgg::Choose ? "Choose egg in app" : "Checking support");
+#if defined(LORAFISH_WATCH_TOUCH)
+  display.drawTextCentered(display.width()/2,55,saving ? "Please wait" : "Tap next/Hold skip");
+#else
   display.drawTextCentered(display.width()/2,55,saving ? "Please wait" : "Click next/Hold skip");
+#endif
 }
 
 static void drawLoRaFish(DisplayDriver& display, UITask* task) {
@@ -3317,14 +3547,29 @@ public:
 
   int render(DisplayDriver& display) override {
 #ifdef LORAFISH_UI
+#if defined(LORAFISH_TALL_TANK)
+    // LilyGo T-Watch S3: the aquarium page (page 0) is drawn on a taller canvas
+    // so the tank fills the square screen; see TWatchS3TankView.
+    if (loRaFishPage == 0) {
+      drawLoRaFish(tank_display, _task);
+    } else {
+      drawLoRaFish(display, _task);
+#if defined(LORAFISH_WATCH_TOUCH)
+      // Touch hint in the margin below the centred screen.
+      ::display.drawFooterHint("<tap back", "tap forward>", UIColor::secondary_txt);
+#endif
+    }
+#else
     drawLoRaFish(display, _task);
-    if (loRaFishChannelNotice || loRaFishNameNotice || loRaFishMonoDisplayNotice) return 2000;
+#endif
+    if (loRaFishChannelNotice || loRaFishNameNotice) return 2000;
     // Static pages (menus, stats, pairing) only need an occasional redraw; button
     // presses reset _next_refresh in checkDisplayOn(), so they stay responsive.
     if (loRaFishPage == 0) {
-#if defined(LORAFISH_CARDPUTER_25D)
+#if defined(LORAFISH_CARDPUTER_25D) && !defined(LORAFISH_25D_10FPS)
       // Cardputer LCD uses a framebuffer; 100 ms = only 10 FPS and makes
       // the pixel-stepped fish appear jerky. Target ~30 FPS on this board only.
+      // (LORAFISH_25D_10FPS keeps the usual rate, for battery-saving builds.)
       return loRaFishSimulationMode ? 100 : 33;
 #else
       return loRaFishSimulationMode ? 250 : 100;
@@ -3674,9 +3919,14 @@ public:
       return (value + (previous ? count - 1 : 1)) % count;
     };
     if (loRaFishPage == 5) {
+#if defined(LORAFISH_NO_GNSS_PAGE)
+      // LilyGo T-Watch S3: step over the hidden GNSS row.
+      loRaFishWatchStepOption(previous);
+#else
       const bool breed = loRaFishCanBreed();
       const uint8_t row = LoRaFishOptions::index(loRaFishOption, loRaFishHasSound, breed, loragotchiDXGuest.present);
       loRaFishOption = LoRaFishOptions::at(move(row, loRaFishOptionCount()), loRaFishHasSound, breed, loragotchiDXGuest.present);
+#endif
     } else if (loRaFishPage == 12) {
       loRaFishDisplayOption = move(loRaFishDisplayOption, loRaFishDisplayOptionCount());
     } else if (loRaFishPage == LORAFISH_PET_SETUP_PAGE) {
@@ -4339,6 +4589,10 @@ void UITask::loop() {
     }
   }
 #endif
+#if defined(LORAFISH_UI) && defined(LORAFISH_WATCH_TOUCH)
+  // LilyGo T-Watch S3: directional taps and swipes (see handleWatchTouch).
+  c = handleWatchTouch(user_btn.poll());
+#endif
 #if UI_HAS_JOYSTICK
   int ev = user_btn.check();
   if (ev == BUTTON_EVENT_CLICK) {
@@ -4366,7 +4620,7 @@ void UITask::loop() {
   if (ev == BUTTON_EVENT_TRIPLE_CLICK) {
     c = handleTripleClick(KEY_SELECT);
   }
-#elif defined(PIN_USER_BTN)
+#elif defined(PIN_USER_BTN) && !(defined(LORAFISH_UI) && defined(LORAFISH_WATCH_TOUCH))
   int ev = user_btn.check();
   #ifdef UI_HAS_NAV_INPUT
   if (ev == BUTTON_EVENT_CLICK) {
@@ -4908,6 +5162,160 @@ char UITask::handleTripleClick(char c) {
   c = 0;
   return c;
 }
+
+#if defined(LORAFISH_UI) && defined(LORAFISH_WATCH_TOUCH)
+// ---------------------------------------------------------------------------
+// LilyGo T-Watch S3 touch navigation, modelled on the Meck T-Watch firmware.
+// Gestures come from variants/lilygo_twatch_s3/TWatchInput.h.
+//
+//   Gesture          Main pages              Lists (Options, Display,    Setting rows and
+//                    (aquarium to RF)        DX contacts, advert, reset) value picker
+//   tap top area     back                    back                        back (picker: cancel)
+//   tap right half   next page (= click)     next item (= click)         next row / value (= click)
+//   tap left half    previous page           previous item               previous row / value
+//   swipe left/right next / previous page    -                           -
+//   swipe down/up    -                       next / previous item        next / previous row / value
+//   hold             select (= long press)   select (= long press)       open / save (= long press)
+//   side key         click (wakes display)   click                       click
+//
+// Options is both a main page and a list: taps and up/down swipes move the
+// highlight, left/right swipes change page. Tap right, the side key, hold and
+// tap top go through the shared HomeScreen::handleInput, handleLongPress and
+// handleDoubleClick; tap left and the swipes are handled here. Browsing a
+// value never saves it: hold saves, tap top cancels.
+// ---------------------------------------------------------------------------
+
+// Value picker and the Guess game's Higher / Lower choice.
+static bool loRaFishWatchValueStep(bool previous) {
+  if (loRaFishValuePicker.active()) {
+    loRaFishValuePicker.move(previous);
+    return true;
+  }
+  if (loRaFishPage == 16) {
+    if (!loRaFishGuessComplete) {
+      loRaFishGuessHigher = !loRaFishGuessHigher;
+      loRaFishGuessResultShown = false;
+    }
+    return true;
+  }
+  return false;
+}
+
+// Lists: Options, Display, DX contacts, Send advert, Reset confirmation.
+static bool loRaFishWatchListStep(bool previous) {
+  if (loRaFishPage == 5) {
+    loRaFishWatchStepOption(previous);
+    return true;
+  }
+  if (loRaFishPage == 12) {
+    const uint8_t n = loRaFishDisplayOptionCount();
+    loRaFishDisplayOption = (loRaFishDisplayOption + (previous ? n - 1 : 1)) % n;
+    return true;
+  }
+  if (loRaFishPage == LORAFISH_DX_CONTACT_PAGE) {
+    if (!loragotchiDXHome.away && !loragotchiDXHome.pending && !loragotchiDXHome.committing)
+      moveLoRaFishDXContact(previous);
+    return true;
+  }
+  if (loRaFishPage == LORAFISH_ADVERT_PAGE) {
+    if (previous) loRaFishAdvertMenu.previous();
+    else loRaFishAdvertMenu.next();
+    return true;
+  }
+  if (loRaFishPage == LORAFISH_RESET_CONFIRM_PAGE) {
+    loRaFishResetConfirmation.toggle();
+    return true;
+  }
+  return false;
+}
+
+// Setting screens with rows: hold on a row opens its value picker.
+static bool loRaFishWatchFieldStep(bool previous) {
+  if (loRaFishPage == 9) {
+    const uint8_t n = loRaFishNeedsAppearanceSetup ? 4 : 3;
+    loRaFishColorField = (loRaFishColorField + (previous ? n - 1 : 1)) % n;
+    return true;
+  }
+  if (loRaFishPage == 10) {
+    loRaFishTimeField = (loRaFishTimeField + (previous ? 2 : 1)) % 3;
+    return true;
+  }
+  if (loRaFishPage == 11) {
+    loRaFishTimeoutField = (loRaFishTimeoutField + (previous ? 2 : 1)) % 3;
+    return true;
+  }
+#ifdef PIN_BUZZER
+  if (loRaFishPage == 14) {
+    loRaFishSoundField = (loRaFishSoundField + (previous ? 3 : 1)) % 4;
+    return true;
+  }
+#endif
+  return false;
+}
+
+// Main pages: aquarium to RF Monitor.
+static bool loRaFishWatchPageStep(bool previous) {
+  if (loRaFishPage >= LORAFISH_PAGE_COUNT) return false;
+  loRaFishPage = (loRaFishPage + (previous ? LORAFISH_PAGE_COUNT - 1 : 1)) % LORAFISH_PAGE_COUNT;
+  return true;
+}
+
+char UITask::handleWatchTouch(int gesture) {
+  switch ((TWatchGesture)gesture) {
+    case TW_NONE:
+      return 0;
+    case TW_PWR_CLICK:
+      return checkDisplayOn(KEY_NEXT);     // click; also wakes the display
+    case TW_TAP_RIGHT:
+      return KEY_NEXT;                     // same as a click
+    case TW_HOLD:
+      return handleLongPress(KEY_ENTER);   // select
+    case TW_TAP_TOP:
+      return handleDoubleClick(KEY_PREV);  // back one level
+    default:
+      break;
+  }
+
+  // Tap left and swipes act only on the pet screens.
+  if (curr != home) return 0;
+
+  bool handled = false;
+  if (dismissLoRaFishNotice()) {
+    handled = true;                        // one gesture dismisses one notice
+  } else if (loRaFishAdoptionEligible) {
+    // Egg adoption screen: tap left acts as a click; swipes do nothing here.
+    return gesture == TW_TAP_LEFT ? KEY_PREV : 0;
+  } else {
+    switch ((TWatchGesture)gesture) {
+      case TW_TAP_LEFT:
+        handled = loRaFishWatchValueStep(true) || loRaFishWatchListStep(true) ||
+                  loRaFishWatchFieldStep(true) || loRaFishWatchPageStep(true);
+        if (!handled) return KEY_PREV;     // no watch step on this page
+        break;
+      case TW_SWIPE_LEFT:
+      case TW_SWIPE_RIGHT:
+        handled = loRaFishWatchPageStep(gesture == TW_SWIPE_RIGHT);
+        break;
+      case TW_SWIPE_UP:
+      case TW_SWIPE_DOWN: {
+        const bool previous = gesture == TW_SWIPE_UP;
+        handled = loRaFishWatchValueStep(previous) || loRaFishWatchListStep(previous) ||
+                  loRaFishWatchFieldStep(previous);
+        break;
+      }
+      default:
+        break;
+    }
+  }
+
+  if (handled && _display != NULL) {
+    loRaFishRegisterDisplayActivity(*_display);
+    _auto_off = loRaFishScreenTimeoutMs() ? millis() + loRaFishScreenTimeoutMs() : 0xFFFFFFFFUL;
+    _next_refresh = 0;
+  }
+  return 0;
+}
+#endif
 
 bool UITask::getGPSState() {
   if (_sensors != NULL) {
