@@ -1,10 +1,21 @@
+> **Water candidate 1:** All 14 Water species, independent new-game Mystery egg/
+> Mystery colours, and negotiated S1 visits. Existing pets migrate to fish;
+> LEG1 adopted eggs preserve accepted fish identity/genetics and bypass Mystery
+> setup. Read [Water controls/compatibility](WATER-EDITION.md) before mixed-version tests.
+
 ## Getting Started with LoRaGotchi DX
 
 Thank you for downloading and trying our firmware! LoRaGotchi DX is a virtual pet running as a MeshCore BLE companion. The firmware uses the device's LoRa radio and display for the aquarium, and can exchange visiting fish with compatible LoRaGotchi DX peers over the mesh.
 
 It's actually built straight on the stock meshcore (1.17.1 at the time of writing) firmware with the idea that, you can flash to LoRagotchi-DX without losing your settings, channels, contacts etc. We've even flashed it via the meshcore.io flasher.
 
-For supported boards and PlatformIO build commands, see the [README](README.md#supported-loragotchi-targets-in-this-tree). This guide describes the LoRaFish companion UI and behavior.
+For supported boards and PlatformIO build commands, see the [README](README.md#supported-loragotchi-targets-in-this-tree). Water-specific environments and commands are listed under [Water edition build targets](README.md#water-edition-build-targets). This guide describes the LoRaFish companion UI and behavior.
+
+## Edition and boot version
+
+Original environment names select DX; explicit water_* aliases select Water.
+Current source identifies itself as DX v1.1.0 or WATER v1.1.0, independently of
+MeshCore v1.18.0. This is a source candidate, not a newly published release.
 
 ## BLE pairing PIN
 

@@ -1,10 +1,23 @@
-# LoRaGotchi DX 🐟📡
+# LoRaGotchi-DX — DX and Water editions
 
-**LoRaGotchi DX v1.0 — M0YNW** is a virtual LoRa fish built on the MeshCore transport. Your fish grows through pet stages, lives in a small aquarium UI, and can travel over the mesh to visit another LoRaGotchi device before being recalled home.
+Current product source candidate: **v1.1.0**, separate from underlying MeshCore
+**v1.18.0** and the **Water v1** species registry. This version was already chosen
+in the supplied in-progress source; it is not a claim that a v1.1.0 release exists.
+The splash now reads **DX v1.1.0** or **WATER v1.1.0** from one shared header.
+Historical v1.0 release notes remain historical.
+
+**Existing target names stay DX by default.** Water is opt-in through the explicit
+aliases below. DX retains the original fish art, four fish-name markers, five-row
+Display menu and colour setup; Water adds 14 species, the new-game chooser and
+Water markers. Both use the same mesh transport and compatible saved prefix.
+See [Water controls and compatibility](WATER-EDITION.md).
+
+LoRaGotchi is a virtual LoRa fish built on MeshCore, originally by M0YNW,
+with contributor work retained in this repository.
 
 For setup, controls, menus, pet behavior, and DX travel, see [Getting Started](Getting_Started.md).
 
-## v1.0 highlights
+## Historical v1.0 highlights
 - LoRaGotchi virtual-pet aquarium and evolution/gameplay
 - DX fish visiting using the LFG1 protocol
     - LFG1 protocol upgraded to include colour information

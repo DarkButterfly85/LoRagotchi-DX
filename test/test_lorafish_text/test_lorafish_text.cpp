@@ -6,8 +6,8 @@ TEST(LoRaFishText, RecognizesEverySupportedFishAndPresentationSelector) {
                            "Tank 🐡\xEF\xB8\x8F", "Tank 🦈\xEF\xB8\x8E"})
     EXPECT_TRUE(LoRaFishText::hasFish(name, strlen(name)));
 }
-TEST(LoRaFishText, MarkerIsOptInNotOtherMarineOrFishRelatedObjects) {
-  for (const char* name : {"fish", "><>", "🐬", "🐳", "🐋", "🐙", "🪼", "🎣", "🍥", "🎏", "", "Repeater"})
+TEST(LoRaFishText, MarkerIsOptInNotOtherWaterRelatedObjects) {
+  for (const char* name : {"fish", "><>", "💧", "🌊", "⭐", "🐌", "🐢", "⚓", "🎣", "🍥", "🎏", "", "Repeater"})
     EXPECT_FALSE(LoRaFishText::hasFish(name, strlen(name)));
   EXPECT_FALSE(LoRaFishText::hasFish(nullptr, 32));
 }
@@ -97,4 +97,23 @@ TEST(LoRaFishText, WireNameTinyBuffersAndMalformedNonterminatedInput) {
   }
   char out[3];LoRaFishText::protocolName(out,sizeof(out),"AéB",4);EXPECT_STREQ(out,"A");
   LoRaFishText::protocolName(nullptr,0,nullptr,0);
+}
+
+TEST(LoRaFishText, ExactWaterAnimalsAndExplicitMarkerAreBoundedAndKeepRawNames) {
+  for(const char* glyph:{"🐬","🐳","🐋","🦭","🦐","🦑","🦞","🦀","🐙","🪼","🐚","💦"}) {
+    const std::string raw=glyph;
+#if LORAGOTCHI_WATER_EDITION
+    ASSERT_TRUE(LoRaFishText::hasFish(raw.data(),raw.size()));
+    for(size_t n=0;n<raw.size();++n)EXPECT_FALSE(LoRaFishText::hasFish(raw.data(),n));
+    char out[8];LoRaFishText::display(out,sizeof(out),raw.data(),raw.size());EXPECT_STREQ(out,"[W]");
+    for(size_t size=1;size<5;++size) {
+      memset(out,'!',sizeof(out));LoRaFishText::display(out,size,raw.data(),raw.size());
+      EXPECT_EQ(out[size],'!');EXPECT_STREQ(out,size==4?"[W]":"");
+    }
+#else
+    EXPECT_FALSE(LoRaFishText::hasFish(raw.data(),raw.size()));
+    char out[8];LoRaFishText::display(out,sizeof(out),raw.data(),raw.size());EXPECT_STREQ(out," ");
+#endif
+    EXPECT_EQ(raw,glyph);LoRaFishText::protocolName(out,sizeof(out),raw.data(),raw.size());EXPECT_STREQ(out,"DX Fish");
+  }
 }

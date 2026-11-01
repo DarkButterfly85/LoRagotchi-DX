@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <helpers/UTF8Helpers.h>
+#include "../LoRaGotchiVersion.h"
 
 // Display-only fallback for the small built-in ASCII fonts. Keep raw names in
 // contacts/adverts; protocolName sanitises only the outgoing fish label.
@@ -31,15 +32,36 @@ inline uint32_t next(const char* text, size_t capacity, size_t& pos) {
 }
 
 inline bool isFish(uint32_t code) {
-  // Unicode fish, tropical fish, blowfish and shark. Not whales/dolphins,
-  // fishing poles, fish cakes, or other marine animals: this is an opt-in marker.
+  // Preserve the four legacy fish glyphs and their exact ASCII fallback.
   return code == 0x1F41F || code == 0x1F420 || code == 0x1F421 || code == 0x1F988;
 }
 
+inline bool isWaterMarker(uint32_t code) {
+  if (isFish(code)) return true;
+#if LORAGOTCHI_WATER_EDITION
+  // Exact supported animals plus the owner's explicit Water marker, not all
+  // water-related Unicode. No generic waves, droplets, stars or boating signs.
+  switch(code) {
+    case 0x1F42C: // dolphin
+    case 0x1F433: case 0x1F40B: // spouting whale / whale
+    case 0x1F9AD: // seal
+    case 0x1F990: case 0x1F991: // shrimp / squid
+    case 0x1F99E: case 0x1F980: // lobster / crab
+    case 0x1F419: case 0x1FABC: // octopus / jellyfish
+    case 0x1F41A: // shell-dweller
+    case 0x1F4A6: // explicit Water marker: sweat droplets
+      return true;
+    default: return false;
+  }
+#else
+  return false;
+#endif
+}
+// Historical API name kept for callers. Now tests the exact Water allowlist.
 inline bool hasFish(const char* text, size_t capacity) {
   if (!text) return false;
   for (size_t pos = 0; pos < capacity && text[pos]; ) {
-    if (isFish(next(text, capacity, pos))) return true;
+    if (isWaterMarker(next(text, capacity, pos))) return true;
   }
   return false;
 }
@@ -52,9 +74,9 @@ inline void display(char* dest, size_t size, const char* text, size_t capacity) 
     // Presentation selectors, joiners and emoji modifiers have no separate glyph.
     if (code == 0x200D || code == 0xFE0E || code == 0xFE0F ||
         (code >= 0x1F3FB && code <= 0x1F3FF) || (code >= 0xE0020 && code <= 0xE007F)) continue;
-    if (isFish(code)) {
+    if (isWaterMarker(code)) {
       if (out + 3 >= size) break;
-      memcpy(dest + out, "><>", 3);
+      memcpy(dest + out, isFish(code) ? "><>" : "[W]", 3);
       out += 3;
     } else {
       if (out + 1 >= size) break;

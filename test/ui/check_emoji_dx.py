@@ -5,6 +5,7 @@ Mock only the contact store, radio and display boundary; start at the aquarium.
 The glyph bounds check targets the smallest 128x64 display, with/without buzzer.
 """
 from pathlib import Path
+import os
 import runpy
 import subprocess
 import tempfile
@@ -20,6 +21,15 @@ static ContactInfo contact(const char* name,uint8_t type,uint32_t key) {
 }
 static void pass(const char* name){printf("PASS: %s\n",name);fflush(stdout);}
 int main(){
+  assert(loRaFishDXEligible(contact("LRX1 Tank 🐟",2,0)));
+  assert(loRaFishDXEligible(contact("LRX1 Tank 🦑",2,0))==bool(LORAGOTCHI_WATER_EDITION));
+  assert(!loRaFishDXEligible(contact("LRX1 Tank 🌊",2,0)));
+  assert(!loRaFishDXEligible(contact("LRX1 Tank 🦑",3,0)));
+  assert(!loRaFishDXEligible(contact("LRX1 Tank 🐟",3,0)));
+  assert(!loRaFishDXEligible(contact("Ordinary Repeater 🐟",2,0)));
+  assert(!loRaFishDXEligible(contact("LRX1 No marker",2,0)));
+  assert(!loRaFishDXEligible(contact("LRX1Tank 🐟",2,0)));
+  pass("explicit LRX fish-marked repeaters are eligible without advertising a false companion role");
   UITask task;tick=100000;task.ui_started_at=0;
   loRaFishPage=0;
   the_mesh.useCustom=true;
@@ -95,8 +105,10 @@ int main(){
   beginLoRaFishNameNotice();assert(loRaFishNameNotice);
   pass("boot reminder is bounded, dismisses without action or save, and returns on the next unmarked boot");
 
-  for(const char* name:{"🐟 Home","Home 🐠","Home 🐡️","🦈"}) {
-    loRaFishMeshNodeName=name;beginLoRaFishNameNotice();assert(!loRaFishNameNotice);
+  for(const char* name:{"🐟 Home","Home 🐠","Home 🐡️","🦈","🐬","🐳","🐋","🦭","🦐","🦑","🦞","🦀","🐙","🪼","🐚","💦"}) {
+    const bool accepted=LoRaFishText::hasFish(name,strlen(name));
+    loRaFishMeshNodeName=name;beginLoRaFishNameNotice();assert(loRaFishNameNotice==!accepted);
+    auto waterContact=contact(name,1,0);assert(loRaFishDXEligible(waterContact)==accepted);
   }
   loRaFishMeshNodeName=nullptr;beginLoRaFishNameNotice();assert(loRaFishNameNotice);
   loRaFishMeshNodeName="No marker";beginLoRaFishNameNotice();
@@ -132,7 +144,7 @@ with tempfile.TemporaryDirectory(prefix='lorafish-emoji-') as directory:
     cpp=Path(directory)/'emoji.cpp';cpp.write_text('\n'.join(parts))
     for sound in (False,True):
         exe=Path(directory)/f'emoji-{int(sound)}'
-        args=['g++','-std=c++17','-I',str(root),'-I',str(root/'src'),str(cpp),'-o',str(exe)]
+        args=['g++','-std=c++17','-DLORAGOTCHI_WATER_EDITION='+os.environ.get('LORAGOTCHI_TEST_EDITION','0'),'-I',str(root),'-I',str(root/'src'),str(cpp),'-o',str(exe)]
         if sound:args+=['-DPIN_BUZZER=6']
         subprocess.run(args,check=True)
         print(f'Emoji/DX production checks: sound={int(sound)}',flush=True)

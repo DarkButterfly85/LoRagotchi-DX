@@ -31,6 +31,8 @@ pre = r'''
 #include <vector>
 #include "examples/companion_radio/LoRaFishGuestReturn.h"
 #include "examples/companion_radio/LoRaFishVisit.h"
+#include "examples/companion_radio/LoRaFishSpecies.h"
+#define LORAFISH_MONO_PIXEL_TINT_RGB565 65535
 #include "examples/companion_radio/LoRaFishArrival.h"
 static std::map<std::string,std::vector<uint8_t>> records;
 struct Preferences {
