@@ -1,7 +1,7 @@
 name: Water owner-board test images
 on:
   push:
-    branches: [feature/water-edition]
+    branches: [main, feature/water-edition]
   workflow_dispatch:
 permissions:
   contents: read

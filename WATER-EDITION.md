@@ -1,8 +1,9 @@
 # LoRagotchi-DX Water — candidate 1
 
-Local feature implementation, not a published firmware release. The underlying
-MeshCore remains **v1.18.0**; this is not LFG2 or MeshCore 1.19. Host tests do not
-imply board binaries, hardware acceptance or release publication.
+Water candidate 1 in the shared LoRagotchi-DX repository; not a published
+firmware release. The underlying MeshCore remains **v1.18.0**; this is not LFG2
+or MeshCore 1.19. Host tests do not imply board binaries, hardware acceptance
+or release publication.
 
 ## Catalogue and controls
 
@@ -164,13 +165,12 @@ Unchanged owner targets:
 - heltec_v4_LoRaFish_companion_ble → application BIN (V4 OLED)
 - Heltec_t096_LoRaFish_companion_ble, create_uf2 target → UF2
 
-The branch-push/manual [owner-board workflow](.github/workflows/water-owner-builds.yml) runs
-host checks then these three GitHub builds only. Existing workflows are retained.
-Read-only permissions, max 3 parallel builds, 14-day artifacts with exact source
-SHA/dependencies/config/ELF/partitions/checksums. Preparation is not execution:
-this unpublished branch needs owner permission to push before GitHub can build
-it. Its branch-scoped push trigger permits the first run without first merging a
-new workflow into the default branch. No push, PR, release, flash, firmware image or physical result is claimed.
+The [owner-board workflow](.github/workflows/water-owner-builds.yml) runs host
+checks and builds these three profiles on `main` and `feature/water-edition`, or
+when manually dispatched. Existing workflows are retained. Builds use read-only
+permissions, at most three parallel jobs, and 14-day artifacts with exact source
+SHA/dependencies/config/ELF/partitions/checksums. Artifacts are compile evidence,
+not releases or hardware acceptance. No flash or physical result is implied.
 
 Run native tests plus all test/ui/check_*.py. The Water tests cover real settings
 migration/corrupt tails/mystery state, all 14 production sprites/stages/mirroring/
