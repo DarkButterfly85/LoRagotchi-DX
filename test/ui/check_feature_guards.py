@@ -16,15 +16,16 @@ def preprocess(definitions):
     source = SOURCE.read_text()
     source = source.replace('#include "LoRaFishAdoption.h"', 'LORAFISH_ADOPTION_IMPLEMENTATION')
     source = chr(10).join(line for line in source.splitlines() if not line.lstrip().startswith('#include'))
+    source = '#include \"'+str(ROOT/'examples/companion_radio/LoRaGotchiVersion.h')+'\"\n'+source
     command = ['g++', '-E', '-P', '-x', 'c++', '-']
     command += ['-D' + value for value in definitions]
     return subprocess.check_output(command, input=source, text=True)
 
 
-for edition in (0, 1):
+for edition in (0, 1, 2):
     for platform in ('ESP32', 'NRF52_PLATFORM'):
         for sound in (False, True):
-            definitions = [platform, 'LORAGOTCHI_WATER_EDITION=' + str(edition), 'UI_DISCOVER_SCREEN=1', 'ENV_INCLUDE_GPS=1', 'UI_SENSORS_PAGE=1']
+            definitions = [platform, 'LORAGOTCHI_WATER_EDITION=' + str(int(edition==1)), 'LORAGOTCHI_AIR_EDITION=' + str(int(edition==2)), 'UI_DISCOVER_SCREEN=1', 'ENV_INCLUDE_GPS=1', 'UI_SENSORS_PAGE=1']
             if sound:
                 definitions.append('PIN_BUZZER=1')
             generic = preprocess(definitions)

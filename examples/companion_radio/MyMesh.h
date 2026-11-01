@@ -44,6 +44,7 @@ extern LoRaGotchiDXGuestState loragotchiDXGuest;
 extern LoRaFishGuestReturn loragotchiDXGuestReturn;
 extern LoRaFishVisit loragotchiDXVisit;
 extern LoRaFishReservation loragotchiDXReservation;
+extern bool loragotchiDXAirFallback; // session-only presentation warning; never persisted
 extern bool loragotchiDXLocalColorCapable;
 extern bool loragotchiDXLocalHasColorGenes;
 extern uint8_t loragotchiDXLocalColorIndex;

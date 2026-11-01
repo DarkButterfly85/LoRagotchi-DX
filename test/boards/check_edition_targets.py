@@ -36,3 +36,12 @@ for expected in ['DISPLAY_CLASS=SSD1306Display','PIN_BOARD_SDA=13','PIN_BOARD_SC
                  'PIN_USER_BTN=9','PIN_USER_BTN_ANA=31','USE_SX1262','LORAGOTCHI_EXPERIMENTAL=1']:
  assert expected in flags,expected
 print('PASS 10 explicit Water aliases and RAK4630 DX alias; existing DX, pins, radio, memory and dependencies preserved')
+
+air={name.replace('water_','air_'):parent for name,parent in water.items()}
+for alias,parent in air.items():
+ a=config['env:'+alias];p=config['env:'+parent]
+ for key,value in p.items():
+  if key not in {'extends','build_flags'}:assert a[key]==value,(alias,key)
+ assert a['build_flags']==p['build_flags']+['-D LORAGOTCHI_AIR_EDITION=1'],alias
+assert {s[4:] for s in config if s.startswith('env:air_')}==set(air)
+print('PASS 10 Air aliases; original DX/Water hardware, radio, memory and dependencies unchanged')

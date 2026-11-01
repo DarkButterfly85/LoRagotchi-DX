@@ -25,6 +25,7 @@ LoRaFishGuestReturn loragotchiDXGuestReturn;
 LoRaFishVisit loragotchiDXVisit;
 LoRaFishReservation loragotchiDXReservation;
 static LoRaFishArrival loRaFishArrival;
+bool loragotchiDXAirFallback = false;
 bool loragotchiDXLocalColorCapable = false;
 bool loragotchiDXLocalHasColorGenes = false;
 uint8_t loragotchiDXLocalColorIndex = 0;
@@ -617,7 +618,9 @@ void MyMesh::queueMessage(const ContactInfo &from, uint8_t txt_type, mesh::Packe
             loragotchiDXReservation.start(millis());
             loragotchiDXSave();
           }
-          if (LORAGOTCHI_WATER_EDITION)
+          if (LORAGOTCHI_AIR_EDITION)
+            snprintf(reply,sizeof(reply),"LFG1|ACK|%lu|%lu|S1|A1",tx,fid);
+          else if (LORAGOTCHI_WATER_EDITION)
             snprintf(reply,sizeof(reply),"LFG1|ACK|%lu|%lu|S1",tx,fid);
           else
             snprintf(reply,sizeof(reply),"LFG1|ACK|%lu|%lu",tx,fid);
@@ -633,11 +636,14 @@ void MyMesh::queueMessage(const ContactInfo &from, uint8_t txt_type, mesh::Packe
         loragotchiDXHome.pending && !loragotchiDXVisit.exhausted(millis()) &&
         loragotchiDXVisit.phase!=LoRaFishVisit::Commit &&
         tx==loragotchiDXHome.txid && fid==loragotchiDXHome.fishid) {
+      loragotchiDXAirFallback = LORAGOTCHI_SPECIES_EDITION &&
+          LoRaFishSpecies::airKnown(loragotchiDXLocalSpecies) && !LoRaFishSpecies::airAcknowledged(text);
+      if (loragotchiDXAirFallback) Serial.println("[LFG1 PEER] Air unsupported: visiting as legacy fish; home identity retained");
       loRaFishCommitFrame.prepare(from.id.pub_key, tx, fid,
         loragotchiDXLocalHasColorGenes, loragotchiDXLocalColorIndex,
         loragotchiDXLocalScalesColorIndex, loragotchiDXLocalEyesColorIndex,
         loragotchiDXLocalMonoPixelTint, loragotchiDXLocalMonoPanel,
-        LORAGOTCHI_WATER_EDITION ? loragotchiDXLocalSpecies : LoRaFishSpecies::TropicalFish,
+        LORAGOTCHI_SPECIES_EDITION ? LoRaFishSpecies::wireSpecies(loragotchiDXLocalSpecies,text) : LoRaFishSpecies::TropicalFish,
         LoRaFishSpecies::acknowledged(text));
       // Duplicate acceptance cannot reset the retry budget or appearance.
       loragotchiDXVisit.begin(LoRaFishVisit::Commit, millis());
