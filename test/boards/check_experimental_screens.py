@@ -11,6 +11,18 @@ config = {s: dict(options) for s, options in json.loads(subprocess.check_output(
     ['pio', 'project', 'config', '--json-output'], cwd=ROOT, text=True))}
 allowed = {'SSD1306Display', 'SH1106Display', 'SH1107Display', 'ST7735Display',
            'ST7789Display', 'ST7789LCDDisplay', 'NV3001BDisplay'}
+# Exact compiler-only experiment; not a hardware, feature or size-guard exemption.
+size_trial_targets = {
+    'LilyGo_TBeam_1W_LoRaGotchi_DX_ble',
+    'Station_G2_LoRaGotchi_DX_ble',
+    'Station_G3_ESP32_LoRaGotchi_DX_ble',
+}
+size_trial_flags = ['-fno-inline-small-functions', '-fno-inline-functions-called-once']
+for section, options in config.items():
+    if section.startswith('env:'):
+        selected = section[4:] in size_trial_targets
+        for flag in size_trial_flags:
+            assert options.get('build_flags', []).count(flag) == int(selected), section
 seen = set()
 for row in manifest['targets']:
     name = row['environment']
@@ -34,7 +46,8 @@ for row in manifest['targets']:
             assert candidate[key] == value, (name, key)
     assert flags[:len(parent['build_flags'])] == parent['build_flags'], name
     assert flags[len(parent['build_flags']):] == ['-D LORAFISH_UI=1',
-        '-D LORAGOTCHI_EXPERIMENTAL=1', '-D AUTO_OFF_MILLIS=30000'] + [
+        '-D LORAGOTCHI_EXPERIMENTAL=1', '-D AUTO_OFF_MILLIS=30000'] + (
+        size_trial_flags if name in size_trial_targets else []) + [
         '-UENV_INCLUDE_' + sensor for sensor in row.get('disabled_optional_sensors', [])], name
     assert 'GPS' not in row.get('disabled_optional_sensors', []), name
     assert row['target'] == ('create_uf2' if '-D NRF52_PLATFORM' in flags else 'build'), name
