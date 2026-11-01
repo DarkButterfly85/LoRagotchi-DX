@@ -62,6 +62,7 @@ For setup, controls, menus, pet behavior, and DX travel, see [Getting Started](G
     - Updated graphics and keyboard controls for the menu
 - LilyGo T-Deck
     - Framebuffer for the display.
+    - Touchscreen
  
   
 ## Supported LoRaGotchi targets in this tree
