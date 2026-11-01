@@ -1,0 +1,118 @@
+name: Air DX and Water selected owner-board test images
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: air-owner-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install platformio==6.1.19
+      - run: pio test -e native -e native_water -e native_air -e native_kiss_modem
+      - run: python3 test/boards/check_edition_targets.py
+      - run: python3 test/boards/check_experimental_screens.py
+      - name: Self-contained production host checks
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os, subprocess
+          from pathlib import Path
+          for test in sorted(Path('test/ui').glob('check_*.py')):
+              if test.name in {'check_dx_colour_retries.py','check_busy_mesh.py'}:
+                  print(f'NOT RUN standalone: {test.name} requires independent RX/Aquarium checkout',flush=True)
+                  continue
+              subprocess.run(['python3',str(test)],check=True)
+              if test.name in {'check_menu_navigation.py','check_emoji_dx.py'}:
+                  subprocess.run(['python3',str(test)],check=True,
+                      env=dict(os.environ,LORAGOTCHI_TEST_EDITION='1'))
+          subprocess.run(['python3','test/ble/check_pairing_pin.py'],check=True)
+          PY
+  build:
+    needs: checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        include:
+          - environment: air_heltec_v3_ble
+            target: build
+            format: bin
+          - environment: air_heltec_v4_oled_ble
+            target: build
+            format: bin
+          - environment: air_heltec_t096_ble
+            target: create_uf2
+            format: uf2
+          - environment: water_heltec_v3_ble
+            target: build
+            format: bin
+          - environment: water_heltec_v4_oled_ble
+            target: build
+            format: bin
+          - environment: water_heltec_t096_ble
+            target: create_uf2
+            format: uf2
+          - environment: Heltec_v3_LoRaFish_companion_ble
+            target: build
+            format: bin
+          - environment: heltec_v4_LoRaFish_companion_ble
+            target: build
+            format: bin
+          - environment: Heltec_t096_LoRaFish_companion_ble
+            target: create_uf2
+            format: uf2
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install platformio==6.1.19
+      - name: Build selected board only
+        env:
+          BUILD_ENV: ${{ matrix.environment }}
+          BUILD_TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          if [ "$BUILD_TARGET" = create_uf2 ]; then
+            pio run -e "$BUILD_ENV" -t create_uf2 -j 1
+          else
+            pio run -e "$BUILD_ENV" -j 1
+          fi
+      - name: Stage exact-revision evidence
+        env:
+          BUILD_ENV: ${{ matrix.environment }}
+          FORMAT: ${{ matrix.format }}
+        run: |
+          set -euo pipefail
+          mkdir -p artifact
+          cp ".pio/build/$BUILD_ENV/firmware.$FORMAT" artifact/
+          cp ".pio/build/$BUILD_ENV/firmware.elf" artifact/
+          if [ "$FORMAT" = bin ]; then
+            cp ".pio/build/$BUILD_ENV/partitions.bin" artifact/
+          fi
+          git rev-parse HEAD > artifact/source-sha.txt
+          pio project config --json-output > artifact/platformio-config.json
+          pio pkg list -e "$BUILD_ENV" > artifact/dependencies.txt
+          cp AIR-EDITION.md WATER-EDITION.md docs/RAK4630-EXPERIMENTAL.md artifact/
+          echo 'Compilation only. Not hardware acceptance. ESP32 app BIN is not a merged installer. Validate image/partition/linker bounds before flashing.' > artifact/BUILD-NOTES.txt
+          cd artifact
+          sha256sum * > SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: air-${{ matrix.environment }}-${{ github.sha }}
+          path: artifact/*
+          retention-days: 14
