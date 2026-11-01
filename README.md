@@ -80,6 +80,9 @@ For setup, controls, menus, pet behavior, and DX travel, see [Getting Started](G
 | --- | --- |
 | T-Beam (SX1262) | Tbeam_SX1262_LoRaFish_companion_ble
 | T-Beam (SX1276) | Tbeam_SX1276_LoRaFish_companion_ble
+| RAK WisBlock RAK4631 / RAK4630-module carrier (experimental; compile-tested, hardware unverified) | `RAK_4631_LoRaGotchi_DX_ble` / `RAK_4630_LoRaGotchi_DX_ble` -t create_uf2 |
+
+The RAK4630 alias reuses the RAK4631 target; see the [experimental RAK build and hardware prerequisites](docs/RAK4630-EXPERIMENTAL.md).
 
 ## Water edition build targets
 
