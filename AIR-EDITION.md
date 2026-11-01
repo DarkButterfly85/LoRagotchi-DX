@@ -143,15 +143,18 @@ Owner profiles: **air_heltec_v3_ble**, **air_heltec_v4_oled_ble**,
 **air_heltec_t096_ble** (create_uf2). Other aliases are configuration/host validated
 only, not implicitly board-qualified; no e-ink or screenless target is added.
 
-The manual-only .github/workflows/air-owner-builds.yml prepares nine bounded
+The branch-scoped .github/workflows/air-owner-builds.yml offers edition/board
+choices on manual dispatch; pushes to feature/air-edition run all nine bounded
 hosted builds: Air/DX/Water × V3/V4 OLED/T096, after standalone host/native gates.
 It preserves read-only permissions, explicit exact-SHA checkout, max-parallel 3,
 one compilation job per image, 14-day checksummed artifacts and no release/flash.
 Cross-repository tests explicitly skip on standalone runners; local sibling
 integration evidence is separate. Existing workflows/triggers remain unchanged.
 
-**This task does not authorize push. Under the recorded GitHub-compilation policy,
-exact-Air firmware builds are blocked until publication/CI permission.** No local
+**Publication/CI was separately authorized after the initial local handoff.**
+Only this feature branch may be pushed; no main merge, release or flash is implied.
+The initial da1d313 source candidate remained unbuilt at that handoff; the hosted
+run must be checked by exact SHA before claiming images exist. No local
 firmware build substitutes for that gate; no existing baseline image proves Air.
 The last measured tight-flash experimental TBeam1W/Station G2/G3 images were
 oversized. Owner main advanced during this task and now includes the prior
@@ -193,3 +196,16 @@ Preview generation (generation-only dependency, not a firmware/UI mock):
 
 Add --mono to preview_sheet.py for the 1-bit catalogue/animation. Frame PPMs run
 the production stage/home/travel renderer, not a reconstruction of its sprites.
+
+### Selecting Air builds on GitHub
+
+Open **Actions → Air DX and Water selected owner-board test images** and choose
+**feature/air-edition**. Manual inputs select edition **Air/DX/Water/all** and
+board **V3/V4_OLED/T096/all**; the default runs the nine-image regression matrix.
+Each successful image is a separate named artifact including its environment and
+source SHA. Air profiles have an air_ prefix; selecting an original DX target is
+not Air. A feature-branch push bootstraps workflow registration because a new
+manual-only workflow absent from default main cannot initially be dispatched.
+No main modification is needed. Existing release/tag automation is not invoked.
+Artifacts are retained for 14 days and require GitHub access; a permanent Air
+Release, its tag/version and prerelease/latest policy need separate confirmation.

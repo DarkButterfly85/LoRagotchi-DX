@@ -1,6 +1,19 @@
 name: Air DX and Water selected owner-board test images
 on:
+  push:
+    branches: [feature/air-edition]
   workflow_dispatch:
+    inputs:
+      edition:
+        description: Habitat edition to compile
+        type: choice
+        default: all
+        options: [all, Air, DX, Water]
+      board:
+        description: Owner board to compile
+        type: choice
+        default: all
+        options: [all, V3, V4_OLED, T096]
 permissions:
   contents: read
 concurrency:
@@ -10,6 +23,8 @@ jobs:
   checks:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    outputs:
+      matrix: ${{ steps.selection.outputs.matrix }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -37,6 +52,24 @@ jobs:
                       env=dict(os.environ,LORAGOTCHI_TEST_EDITION='1'))
           subprocess.run(['python3','test/ble/check_pairing_pin.py'],check=True)
           PY
+      - name: Select explicit edition and board
+        id: selection
+        env:
+          EDITION: ${{ inputs.edition || 'all' }}
+          BOARD: ${{ inputs.board || 'all' }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PYSELECT'
+          import json,os
+          targets=[{'environment': 'air_heltec_v3_ble', 'target': 'build', 'format': 'bin', 'edition': 'Air', 'board': 'V3'}, {'environment': 'air_heltec_v4_oled_ble', 'target': 'build', 'format': 'bin', 'edition': 'Air', 'board': 'V4_OLED'}, {'environment': 'air_heltec_t096_ble', 'target': 'create_uf2', 'format': 'uf2', 'edition': 'Air', 'board': 'T096'}, {'environment': 'water_heltec_v3_ble', 'target': 'build', 'format': 'bin', 'edition': 'Water', 'board': 'V3'}, {'environment': 'water_heltec_v4_oled_ble', 'target': 'build', 'format': 'bin', 'edition': 'Water', 'board': 'V4_OLED'}, {'environment': 'water_heltec_t096_ble', 'target': 'create_uf2', 'format': 'uf2', 'edition': 'Water', 'board': 'T096'}, {'environment': 'Heltec_v3_LoRaFish_companion_ble', 'target': 'build', 'format': 'bin', 'edition': 'DX', 'board': 'V3'}, {'environment': 'heltec_v4_LoRaFish_companion_ble', 'target': 'build', 'format': 'bin', 'edition': 'DX', 'board': 'V4_OLED'}, {'environment': 'Heltec_t096_LoRaFish_companion_ble', 'target': 'create_uf2', 'format': 'uf2', 'edition': 'DX', 'board': 'T096'}]
+          edition=os.environ['EDITION'];board=os.environ['BOARD']
+          assert edition in {'all','Air','DX','Water'} and board in {'all','V3','V4_OLED','T096'}
+          selected=[t for t in targets if (edition=='all' or t['edition']==edition) and (board=='all' or t['board']==board)]
+          assert selected and len({t['environment'] for t in selected})==len(selected)
+          with open(os.environ['GITHUB_OUTPUT'],'a') as out:
+              out.write('matrix='+json.dumps({'include':selected})+'\n')
+          print(json.dumps(selected,indent=2))
+          PYSELECT
   build:
     needs: checks
     runs-on: ubuntu-latest
@@ -44,35 +77,7 @@ jobs:
     strategy:
       fail-fast: false
       max-parallel: 3
-      matrix:
-        include:
-          - environment: air_heltec_v3_ble
-            target: build
-            format: bin
-          - environment: air_heltec_v4_oled_ble
-            target: build
-            format: bin
-          - environment: air_heltec_t096_ble
-            target: create_uf2
-            format: uf2
-          - environment: water_heltec_v3_ble
-            target: build
-            format: bin
-          - environment: water_heltec_v4_oled_ble
-            target: build
-            format: bin
-          - environment: water_heltec_t096_ble
-            target: create_uf2
-            format: uf2
-          - environment: Heltec_v3_LoRaFish_companion_ble
-            target: build
-            format: bin
-          - environment: heltec_v4_LoRaFish_companion_ble
-            target: build
-            format: bin
-          - environment: Heltec_t096_LoRaFish_companion_ble
-            target: create_uf2
-            format: uf2
+      matrix: ${{ fromJSON(needs.checks.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v4
         with:
