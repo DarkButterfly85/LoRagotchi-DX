@@ -4657,6 +4657,11 @@ void UITask::loop() {
   ev = back_btn.check();
   if (ev == BUTTON_EVENT_TRIPLE_CLICK) {
     c = handleTripleClick(KEY_SELECT);
+#if defined(LORAFISH_UI) && defined(WIO_TRACKER_L1)
+  } else if (ev == BUTTON_EVENT_DOUBLE_CLICK) {
+    // L1 Menu/User key is separate from the joystick centre button.
+    c = handleDoubleClick(KEY_PREV);
+#endif
   }
 #elif defined(PIN_USER_BTN) && !(defined(LORAFISH_UI) && defined(LORAFISH_WATCH_TOUCH))
   int ev = user_btn.check();

@@ -109,6 +109,13 @@ Most nodes use a single user button. Hold it for about one second for a long-pre
 | Long-press | Select the highlighted item, save the candidate value, or perform the current screen's action. |
 | Triple-click | Toggle global buzzer quiet mode when the board has a buzzer. |
 
+On the Wio Tracker L1 OLED build profiles (standard and 1W), joystick left/right navigate; a short centre
+press also advances, and a one-second centre hold selects. Double-click the
+centre or the separate Menu/User key to go Back (Options returns to the
+aquarium). The separate key retains triple-click for the buzzer toggle; its
+single click is not Select. Joystick up/down are not mapped by this UI. Centre
+single clicks wait for the 280 ms multi-click window, like Heltec V3/V4.
+
 During the first eight seconds after startup, long-press is reserved for MeshCore's CLI rescue gesture. After that, the LoRaGotchi menu actions are available.
 
 When the display has turned off, the first click, double-click, or long-press only wakes the screen; it does not select, save, advertise, or clean. On the aquarium, short-click always advances to Stats and long-press starts cleaning if 💩 is present.
