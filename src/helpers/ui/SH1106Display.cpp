@@ -22,6 +22,8 @@ ColorVal UIColor::corp_blue = SH110X_WHITE;
 
 bool SH1106Display::begin()
 {
+  _initialized = false;
+  _isOn = false;
   // Wire must already be initialised by board.begin() before this is called.
   // Boards with non-standard SH1106 addresses should define DISPLAY_ADDRESS
   // in their variant/platformio configuration. The SA0 strap selects 0x3C or
@@ -33,24 +35,37 @@ bool SH1106Display::begin()
   } else if (i2c_probe(Wire, DISPLAY_ADDRESS ^ 1)) {
     addr = DISPLAY_ADDRESS ^ 1;
   }
-  // Run the Adafruit init even when no panel answered: it is what allocates
-  // the frame buffer and the I2C device. Skipping it leaves i2c_dev and
-  // spi_dev NULL, and UITask::begin() calls turnOn() regardless of our
-  // return value, which then dereferences the null spi_dev.
+  // Keep allocating the framebuffer even when no panel answered. Adafruit
+  // can fail before allocating its bus device, so subsequent power/contrast
+  // commands must remain guarded until both probing and init succeed.
   bool ok = display.begin(addr ? addr : DISPLAY_ADDRESS, true);
-  return addr != 0 && ok;
+  _initialized = addr != 0 && ok;
+  // Adafruit_SH1106G::begin() finishes with DISPLAYON and resets contrast.
+  _isOn = _initialized;
+  if (_initialized) setBrightness(_brightness);
+  return _initialized;
 }
 
 void SH1106Display::turnOn()
 {
+  if (!_initialized) return;
   display.oled_command(SH110X_DISPLAYON);
   _isOn = true;
+  setBrightness(_brightness);
 }
 
 void SH1106Display::turnOff()
 {
+  if (!_initialized) return;
   display.oled_command(SH110X_DISPLAYOFF);
   _isOn = false;
+}
+
+void SH1106Display::setBrightness(uint8_t brightness)
+{
+  _brightness = brightness;
+  // Cache changes before init/while asleep; wake restores the latest value.
+  if (_initialized && _isOn) display.setContrast(_brightness);
 }
 
 void SH1106Display::clear()

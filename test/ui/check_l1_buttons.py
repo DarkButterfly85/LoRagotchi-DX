@@ -3,6 +3,8 @@
 and UITask input dispatch/menu handlers. No physical-board claim."""
 from pathlib import Path
 import importlib.util
+import os
+from sh1106_mock import write_headers
 import subprocess
 import tempfile
 
@@ -18,6 +20,28 @@ parts = list(menu.parts)
 # Retain all production handler bodies and test stubs, replace only test main.
 parts[-1] = parts[-1].split("int main(){", 1)[0]
 parts = [p.replace("  char handleTripleClick(char);", "  char handleTripleClick(char);\n  char pollButtons();") for p in parts]
+# Optional real-wrapper mode keeps the same production GPIO/menu routes, replacing
+# only the bounds display's hardware methods with the real SH1106 implementation.
+real_sh1106 = os.environ.get("LORAGOTCHI_TEST_SH1106") == "1"
+if real_sh1106:
+    extra = "\n".join(menu.declaration(n) for n in [
+        "loRaFishBrightnessValues", "loRaFishLastActivityMs", "loRaFishScreenDimmed",
+        "loRaFishAlwaysOnDimValues"])
+    activity = extra + "\n" + menu.block("static void applyLoRaFishBrightness(") + "\n" + menu.block("static void loRaFishRegisterDisplayActivity(")
+    parts = [p.replace('#include "src/helpers/ui/DisplayDriver.h"', '#include "src/helpers/ui/SH1106Display.h"')
+             .replace('ColorVal UIColor::primary_txt=1, UIColor::secondary_txt=1, UIColor::window_bkg=0;', '')
+             .replace('class BoundsDisplay : public DisplayDriver', 'class BoundsDisplay : public SH1106Display')
+             .replace('BoundsDisplay():DisplayDriver(128,64){}', 'BoundsDisplay():SH1106Display(){}')
+             .replace('  bool isOn() override {return on;}', '')
+             .replace('  void turnOn() override {on=true;} void turnOff() override {on=false;}', '')
+             .replace('static void loRaFishRegisterDisplayActivity(DisplayDriver&){}', 'static void loRaFishRegisterDisplayActivity(DisplayDriver&);')
+             .replace('static uint32_t loRaFishScreenTimeoutMs(){return 15000;}', 'static uint32_t testTimeout=15000; static uint32_t loRaFishScreenTimeoutMs(){return testTimeout;}')
+             for p in parts]
+    parts.append(activity)
+    # Actual loop update/dim branch, bounded at the unrelated rendering scheduler.
+    begin = source.index('    if (loRaFishBrightnessNeedsApply)', source.index('void UITask::loop()'))
+    end = source.index('    if (millis() >= _next_refresh', begin)
+    parts.append('static void brightnessLoop(DisplayDriver* _display){\n' + source[begin:end] + '\n}')
 preamble = r'''
 #include <helpers/ui/MomentaryButton.h>
 static int levels[64];
@@ -38,6 +62,9 @@ static void hold(UITask& task,int pin){press(task,pin,1001);step(task,281);}
 int main(){
   for(auto& level:levels)level=HIGH;
   UITask task;
+#ifdef TEST_SH1106
+  MockOLED::reset();assert(task.display.begin());
+#endif
   user_btn.begin();
 #if UI_HAS_JOYSTICK
   joystick_left.begin();joystick_right.begin();back_btn.begin();
@@ -53,6 +80,34 @@ int main(){
     for(int i=0;loRaFishOption!=o && i<12;++i)next();assert(loRaFishOption==o);
     enter();
   };
+#ifdef TEST_SH1106
+  // Full aquarium -> Options -> Display -> Brightness route. Do not inject a submenu.
+  loRaFishBrightnessSetting=3;
+  for(int selected=0;selected<4;++selected){
+    options();choose(LoRaFishOption::Display);next();enter();
+    assert(loRaFishValuePicker.active() && loRaFishValuePicker.key()==LoRaFishSetting::Brightness);
+    int before=settingsWrites;
+    for(int i=0;i<((selected-loRaFishBrightnessSetting+4)%4);++i)next();
+    assert(settingsWrites==before && MockOLED::contrast==loRaFishBrightnessValues[loRaFishBrightnessSetting]);
+    enter();brightnessLoop(task._display);
+    assert(settingsWrites==before+1 && loRaFishBrightnessSetting==selected);
+    assert(MockOLED::contrast==loRaFishBrightnessValues[selected] && !loRaFishBrightnessNeedsApply);
+    enter();next();back();brightnessLoop(task._display);
+    assert(settingsWrites==before+1 && loRaFishBrightnessSetting==selected);
+    assert(MockOLED::contrast==loRaFishBrightnessValues[selected]);
+    testTimeout=0;tick+=loRaFishAlwaysOnDimValues[loRaFishAlwaysOnDimSetting];
+    brightnessLoop(task._display);
+    assert(loRaFishScreenDimmed && MockOLED::contrast==loRaFishBrightnessValues[selected]/4);
+    next();assert(!loRaFishScreenDimmed && MockOLED::contrast==loRaFishBrightnessValues[selected]);
+    testTimeout=15000;
+    task.display.turnOff();int page=loRaFishPage;
+    enter();assert(task.display.isOn() && loRaFishPage==page && settingsWrites==before+1);
+    assert(MockOLED::contrast==loRaFishBrightnessValues[selected]);
+    back();back();
+  }
+  assert(loRaFishPage==0 && the_mesh.sends==0 && resets==0 && the_mesh.dxSends==0);
+  puts("PASS GPIO -> production picker/save/cancel -> production brightness -> real SH1106 contrast; 4 levels, dim/activity/wake");
+#endif
   loRaFishPage=0;
   enter();assert(loRaFishPage==0 && cleans==0); // Aquarium click cannot clean.
   task.ui_started_at=tick; // Ordinary Enter within rescue window must not rescue.
@@ -203,7 +258,9 @@ int digitalRead(int);
 int analogRead(int);
 void pinMode(int,int);
 """)
-    for board in ["wio-tracker-l1", "wio-tracker-l1-1w", "heltec_v3", "heltec_v4"]:
+    if real_sh1106:
+        write_headers(temp)
+    for board in (["wio-tracker-l1", "wio-tracker-l1-1w"] if real_sh1106 else ["wio-tracker-l1", "wio-tracker-l1-1w", "heltec_v3", "heltec_v4"]):
         target = (root / "variants" / board / "target.cpp").read_text()
         # Extract the literal production object declarations (including conditional flags).
         constructors = "#ifdef DISPLAY_CLASS" + target.split("#ifdef DISPLAY_CLASS", 1)[1].split("bool radio_init", 1)[0]
@@ -216,6 +273,8 @@ void pinMode(int,int);
                         "-DUI_HAS_JOYSTICK="+str(int(board.startswith("wio"))), "-DWIO_TRACKER_L1=1" if board.startswith("wio") else "-DHELv=1",
                         "-DPIN_BACK_BTN=13", "-DJOYSTICK_LEFT=27", "-DJOYSTICK_RIGHT=28", "-DLORAGOTCHI_WATER_EDITION="+str(water), "-DLORAGOTCHI_AIR_EDITION="+str(air),
                         "-I"+str(temp), "-I"+str(root), "-I"+str(root / "src"), str(cpp), str(root / "src/helpers/ui/MomentaryButton.cpp"), "-o", str(temp / "buttons")]
+                if real_sh1106:
+                    args += ["-DTEST_SH1106=1", str(root / "src/helpers/ui/SH1106Display.cpp")]
                 if sound: args.append("-DPIN_BUZZER=12")
                 subprocess.run(args, check=True)
                 print(f"{board} edition={edition} sound={sound}", flush=True)
