@@ -1,9 +1,13 @@
-# LoRaGotchi-DX — DX and Water editions
+> **Station G2 / Station G3 ESP32 / T-Beam 1W LoRagotchi:** these profiles now use
+> a larger single factory app (no OTA). App-only updates do not migrate tables.
+> Back up first; see [migration/data-loss risks](docs/SINGLE-APP-MIGRATION.md).
+
+# LoRaGotchi-DX — DX, Water and Air editions
 
 Current product source candidate: **v1.1.0**, separate from underlying MeshCore
 **v1.18.0** and the **Water v1** species registry. This version was already chosen
 in the supplied in-progress source; it is not a claim that a v1.1.0 release exists.
-The splash now reads **DX v1.1.0** or **WATER v1.1.0** from one shared header.
+The splash now reads **DX v1.1.0**, **WATER v1.1.0** or **AIR v1.1.0** from one shared header.
 Historical v1.0 release notes remain historical.
 
 **Existing target names stay DX by default.** Water is opt-in through the explicit
@@ -11,6 +15,13 @@ aliases below. DX retains the original fish art, four fish-name markers, five-ro
 Display menu and colour setup; Water adds 14 species, the new-game chooser and
 Water markers. Both use the same mesh transport and compatible saved prefix.
 See [Water controls and compatibility](WATER-EDITION.md).
+
+**Air source candidate:** explicit air_* aliases select all 18 requested Air
+animals, including penguin and worm, with mono/colour sprites and bounded
+flight/ground motion. Existing targets remain DX/Water. Read
+[Air IDs, controls, saves and negotiated fish fallback](AIR-EDITION.md) before
+mixed-edition tests. Earlier Air-stack builds passed hosted compilation; the combined integration
+requires its own exact-revision checks. Physical hardware acceptance remains unverified.
 
 LoRaGotchi is a virtual LoRa fish built on MeshCore, originally by M0YNW,
 with contributor work retained in this repository.
@@ -246,3 +257,19 @@ See [`NOTICE`](NOTICE) for attribution details.
 ## License
 
 MIT. See [`LICENSE`](LICENSE).
+
+## Air edition build targets
+
+Use the existing GitHub firmware-build policy; do not run every inherited target.
+The manual Air owner workflow selects these environments and their DX/Water
+controls after host checks (publication/CI permission is still required):
+
+- air_heltec_v3_ble — ESP32 application BIN
+- air_heltec_v4_oled_ble — ESP32 application BIN
+- air_heltec_t096_ble — nRF52 create_uf2
+
+Additional aliases mirror Water: air_thinknode_m2_ble, air_m5stack_cardputer,
+air_heltec_t114_ble, air_lilygo_tdeck_ble, air_lilygo_tdeck_usb,
+air_rak4631_ble and air_rak4630_ble. They inherit unchanged hardware, RF and memory
+profiles, not a hardware acceptance claim. Details and remaining gates:
+[AIR-EDITION.md](AIR-EDITION.md).

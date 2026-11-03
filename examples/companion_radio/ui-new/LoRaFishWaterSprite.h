@@ -8,7 +8,7 @@ namespace LoRaFishWaterSprite {
 template<class Display, class Colour>
 inline void draw(Display& d,int x,int y,bool right,uint16_t id,uint8_t stage,
                  uint32_t now,Colour body,Colour fins,Colour eyes,Colour background) {
-  if (!id || !LoRaFishSpecies::known(id)) return; // caller preserves legacy fish
+  if (!id || !LoRaFishSpecies::waterKnown(id)) return; // caller preserves legacy fish
   const unsigned phase=(now/280U)&1U;
   const unsigned width=stage==0?20:stage==1?26:32;
   const unsigned height=stage==0?15:stage==1?19:24;

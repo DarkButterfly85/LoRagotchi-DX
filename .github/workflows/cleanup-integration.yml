@@ -1,0 +1,223 @@
+name: Combined Air Water DX integration validation
+permissions:
+  contents: read
+concurrency:
+  group: cleanup-integration-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        ref: ${{ github.sha }}
+        fetch-depth: 3
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+    - run: pip install platformio==6.1.19
+    - run: pio test -e native -e native_water -e native_air -e native_kiss_modem
+    - run: python3 test/boards/check_edition_targets.py
+    - run: python3 test/boards/check_experimental_screens.py
+    - run: python3 test/boards/check_single_app_partitions.py
+    - run: python3 test/ui/check_tdeck_merge.py
+    - name: Self-contained production host checks
+      run: "set -euo pipefail\npython3 - <<'PY'\nimport os, subprocess\nfrom pathlib import Path\nfor test in sorted(Path('test/ui').glob('check_*.py')):\n\
+        \    if test.name in {'check_dx_colour_retries.py','check_busy_mesh.py'}:\n        print(f'NOT RUN standalone:\
+        \ {test.name} requires independent RX/Aquarium checkout',flush=True)\n        continue\n    subprocess.run(['python3',str(test)],check=True)\n\
+        \    if test.name in {'check_menu_navigation.py','check_emoji_dx.py'}:\n        subprocess.run(['python3',str(test)],check=True,\n\
+        \            env=dict(os.environ,LORAGOTCHI_TEST_EDITION='1'))\nsubprocess.run(['python3','test/ble/check_pairing_pin.py'],check=True)\n\
+        PY\n"
+  build:
+    needs: checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        include:
+        - environment: LilyGo_TBeam_1W_LoRaGotchi_DX_ble
+          target: build
+          format: bin
+          tier: experimental-single-app
+        - environment: Station_G2_LoRaGotchi_DX_ble
+          target: build
+          format: bin
+          tier: experimental-single-app
+        - environment: Station_G3_ESP32_LoRaGotchi_DX_ble
+          target: build
+          format: bin
+          tier: experimental-single-app
+        - environment: water_lilygo_tbeam_1w_ble
+          target: build
+          format: bin
+          tier: experimental-single-app
+        - environment: water_station_g2_ble
+          target: build
+          format: bin
+          tier: experimental-single-app
+        - environment: water_station_g3_esp32_ble
+          target: build
+          format: bin
+          tier: experimental-single-app
+        - environment: air_lilygo_tbeam_1w_ble
+          target: build
+          format: bin
+          tier: experimental-single-app
+        - environment: air_station_g2_ble
+          target: build
+          format: bin
+          tier: experimental-single-app
+        - environment: air_station_g3_esp32_ble
+          target: build
+          format: bin
+          tier: experimental-single-app
+        - environment: air_heltec_v3_ble
+          target: build
+          format: bin
+          tier: owner-V3
+        - environment: air_heltec_v4_oled_ble
+          target: build
+          format: bin
+          tier: owner-V4_OLED
+        - environment: air_heltec_t096_ble
+          target: create_uf2
+          format: uf2
+          tier: owner-T096
+        - environment: water_heltec_v3_ble
+          target: build
+          format: bin
+          tier: owner-V3
+        - environment: water_heltec_v4_oled_ble
+          target: build
+          format: bin
+          tier: owner-V4_OLED
+        - environment: water_heltec_t096_ble
+          target: create_uf2
+          format: uf2
+          tier: owner-T096
+        - environment: Heltec_v3_LoRaFish_companion_ble
+          target: build
+          format: bin
+          tier: owner-V3
+        - environment: heltec_v4_LoRaFish_companion_ble
+          target: build
+          format: bin
+          tier: owner-V4_OLED
+        - environment: Heltec_t096_LoRaFish_companion_ble
+          target: create_uf2
+          format: uf2
+          tier: owner-T096
+        - environment: WioTrackerL1_LoRaGotchi_DX_ble
+          target: create_uf2
+          format: uf2
+          tier: owner-L1
+        - environment: water_wio_tracker_l1_ble
+          target: create_uf2
+          format: uf2
+          tier: owner-L1
+        - environment: air_wio_tracker_l1_ble
+          target: create_uf2
+          format: uf2
+          tier: owner-L1
+        - environment: WioTrackerL1-1W_LoRaGotchi_DX_ble
+          target: create_uf2
+          format: uf2
+          tier: owner-L1_1W
+        - environment: water_wio_tracker_l1_1w_ble
+          target: create_uf2
+          format: uf2
+          tier: owner-L1_1W
+        - environment: air_wio_tracker_l1_1w_ble
+          target: create_uf2
+          format: uf2
+          tier: owner-L1_1W
+        - environment: ThinkNode_M2_LoRaFish_companion_ble
+          target: build
+          format: bin
+          tier: shared-SH1106-control
+        - environment: LilyGo_TDeck_loragotchi_dx_ble_touch_test
+          target: build
+          format: bin
+          tier: T-Deck-semantic-control
+        - environment: air_lilygo_tdeck_ble
+          target: build
+          format: bin
+          tier: T-Deck-semantic-control
+        - environment: water_lilygo_tdeck_ble
+          target: build
+          format: bin
+          tier: T-Deck-semantic-control
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        ref: ${{ github.sha }}
+        fetch-depth: 3
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+    - run: pip install platformio==6.1.19
+    - name: Build selected board only
+      env:
+        BUILD_ENV: ${{ matrix.environment }}
+        BUILD_TARGET: ${{ matrix.target }}
+      run: "set -euo pipefail\nif [ \"$BUILD_TARGET\" = create_uf2 ]; then\n  pio run -e \"$BUILD_ENV\" -t create_uf2\
+        \ -j 1 2>&1 | tee build.log\nelse\n  pio run -e \"$BUILD_ENV\" -j 1 2>&1 | tee build.log\nfi\n"
+    - name: Stage exact-revision images and partition evidence
+      env:
+        BUILD_ENV: ${{ matrix.environment }}
+        FORMAT: ${{ matrix.format }}
+        TIER: ${{ matrix.tier }}
+      run: "set -euo pipefail\nmkdir -p artifact\ncp \".pio/build/$BUILD_ENV/firmware.$FORMAT\" artifact/\ncp \"\
+        .pio/build/$BUILD_ENV/firmware.elf\" artifact/\nif [ \"$FORMAT\" = bin ]; then\n  cp \".pio/build/$BUILD_ENV/partitions.bin\"\
+        \ artifact/\n  cp \".pio/build/$BUILD_ENV/bootloader.bin\" artifact/\nfi\ngit rev-parse HEAD > artifact/source-sha.txt\n\
+        pio project config --json-output > artifact/platformio-config.json\npio pkg list -e \"$BUILD_ENV\" > artifact/dependencies.txt\n\
+        cp WATER-EDITION.md docs/RAK4630-EXPERIMENTAL.md docs/SINGLE-APP-MIGRATION.md artifact/\ncp build.log artifact/\n\
+        echo 'Compilation only; no hardware acceptance. ESP32 app BIN is not a merged installer. Validate bounds\
+        \ before flashing.' > artifact/BUILD-NOTES.txt\npython3 - <<'META'\nimport json, os, shutil\nfrom pathlib\
+        \ import Path\nenv=os.environ['BUILD_ENV']\ncfg={s:dict(v) for s,v in json.loads(Path('artifact/platformio-config.json').read_text())}['env:'+env]\n\
+        board=cfg['board']\n\nif cfg.get('board_build.partitions')=='variants/loragotchi_experimental/single_app.csv':\n\
+        \    shutil.copy2(cfg['board_build.partitions'],'artifact/partition-source.csv')\npaths=[Path('boards')/(board+'.json')]+list((Path.home()/'.platformio/platforms').glob('*/boards/'+board+'.json'))\n\
+        shutil.copy2(next(p for p in paths if p.is_file()),'artifact/board.json')\nif os.environ['FORMAT']=='uf2':shutil.copy2(cfg['board_build.ldscript'],'artifact/application.ld')\n\
+        Path('artifact/environment.txt').write_text(env)\nPath('artifact/classification.txt').write_text(os.environ['TIER'])\n\
+        META\n(cd artifact && sha256sum * > SHA256SUMS)\n"
+    - uses: actions/upload-artifact@v4
+      with:
+        name: targeted-${{ matrix.environment }}-${{ github.sha }}
+        path: artifact/*
+        retention-days: 14
+        if-no-files-found: error
+    - name: Preserve diagnostics including size failures
+      if: always()
+      env:
+        BUILD_ENV: ${{ matrix.environment }}
+      run: 'mkdir -p diagnostic
+
+        [ ! -f build.log ] || cp build.log diagnostic/
+
+        find ".pio/build/$BUILD_ENV" -maxdepth 1 -type f \( -name ''*.elf'' -o -name ''*.map'' \) -exec cp {} diagnostic/
+        \; 2>/dev/null || true
+
+        git rev-parse HEAD > diagnostic/source-sha.txt
+
+        printf ''%s'' "$BUILD_ENV" > diagnostic/environment.txt
+
+        echo ''DIAGNOSTICS ONLY. Oversized ELF is not installable and must never be flashed.'' > diagnostic/NOT-FOR-FLASHING.txt
+
+        (cd diagnostic && sha256sum * > SHA256SUMS)
+
+        '
+    - uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: diagnostic-${{ matrix.environment }}-${{ github.sha }}
+        path: diagnostic/*
+        retention-days: 14
+        if-no-files-found: error
+'on':
+  push:
+    branches:
+    - integration/air-water-cleanup-20261103
+  workflow_dispatch: {}

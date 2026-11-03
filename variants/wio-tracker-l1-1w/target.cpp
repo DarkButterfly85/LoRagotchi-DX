@@ -21,7 +21,12 @@ EnvironmentSensorManager sensors = EnvironmentSensorManager();
 
 #ifdef DISPLAY_CLASS
   DISPLAY_CLASS display;
+  // LoRagotchi uses centre double-click for Back; retain instant stock clicks.
+#ifdef LORAFISH_UI
+  MomentaryButton user_btn(PIN_USER_BTN, 1000, true, false, true);
+#else
   MomentaryButton user_btn(PIN_USER_BTN, 1000, true, false, false);
+#endif
   MomentaryButton joystick_left(JOYSTICK_LEFT, 1000, true, false, false);
   MomentaryButton joystick_right(JOYSTICK_RIGHT, 1000, true, false, false);
   MomentaryButton back_btn(PIN_BACK_BTN, 1000, true, false, true);

@@ -59,6 +59,7 @@ ColorVal UIColor::primary_txt=1, UIColor::secondary_txt=1, UIColor::window_bkg=0
 static uint32_t tick=100000;
 unsigned long millis(){return tick;}
 static int settingsWrites=0,petWrites=0,cleans=0,resets=0,guesses=0;
+static bool loragotchiDXAirFallback=false;
 static bool canBreed=false;
 static bool loRaFishCanBreed(){return canBreed;}
 static void saveLoRaFishSettings(){++settingsWrites;}
@@ -205,7 +206,7 @@ public:
   void gotoHomeScreen(){setCurrScreen(home);}
   void setCurrScreen(UIScreen*);
   char checkDisplayOn(char);
-  char handleLongPress(char);
+  char handleLongPress(char, bool = true);
   char handleDoubleClick(char);
   void previewLoRaFishSoundSetting(uint8_t);
 };
@@ -224,20 +225,20 @@ static uint8_t pageFor(LoRaFishSetting key){
 }
 int main(){
   UITask task;
-  assert(loRaFishDisplayOptionCount()==(LORAGOTCHI_WATER_EDITION ? 6 : 5));
-#if LORAGOTCHI_WATER_EDITION
+  assert(loRaFishDisplayOptionCount()==(LORAGOTCHI_SPECIES_EDITION ? 6 : 5));
+#if LORAGOTCHI_SPECIES_EDITION
   // New-game picker enters only after notices/adoption; browsing/cancel never rolls.
   for(bool colour:{false,true}) {
     loRaFishColorDisplay=colour;loRaFishNeedsPetSetup=true;loRaFishNeedsAppearanceSetup=colour;
     loRaFishPage=LORAFISH_PET_SETUP_PAGE;loRaFishPetSetupField=0;loRaFishMysterySeed=0;loRaFishSpecies=0;
     task.display.clearBounds();drawLoRaFishPetSetup(task.display);
     task.handleLongPress(KEY_ENTER);assert(loRaFishValuePicker.key()==LoRaFishSetting::Species);
-    for(int i=0;i<14;++i)shortPress(KEY_NEXT);
+    for(int i=0;i<LoRaFishSpecies::selectableCount;++i)shortPress(KEY_NEXT);
     assert(loRaFishMysterySeed==0);task.handleDoubleClick(KEY_PREV);assert(!loRaFishMysterySeed);
     task.handleLongPress(KEY_ENTER);
-    for(int i=0;i<14;++i)shortPress(KEY_NEXT);
+    for(int i=0;i<LoRaFishSpecies::selectableCount;++i)shortPress(KEY_NEXT);
     task.handleLongPress(KEY_ENTER);auto mystery=loRaFishSpecies;auto seed=loRaFishMysterySeed;
-    assert(seed && mystery<14);shortPress(KEY_NEXT);assert(loRaFishPetSetupField==1);
+    assert(seed && LoRaFishSpecies::known(mystery));shortPress(KEY_NEXT);assert(loRaFishPetSetupField==1);
     task.handleLongPress(KEY_ENTER);auto b=loRaFishColor,sc=loRaFishScaleColor,e=loRaFishEyeColor;
     task.handleLongPress(KEY_ENTER);assert(b==loRaFishColor && sc==loRaFishScaleColor && e==loRaFishEyeColor);
     assert(seed==loRaFishMysterySeed && mystery==loRaFishSpecies);
@@ -432,7 +433,7 @@ if __name__ == '__main__':
         cpp=Path(temporary)/'menu-host-check.cpp';cpp.write_text('\n'.join(parts))
         for sound in [False,True]:
             out=Path(temporary)/f'menu-host-check-{int(sound)}'
-            cmd=['g++','-std=c++17','-DLORAGOTCHI_WATER_EDITION='+os.environ.get('LORAGOTCHI_TEST_EDITION','0'),'-I',str(root),'-I',str(root/'src'),str(cpp),'-o',str(out)]
+            cmd=['g++','-std=c++17','-DLORAGOTCHI_WATER_EDITION='+os.environ.get('LORAGOTCHI_TEST_EDITION','0'),'-DLORAGOTCHI_AIR_EDITION='+os.environ.get('LORAGOTCHI_TEST_AIR','0'),'-I',str(root),'-I',str(root/'src'),str(cpp),'-o',str(out)]
             if sound:cmd+=['-DPIN_BUZZER=6']
             subprocess.run(cmd,check=True)
             subprocess.run([str(out)],check=True)
