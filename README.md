@@ -1,3 +1,7 @@
+> **Station G2 / Station G3 ESP32 / T-Beam 1W LoRagotchi:** these profiles now use
+> a larger single factory app (no OTA). App-only updates do not migrate tables.
+> Back up first; see [migration/data-loss risks](docs/SINGLE-APP-MIGRATION.md).
+
 # LoRaGotchi-DX — DX, Water and Air editions
 
 Current product source candidate: **v1.1.0**, separate from underlying MeshCore

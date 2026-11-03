@@ -1,3 +1,7 @@
+> **Station G2 / Station G3 ESP32 / T-Beam 1W LoRagotchi:** these profiles now use
+> a larger single factory app (no OTA). App-only updates do not migrate tables.
+> Back up first; see [migration/data-loss risks](docs/SINGLE-APP-MIGRATION.md).
+
 > **Air source candidate:** air_* environments enable CHOOSE AIR PET and 18
 > animal choices, on both mono and colour displays. Old saves stay fish/Water;
 > unsupported mesh peers explicitly receive a fish, never an unnegotiated Air ID.

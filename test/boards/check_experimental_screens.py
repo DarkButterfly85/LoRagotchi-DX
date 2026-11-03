@@ -15,6 +15,16 @@ allowed = {'SSD1306Display', 'SH1106Display', 'SH1107Display', 'ST7735Display',
 rejected_size_flags = {'-fno-inline-small-functions', '-fno-inline-functions-called-once'}
 for section, options in config.items():
     assert rejected_size_flags.isdisjoint(options.get('build_flags', [])), section
+single_app_profiles = {
+    'LilyGo_TBeam_1W_LoRaGotchi_DX_ble',
+    'Station_G2_LoRaGotchi_DX_ble',
+    'Station_G3_ESP32_LoRaGotchi_DX_ble',
+}
+partition_override = {
+    'board_build.partitions': 'variants/loragotchi_experimental/single_app.csv',
+    'board_upload.flash_size': '16MB',
+    'board_upload.maximum_size': '2621440',
+}
 seen = set()
 for row in manifest['targets']:
     name = row['environment']
@@ -32,10 +42,14 @@ for row in manifest['targets']:
     assert 'PIN_USER_BTN=-1' not in joined, name
     assert '+<../examples/companion_radio/ui-new/*.cpp>' in candidate['build_src_filter'], name
     assert not any('ui-tiny' in x or 'ui-orig' in x for x in candidate['build_src_filter']), name
-    # The original board, partitions, memory layout and all radio/pin flags stay inherited.
+    # Hardware/RF stays inherited. Only these three LoRagotchi layouts may differ.
+    if name in single_app_profiles:
+        for key, value in partition_override.items():
+            assert str(candidate[key]) == value, (name, key)
     for key, value in parent.items():
         if key not in {'extends', 'build_flags', 'build_src_filter', 'lib_deps'}:
-            assert candidate[key] == value, (name, key)
+            assert candidate[key] == value or (name in single_app_profiles and
+                key in partition_override and str(candidate[key]) == partition_override[key]), (name, key)
     assert flags[:len(parent['build_flags'])] == parent['build_flags'], name
     assert flags[len(parent['build_flags']):] == ['-D LORAFISH_UI=1',
         '-D LORAGOTCHI_EXPERIMENTAL=1', '-D AUTO_OFF_MILLIS=30000'] + [
@@ -47,4 +61,4 @@ assert seen == {s[4:] for s in config if s.startswith('env:') and
                 not s.startswith(('env:water_','env:air_')) and s != 'env:RAK_4630_LoRaGotchi_DX_ble' and
                 '-D LORAGOTCHI_EXPERIMENTAL=1' in config[s].get('build_flags', [])}
 assert len(seen) == 42
-print(f'PASS: {len(seen)} resolved TFT/OLED DX profiles; original hardware/RF/memory options preserved')
+print(f'PASS: {len(seen)} resolved TFT/OLED DX profiles; original hardware/RF preserved; three audited single-app layouts')
