@@ -206,7 +206,7 @@ public:
   void gotoHomeScreen(){setCurrScreen(home);}
   void setCurrScreen(UIScreen*);
   char checkDisplayOn(char);
-  char handleLongPress(char);
+  char handleLongPress(char, bool = true);
   char handleDoubleClick(char);
   void previewLoRaFishSoundSetting(uint8_t);
 };

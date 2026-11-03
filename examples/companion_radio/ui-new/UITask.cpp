@@ -2192,6 +2192,8 @@ static void drawLoRaFishMenuHint(DisplayDriver& display) {
 #if defined(LORAFISH_WATCH_TOUCH)
   // LilyGo T-Watch S3: the footer already shows the taps; only hold needs a hint.
   display.drawTextCentered(display.width()/2, 56, "LONG HOLD:SELECT");
+#elif defined(WIO_TRACKER_L1)
+  display.drawTextCentered(display.width()/2, 56, "CENTER:OK MENU:BACK");
 #else
   display.drawTextCentered(display.width()/2, 56, "1:NEXT 2:BACK L:OK");
 #endif
@@ -2236,7 +2238,11 @@ static void drawLoRaFishValuePicker(DisplayDriver& display) {
   display.setColor(UIColor::primary_txt);
   display.drawTextCentered(w/2, 27, text);
   display.setColor(UIColor::secondary_txt);
+#if defined(WIO_TRACKER_L1)
+  display.drawTextCentered(w/2, 42, "Center to save");
+#else
   display.drawTextCentered(w/2, 42, "Hold to save");
+#endif
   drawLoRaFishMenuHint(display);
 }
 
@@ -2674,7 +2680,11 @@ static void drawLoRaFishDX(DisplayDriver& display) {
     display.drawTextCentered(w/2,27,loragotchiDXVisit.phase == LoRaFishVisit::NoReply ? "NO REPLY - RETRY" : returnStatus);
     display.setColor(UIColor::secondary_txt);
 #if !defined(LORAFISH_WATCH_TOUCH)   // LilyGo T-Watch S3: the hold hint is at the bottom
+#if defined(WIO_TRACKER_L1)
+    display.drawTextCentered(w/2,39,"Center to choose");
+#else
     display.drawTextCentered(w/2,39,"Hold to choose");
+#endif
 #endif
   } else {
     ContactInfo c;
@@ -2700,6 +2710,13 @@ static void drawLoRaFishDX(DisplayDriver& display) {
     if (loragotchiDXHome.away || loragotchiDXHome.committing) hint = "LONG HOLD:RECALL";
     else if (loragotchiDXHome.pending) hint = "";   // nothing to hold for while waiting
     else hint = "LONG HOLD:SEND";
+  }
+#elif defined(WIO_TRACKER_L1)
+  const char* hint = "CENTER:OPEN MENU:BACK";
+  if (choosingContact) {
+    if (loragotchiDXHome.away || loragotchiDXHome.committing) hint = "CENTER:RECALL M:BACK";
+    else if (loragotchiDXHome.pending) hint = "MENU:BACK";
+    else hint = "CENTER:SEND MENU:BACK";
   }
 #else
   const char* hint = "1:NEXT 2:BACK L:OPEN";
@@ -4634,9 +4651,14 @@ void UITask::loop() {
 #if UI_HAS_JOYSTICK
   int ev = user_btn.check();
   if (ev == BUTTON_EVENT_CLICK) {
+#if defined(LORAFISH_UI) && defined(WIO_TRACKER_L1)
+    // L1 has dedicated arrows and Back: centre is Select, not Next.
+    c = handleLongPress(KEY_ENTER, false);
+#else
     c = checkDisplayOn(KEY_ENTER);
+#endif
   } else if (ev == BUTTON_EVENT_LONG_PRESS) {
-    c = handleLongPress(KEY_ENTER);  // REVISIT: could be mapped to different key code
+    c = handleLongPress(KEY_ENTER);  // Retains startup rescue and aquarium cleaning.
 #ifdef LORAFISH_UI
   } else if (ev == BUTTON_EVENT_DOUBLE_CLICK) {
     c = handleDoubleClick(KEY_PREV);
@@ -4658,8 +4680,8 @@ void UITask::loop() {
   if (ev == BUTTON_EVENT_TRIPLE_CLICK) {
     c = handleTripleClick(KEY_SELECT);
 #if defined(LORAFISH_UI) && defined(WIO_TRACKER_L1)
-  } else if (ev == BUTTON_EVENT_DOUBLE_CLICK) {
-    // L1 Menu/User key is separate from the joystick centre button.
+  } else if (ev == BUTTON_EVENT_CLICK || ev == BUTTON_EVENT_DOUBLE_CLICK) {
+    // Wait for the recognizer: a triple must toggle sound, not Back first.
     c = handleDoubleClick(KEY_PREV);
 #endif
   }
@@ -4879,9 +4901,9 @@ char UITask::checkDisplayOn(char c) {
   return c;
 }
 
-char UITask::handleLongPress(char c) {
+char UITask::handleLongPress(char c, bool isHold) {
   // Keep MeshCore's startup rescue gesture.
-  if (millis() - ui_started_at < 8000) {
+  if (isHold && millis() - ui_started_at < 8000) {
     the_mesh.enterCLIRescue();
     return 0;
   }
@@ -4947,7 +4969,7 @@ char UITask::handleLongPress(char c) {
   }
   if (_display != NULL && _display->isOn()) loRaFishRegisterDisplayActivity(*_display);
   if (loRaFishPage == 0) {
-    if (loRaFishPoopCount > 0 && !loRaFishCleaning) {
+    if (isHold && loRaFishPoopCount > 0 && !loRaFishCleaning) {
       startLoRaFishCleaning();
       showAlert("Cleaning tank!", 450);
       _next_refresh = 0;

@@ -109,16 +109,34 @@ Most nodes use a single user button. Hold it for about one second for a long-pre
 | Long-press | Select the highlighted item, save the candidate value, or perform the current screen's action. |
 | Triple-click | Toggle global buzzer quiet mode when the board has a buzzer. |
 
-On the Wio Tracker L1 OLED build profiles (standard and 1W), joystick left/right navigate; a short centre
-press also advances, and a one-second centre hold selects. Double-click the
-centre or the separate Menu/User key to go Back (Options returns to the
-aquarium). The separate key retains triple-click for the buzzer toggle; its
-single click is not Select. Joystick up/down are not mapped by this UI. Centre
-single clicks wait for the 280 ms multi-click window, like Heltec V3/V4.
+### Wio Tracker L1 OLED (standard and 1W; DX, Water and Air)
+
+- **Joystick left/right:** previous/next page, row or candidate value.
+- **Centre single-click:** Enter/Select; opens the highlighted item or saves the
+  candidate value. On the aquarium it does nothing; use right to reach Stats.
+- **Small Menu/User single-click:** Back one level; cancel an unsaved candidate.
+  From Options, Back returns to the aquarium.
+- **Centre hold (one second):** retains Select and aquarium cleaning when waste
+  is present. During the first eight seconds it retains CLI rescue; a centre
+  single-click never enters rescue.
+- **Centre or Menu double-click:** retains Back for compatibility.
+- **Menu triple-click:** retains the global buzzer quiet-mode toggle, without
+  first backing out. Centre triple-click is not mapped. Up/down are not mapped.
+
+Centre and Menu clicks wait for the 280 ms multi-click window so double/triple
+gestures do not first select, save, transmit, or go Back. A sleeping display's
+first single/double-click or centre hold only wakes it (except startup hold
+rescue). Enter keeps all existing notice, alert, reset-confirmation and
+sleeping-pet send guards. Opening a DX picker or Advert menu sends nothing; a
+second explicit Enter performs the selected action. For the single-button
+instructions below, L1 left/right replaces browsing clicks, centre Enter
+replaces Select/save holds, and Menu replaces Back double-clicks. Egg-adoption
+Enter retains the existing Select/skip action; left/right browses egg tanks.
+Other boards' controls are unchanged. L1 footers show **CENTER:OK MENU:BACK**.
 
 During the first eight seconds after startup, long-press is reserved for MeshCore's CLI rescue gesture. After that, the LoRaGotchi menu actions are available.
 
-When the display has turned off, the first click, double-click, or long-press only wakes the screen; it does not select, save, advertise, or clean. On the aquarium, short-click always advances to Stats and long-press starts cleaning if 💩 is present.
+When the display has turned off, the first click, double-click, or long-press only wakes the screen; it does not select, save, advertise, or clean. On single-button nodes, aquarium short-click advances to Stats; long-press starts cleaning if 💩 is present.
 
 Menu footers use **1:NEXT 2:BACK L:OK** for these three gestures. The Cardputer
 keyboard uses arrows/WASD to navigate, Enter/Space to select, and Escape/Backspace to go back.
