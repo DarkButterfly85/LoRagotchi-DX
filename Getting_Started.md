@@ -409,3 +409,14 @@ Adoption retains the five-minute egg/hatching stage. Existing pets are not repla
 Visitor breeding now samples finer hues between parents. Older receivers still
 show a nearest-palette fallback. The outgoing fish label strips emoji, while your
 node name and discovery markers stay unchanged.
+
+### L1 habitat environments on the Air source line
+
+The focused Air repair branch includes both catalogues; it does not merge the
+separate current-main source line. Existing DX names remain unchanged:
+WioTrackerL1_LoRaGotchi_DX_ble, WioTrackerL1-1W_LoRaGotchi_DX_ble.
+Explicit Water aliases: water_wio_tracker_l1_ble,
+water_wio_tracker_l1_1w_ble; Air aliases: air_wio_tracker_l1_ble,
+air_wio_tracker_l1_1w_ble. Each inherits its exact DX hardware/memory setup
+and only adds its habitat flag. The hosted Air/DX/Water workflow offers L1 and
+L1_1W board choices. Compilation is not physical-device acceptance.

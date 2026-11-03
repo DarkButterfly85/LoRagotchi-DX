@@ -96,17 +96,17 @@ void pinMode(int,int);
         # Extract the literal production object declarations (including conditional flags).
         constructors = "#ifdef DISPLAY_CLASS" + target.split("#ifdef DISPLAY_CLASS", 1)[1].split("bool radio_init", 1)[0]
         constructors = "\n".join(line for line in constructors.splitlines() if "DISPLAY_CLASS display" not in line)
-        for water in [0, 1]:
+        for edition, water, air in [("DX", 0, 0), ("Water", 1, 0), ("Air", 0, 1)]:
             for sound in [False, True]:
                 cpp = temp / "buttons.cpp"
                 cpp.write_text("\n".join(parts + [preamble, constructors, tests]))
                 args = ["g++", "-std=c++17", "-DDISPLAY_CLASS=1", "-DPIN_USER_BTN=29" if board.startswith("wio") else "-DPIN_USER_BTN=0",
                         "-DUI_HAS_JOYSTICK="+str(int(board.startswith("wio"))), "-DWIO_TRACKER_L1=1" if board.startswith("wio") else "-DHELv=1",
-                        "-DPIN_BACK_BTN=13", "-DJOYSTICK_LEFT=27", "-DJOYSTICK_RIGHT=28", "-DLORAGOTCHI_WATER_EDITION="+str(water),
+                        "-DPIN_BACK_BTN=13", "-DJOYSTICK_LEFT=27", "-DJOYSTICK_RIGHT=28", "-DLORAGOTCHI_WATER_EDITION="+str(water), "-DLORAGOTCHI_AIR_EDITION="+str(air),
                         "-I"+str(temp), "-I"+str(root), "-I"+str(root / "src"), str(cpp), str(root / "src/helpers/ui/MomentaryButton.cpp"), "-o", str(temp / "buttons")]
                 if sound: args.append("-DPIN_BUZZER=12")
                 subprocess.run(args, check=True)
-                print(f"{board} water={water} sound={sound}", flush=True)
+                print(f"{board} edition={edition} sound={sound}", flush=True)
                 subprocess.run([str(temp / "buttons")], check=True)
 
     # Stock MeshCore keeps immediate centre clicks; only LoRagotchi opts in.
