@@ -1,3 +1,12 @@
+> **Station G2 / Station G3 ESP32 / T-Beam 1W LoRagotchi:** these profiles now use
+> a larger single factory app (no OTA). App-only updates do not migrate tables.
+> Back up first; see [migration/data-loss risks](docs/SINGLE-APP-MIGRATION.md).
+
+> **Air source candidate:** air_* environments enable CHOOSE AIR PET and 18
+> animal choices, on both mono and colour displays. Old saves stay fish/Water;
+> unsupported mesh peers explicitly receive a fish, never an unnegotiated Air ID.
+> Read [Air controls and compatibility](AIR-EDITION.md). Not a tested release.
+
 > **Water candidate 1:** All 14 Water species, independent new-game Mystery egg/
 > Mystery colours, and negotiated S1 visits. Existing pets migrate to fish;
 > LEG1 adopted eggs preserve accepted fish identity/genetics and bypass Mystery
@@ -100,9 +109,34 @@ Most nodes use a single user button. Hold it for about one second for a long-pre
 | Long-press | Select the highlighted item, save the candidate value, or perform the current screen's action. |
 | Triple-click | Toggle global buzzer quiet mode when the board has a buzzer. |
 
+### Wio Tracker L1 OLED (standard and 1W; DX, Water and Air)
+
+- **Joystick left/right:** previous/next page, row or candidate value.
+- **Centre single-click:** Enter/Select; opens the highlighted item or saves the
+  candidate value. On the aquarium it does nothing; use right to reach Stats.
+- **Small Menu/User single-click:** Back one level; cancel an unsaved candidate.
+  From Options, Back returns to the aquarium.
+- **Centre hold (one second):** retains Select and aquarium cleaning when waste
+  is present. During the first eight seconds it retains CLI rescue; a centre
+  single-click never enters rescue.
+- **Centre or Menu double-click:** retains Back for compatibility.
+- **Menu triple-click:** retains the global buzzer quiet-mode toggle, without
+  first backing out. Centre triple-click is not mapped. Up/down are not mapped.
+
+Centre and Menu clicks wait for the 280 ms multi-click window so double/triple
+gestures do not first select, save, transmit, or go Back. A sleeping display's
+first single/double-click or centre hold only wakes it (except startup hold
+rescue). Enter keeps all existing notice, alert, reset-confirmation and
+sleeping-pet send guards. Opening a DX picker or Advert menu sends nothing; a
+second explicit Enter performs the selected action. For the single-button
+instructions below, L1 left/right replaces browsing clicks, centre Enter
+replaces Select/save holds, and Menu replaces Back double-clicks. Egg-adoption
+Enter retains the existing Select/skip action; left/right browses egg tanks.
+Other boards' controls are unchanged. L1 footers show **CENTER:OK MENU:BACK**.
+
 During the first eight seconds after startup, long-press is reserved for MeshCore's CLI rescue gesture. After that, the LoRaGotchi menu actions are available.
 
-When the display has turned off, the first click, double-click, or long-press only wakes the screen; it does not select, save, advertise, or clean. On the aquarium, short-click always advances to Stats and long-press starts cleaning if 💩 is present.
+When the display has turned off, the first click, double-click, or long-press only wakes the screen; it does not select, save, advertise, or clean. On single-button nodes, aquarium short-click advances to Stats; long-press starts cleaning if 💩 is present.
 
 Menu footers use **1:NEXT 2:BACK L:OK** for these three gestures. The Cardputer
 keyboard uses arrows/WASD to navigate, Enter/Space to select, and Escape/Backspace to go back.
@@ -393,3 +427,14 @@ Adoption retains the five-minute egg/hatching stage. Existing pets are not repla
 Visitor breeding now samples finer hues between parents. Older receivers still
 show a nearest-palette fallback. The outgoing fish label strips emoji, while your
 node name and discovery markers stay unchanged.
+
+### L1 habitat environments on the Air source line
+
+The focused Air repair branch includes both catalogues; it does not merge the
+separate current-main source line. Existing DX names remain unchanged:
+WioTrackerL1_LoRaGotchi_DX_ble, WioTrackerL1-1W_LoRaGotchi_DX_ble.
+Explicit Water aliases: water_wio_tracker_l1_ble,
+water_wio_tracker_l1_1w_ble; Air aliases: air_wio_tracker_l1_ble,
+air_wio_tracker_l1_1w_ble. Each inherits its exact DX hardware/memory setup
+and only adds its habitat flag. The hosted Air/DX/Water workflow offers L1 and
+L1_1W board choices. Compilation is not physical-device acceptance.

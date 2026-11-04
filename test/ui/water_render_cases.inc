@@ -37,6 +37,13 @@ int main(int argc,char** argv) {
   DisplayDriver fallback,unknown;LoRaFishAppearance p={4,2,1};
   drawFishSpriteForStage(fallback,32,20,true,2,p,0);
   drawFishSpriteForStage(unknown,32,20,true,2,p,65535);assert(fallback.pixels==unknown.pixels);
+  // Air is intentionally unsupported in Water art, never a mask array index.
+  for(unsigned id=256;id<274;++id) {
+    DisplayDriver oldFish,airFallback;
+    drawFishSpriteForStage(oldFish,32,20,true,2,p,0);
+    drawFishSpriteForStage(airFallback,32,20,true,2,p,id);
+    assert(oldFish.pixels==airFallback.pixels);
+  }
   // Every allele is presentation-only, all stages and mirror directions.
   loRaFishColorDisplay=true;
   for(unsigned id=1;id<14;++id)for(unsigned allele=0;allele<248;++allele) {

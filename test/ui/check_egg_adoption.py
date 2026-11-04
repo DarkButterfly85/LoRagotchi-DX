@@ -3,7 +3,7 @@
 Host evidence only; no physical flash, display, receiver app or RF validation.
 """
 from pathlib import Path
-import runpy, subprocess, tempfile
+import runpy, subprocess, tempfile, os
 fixture=runpy.run_path(str(Path(__file__).with_name('check_fish_lifecycle.py')))
 root=fixture['ROOT']
 source='\n'.join(fixture['parts'][:-1])+fixture['parts'][-1].split('int main() {',1)[0]
@@ -153,5 +153,5 @@ with tempfile.TemporaryDirectory(prefix='dx-egg-') as directory:
     cpp=Path(directory)/'egg.cpp';cpp.write_text(source)
     for platform in ('ESP32','NRF52_PLATFORM','TDECK_NVS'):
         exe=Path(directory)/platform
-        subprocess.run(['g++','-std=c++17','-fsanitize=address,undefined','-fno-omit-frame-pointer','-I',str(root),'-I',str(root/'src'),*(['-DESP32','-DLORAFISH_TDECK_NVS'] if platform=='TDECK_NVS' else ['-D'+platform]),str(cpp),'-o',str(exe)],check=True)
+        subprocess.run(['g++','-std=c++17','-DLORAGOTCHI_AIR_EDITION='+os.environ.get('LORAGOTCHI_TEST_AIR','0'),'-fsanitize=address,undefined','-fno-omit-frame-pointer','-I',str(root),'-I',str(root/'src'),*(['-DESP32','-DLORAFISH_TDECK_NVS'] if platform=='TDECK_NVS' else ['-D'+platform]),str(cpp),'-o',str(exe)],check=True)
         print(platform,flush=True);subprocess.run([str(exe)],check=True)

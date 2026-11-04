@@ -36,6 +36,7 @@ static LoRaFishCommitFrame loRaFishCommitFrame;
 static LoRaFishArrival loRaFishArrival;
 LoRaFishGuestReturn loragotchiDXGuestReturn;
 LoRaFishVisit loragotchiDXVisit;LoRaFishReservation loragotchiDXReservation;
+bool loragotchiDXAirFallback=false;
 bool loragotchiDXLocalColorCapable=false,loragotchiDXLocalHasColorGenes=true,loragotchiDXReturnedFromMonochrome=false;
 uint8_t loragotchiDXLocalColorIndex=1,loragotchiDXLocalScalesColorIndex=2,loragotchiDXLocalEyesColorIndex=3,loragotchiDXLocalMonoPanel=2;
 uint16_t loragotchiDXLocalMonoPixelTint=31,loragotchiDXLocalSpecies=0;

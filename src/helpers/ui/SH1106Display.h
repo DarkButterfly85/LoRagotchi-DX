@@ -18,6 +18,8 @@ class SH1106Display : public DisplayDriver
 {
   Adafruit_SH1106G display;
   bool _isOn;
+  bool _initialized = false;
+  uint8_t _brightness = 255;
   uint8_t _color;
 
   bool i2c_probe(TwoWire &wire, uint8_t addr);
@@ -29,6 +31,7 @@ public:
   bool isOn() override { return _isOn; }
   void turnOn() override;
   void turnOff() override;
+  void setBrightness(uint8_t brightness) override;
   void clear() override;
   void startFrame(ColorVal bkg = UIColor::window_bkg) override;
   void setTextSize(int sz) override;

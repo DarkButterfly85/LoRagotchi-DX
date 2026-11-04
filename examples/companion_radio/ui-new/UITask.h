@@ -81,7 +81,8 @@ class UITask : public AbstractUITask {
 
   // Button action handlers
   char checkDisplayOn(char c);
-  char handleLongPress(char c);
+  // L1 single-click shares Select, but must not invoke hold-only rescue/cleaning.
+  char handleLongPress(char c, bool isHold = true);
   char handleDoubleClick(char c);
   char handleTripleClick(char c);
 

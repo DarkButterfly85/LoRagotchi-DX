@@ -1,0 +1,8 @@
+# LoRagotchi T-Beam 1W / Station G2 / Station G3: 16MB ESP32-S3.
+# Reclaim both default app slots; preserve default data offsets/sizes.
+# No otadata/OTA app. Flash above 0x400000 intentionally unused.
+# Name, Type, SubType, Offset, Size, Flags
+nvs, data, nvs, 0x9000, 0x5000,
+app0, app, factory, 0x10000, 0x280000,
+spiffs, data, spiffs, 0x290000, 0x160000,
+coredump, data, coredump, 0x3f0000, 0x10000,

@@ -1,5 +1,12 @@
 # LoRagotchi-DX Water — v1.1.0 source candidate
 
+> **Air coexistence:** the new shared sender also recognizes an exact S1|A1 ACK.
+> Water still advertises S1 only and keeps IDs 0..13, existing saves, mystery
+> outcomes and artwork. Stored Air IDs are preserved but render as fish; outgoing
+> Air IDs require A1 and otherwise explicitly visit as fish. Pre-Air Water
+> senders remain strict-S1 and conservatively send legacy fish to an Air peer.
+> See [Air interoperability and validation gates](AIR-EDITION.md).
+
 Water edition in the shared LoRagotchi-DX repository; not a published
 firmware release. The underlying MeshCore remains **v1.18.0**; this is not LFG2
 or MeshCore 1.19. Host tests do not imply board binaries, hardware acceptance

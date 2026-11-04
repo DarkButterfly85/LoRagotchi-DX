@@ -9,13 +9,15 @@ import check_dx_handlers as wire
 ROOT=lifecycle.ROOT
 state=chr(10).join(lifecycle.parts[:-1])+lifecycle.parts[-1].split('int main() {',1)[0]+r'''
 int main() {
- resetAt(5000);resetLoRaFishPet();
- assert(loRaFishNeedsPetSetup==bool(LORAGOTCHI_WATER_EDITION));
- loRaFishSpecies=9;loRaFishEggSpecies=12;loRaFishMysterySeed=42;
+ resetAt(5000);resetLoRaFishPet();assert(loRaFishSpecies==LoRaFishSpecies::freshSpecies);
+ assert(loRaFishNeedsPetSetup==bool(LORAGOTCHI_SPECIES_EDITION));
+ for(unsigned id:{9U,256U,273U,65535U}) {
+ loRaFishSpecies=id;loRaFishEggSpecies=id;loRaFishMysterySeed=42;
  loRaFishNeedsPetSetup=true;saveLoRaFishSettings();saveLoRaFish();reboot();
- assert(loRaFishSpecies==9 && loRaFishEggSpecies==12 && loRaFishMysterySeed==42);
- assert(loRaFishNeedsPetSetup==bool(LORAGOTCHI_WATER_EDITION));
- if(LORAGOTCHI_WATER_EDITION)assert(loRaFishPage==LORAFISH_PET_SETUP_PAGE);
+ assert(loRaFishSpecies==id && loRaFishEggSpecies==id && loRaFishMysterySeed==42);
+ assert(loRaFishNeedsPetSetup==bool(LORAGOTCHI_SPECIES_EDITION));
+ if(LORAGOTCHI_SPECIES_EDITION)assert(loRaFishPage==LORAFISH_PET_SETUP_PAGE);
+ }
  puts("PASS reset/load gate, stored Water identity preserved across DX fallback");
 }
 '''
@@ -23,12 +25,12 @@ protocol=wire.pre+wire.structs+wire.globals+wire.receive+wire.methods+r'''
 int main() {
  MyMesh m;ContactInfo owner;owner.id.pub_key[0]=9;m.contacts={owner};
  m.receive(owner,"LFG1|REQ|1|2|2|Pet");
- assert((m.sent.back().find("|S1")!=std::string::npos)==bool(LORAGOTCHI_WATER_EDITION));
+ assert((m.sent.back().find("|S1")!=std::string::npos)==bool(LORAGOTCHI_SPECIES_EDITION));
  loragotchiDXHome={};loragotchiDXHome.pending=true;loragotchiDXHome.destinationKnown=true;
  memcpy(loragotchiDXHome.destinationKey,owner.id.pub_key,32);
  loragotchiDXHome.txid=7;loragotchiDXHome.fishid=8;loragotchiDXLocalSpecies=13;
  m.receive(owner,"LFG1|ACK|7|8|S1");
- assert(m.sent.back().find(LORAGOTCHI_WATER_EDITION ? "|S1|13" : "|S1|0")!=std::string::npos);
+ assert(m.sent.back().find(LORAGOTCHI_SPECIES_EDITION ? "|S1|13" : "|S1|0")!=std::string::npos);
  puts("PASS DX does not advertise S1; negotiated outgoing identity follows edition");
 }
 '''
@@ -62,9 +64,9 @@ int main() {
 '''
 with tempfile.TemporaryDirectory(prefix='dx-editions-') as directory:
  p=Path(directory)
- for edition in (0,1):
+ for edition in (0,1,2):
   for name,code in [('wire',protocol),('boot',boot),('state-esp32',state),('state-nrf52',state)]:
    cpp=p/(name+'.cpp');cpp.write_text(code);exe=p/(name+str(edition))
    flags=['-DESP32'] if name=='state-esp32' else ['-DNRF52_PLATFORM'] if name=='state-nrf52' else []
-   subprocess.run(['g++','-std=c++17','-I',str(ROOT),'-DLORAGOTCHI_WATER_EDITION='+str(edition),*flags,str(cpp),'-o',str(exe)],check=True)
+   subprocess.run(['g++','-std=c++17','-I',str(ROOT),'-DLORAGOTCHI_WATER_EDITION='+str(int(edition==1)),'-DLORAGOTCHI_AIR_EDITION='+str(int(edition==2)),*flags,str(cpp),'-o',str(exe)],check=True)
    print('edition',edition,name,flush=True);subprocess.run([str(exe)],check=True)

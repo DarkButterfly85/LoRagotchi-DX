@@ -36,9 +36,22 @@ inline bool isFish(uint32_t code) {
   return code == 0x1F41F || code == 0x1F420 || code == 0x1F421 || code == 0x1F988;
 }
 
+inline bool isAirMarker(uint32_t code) {
+#if LORAGOTCHI_AIR_EDITION
+  switch(code) {
+    case 0x1F985: case 0x1F426: case 0x1F989: case 0x1F986: case 0x1F9A2:
+    case 0x1F427: case 0x1F99C: case 0x1F9A9: case 0x1F99A: case 0x1F983:
+    case 0x1F413: case 0x1F54A: case 0x1F987: case 0x1F41D: case 0x1F98B:
+    case 0x1FAB0: case 0x1FAB1: case 0x1F41B:return true;
+    default:return false;
+  }
+#else
+  (void)code;return false;
+#endif
+}
 inline bool isWaterMarker(uint32_t code) {
   if (isFish(code)) return true;
-#if LORAGOTCHI_WATER_EDITION
+#if LORAGOTCHI_SPECIES_EDITION
   // Exact supported animals plus the owner's explicit Water marker, not all
   // water-related Unicode. No generic waves, droplets, stars or boating signs.
   switch(code) {
@@ -61,7 +74,8 @@ inline bool isWaterMarker(uint32_t code) {
 inline bool hasFish(const char* text, size_t capacity) {
   if (!text) return false;
   for (size_t pos = 0; pos < capacity && text[pos]; ) {
-    if (isWaterMarker(next(text, capacity, pos))) return true;
+    const uint32_t code=next(text,capacity,pos);
+    if (isWaterMarker(code) || isAirMarker(code)) return true;
   }
   return false;
 }
@@ -74,9 +88,9 @@ inline void display(char* dest, size_t size, const char* text, size_t capacity) 
     // Presentation selectors, joiners and emoji modifiers have no separate glyph.
     if (code == 0x200D || code == 0xFE0E || code == 0xFE0F ||
         (code >= 0x1F3FB && code <= 0x1F3FF) || (code >= 0xE0020 && code <= 0xE007F)) continue;
-    if (isWaterMarker(code)) {
+    if (isWaterMarker(code) || isAirMarker(code)) {
       if (out + 3 >= size) break;
-      memcpy(dest + out, isFish(code) ? "><>" : "[W]", 3);
+      memcpy(dest + out, isFish(code) ? "><>" : isAirMarker(code) ? "[A]" : "[W]", 3);
       out += 3;
     } else {
       if (out + 1 >= size) break;

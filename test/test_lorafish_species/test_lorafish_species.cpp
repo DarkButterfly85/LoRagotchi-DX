@@ -36,9 +36,9 @@ TEST(WaterSpecies, PersistenceChecksumAndUnknownIdentity) {
   }
 }
 TEST(WaterSpecies, MysteryStableAndIndependentOfChoiceOrder) {
-  bool species[14]={};
+  bool species[LoRaFishSpecies::selectableCount]={};
   for(uint32_t seed=1;seed<10000;++seed) {
-    auto id=LoRaFishSpecies::mystery(seed);ASSERT_LT(id,14);species[id]=true;
+    auto id=LoRaFishSpecies::mystery(seed);ASSERT_TRUE(LoRaFishSpecies::known(id));auto index=LoRaFishSpecies::selectionIndex(id);ASSERT_LT(index,LoRaFishSpecies::selectableCount);EXPECT_EQ(LoRaFishSpecies::selectionId(index),id);species[index]=true;
     for(unsigned role=0;role<3;++role){auto c=LoRaFishSpecies::mysteryColour(seed,role);EXPECT_TRUE(LoRaFishColour::valid(c));EXPECT_GE(c,8);EXPECT_EQ(c,LoRaFishSpecies::mysteryColour(seed,role));}
     EXPECT_EQ(id,LoRaFishSpecies::mystery(seed));
   }
@@ -57,5 +57,17 @@ TEST(WaterSpecies, FrozenRetryAndFishOnlyLegacyParser) {
   EXPECT_LE(b,6);EXPECT_LE(s,6);EXPECT_LE(e,6);EXPECT_EQ(tint,65535);
   EXPECT_EQ(payload,std::string(f.forVisit(key,UINT32_MAX,UINT32_MAX)));
   key[31]=1;EXPECT_EQ(f.forVisit(key,UINT32_MAX,UINT32_MAX),nullptr);
+}
+TEST(AirSpecies, DisjointStableIdsAndExactOptIn) {
+  EXPECT_EQ(LoRaFishSpecies::Eagle,256);EXPECT_EQ(LoRaFishSpecies::Bug,273);
+  for(unsigned i=256;i<274;++i) {
+    EXPECT_TRUE(LoRaFishSpecies::airKnown(i));EXPECT_FALSE(LoRaFishSpecies::waterKnown(i));
+    EXPECT_EQ(LoRaFishSpecies::wireSpecies(i,"LFG1|ACK|1|2|S1"),0);
+    EXPECT_EQ(LoRaFishSpecies::wireSpecies(i,"LFG1|ACK|1|2|S1|A1"),i);
+  }
+  EXPECT_FALSE(LoRaFishSpecies::known(255));EXPECT_FALSE(LoRaFishSpecies::known(274));
+  EXPECT_TRUE(LoRaFishSpecies::airAcknowledged("LFG1|ACK|1|2|S1|A1"));
+  EXPECT_FALSE(LoRaFishSpecies::airAcknowledged("LFG1|ACK|1|2|S1"));
+  EXPECT_FALSE(LoRaFishSpecies::airAcknowledged("LFG1|ACK|1|2|S1|A1|junk"));
 }
 int main(int argc,char** argv){::testing::InitGoogleTest(&argc,argv);return RUN_ALL_TESTS();}
