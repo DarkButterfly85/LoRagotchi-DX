@@ -14,18 +14,18 @@ in the supplied in-progress source; it is not a claim that a v1.1.0 release exis
 The splash now reads **DX v1.1.0**, **WATER v1.1.0** or **AIR v1.1.0** from one shared header.
 Historical v1.0 release notes remain historical.
 
-**Existing target names stay DX by default.** Water is opt-in through the explicit
-aliases in the [board/edition table](docs/BUILDING.md#board-and-edition-selection). DX retains the original fish art, four fish-name markers, five-row
-Display menu and colour setup; Water adds 14 species, the new-game chooser and
-Water markers. Both use the same mesh transport and compatible saved prefix.
-See [Water controls and compatibility](WATER-EDITION.md).
+## Editions
 
-**Air source candidate:** explicit air_* aliases select all 18 requested Air
-animals, including penguin and worm, with mono/colour sprites and bounded
-flight/ground motion. Existing targets remain DX/Water. Read
-[Air IDs, controls, saves and negotiated fish fallback](AIR-EDITION.md) before
-mixed-edition tests. Earlier Air-stack builds passed hosted compilation; the combined integration
-requires its own exact-revision checks. Physical hardware acceptance remains unverified.
+- **DX** is the original fish-only edition. Existing LoRaFish/LoRaGotchi
+  environment names build DX; they do not change edition automatically.
+- **Water** contains 14 animals in total, including fish. Select a `water_*`
+  build target. See [Water controls and compatibility](WATER-EDITION.md).
+- **Air** contains 18 animals. Select an `air_*` build target. See
+  [Air controls, saves and compatibility](AIR-EDITION.md).
+- **Land** is a future idea, not an available edition or build target.
+
+All editions use the same `main` source; select the device and edition at build
+time. A target or successful build is not a claim of physical hardware acceptance.
 
 LoRaGotchi is a virtual LoRa fish built on MeshCore, originally by M0YNW,
 with contributor work retained in this repository.
@@ -80,63 +80,106 @@ For setup, controls, menus, pet behavior, and DX travel, see [Getting Started](G
     - Touchscreen
  
   
-## Supported LoRaGotchi targets in this tree
+## Boards and edition targets
 
-| MeshCore Node | Build Environment |
+Use the [complete board/edition matrix](docs/BUILDING.md#board-and-edition-selection)
+for the exact, case-sensitive DX, Water and Air environment names and BIN/UF2
+output. It covers Heltec V3, V4 OLED, T096 and T114, ThinkNode M2, M5Stack
+Cardputer, T-Deck BLE/USB, Wio Tracker L1/L1-1W, RAK4631/4630, T-Beam 1W,
+and Station G2/G3 ESP32. Select the exact radio, display and board variant;
+V4 OLED is not V4 TFT, and L1 is not L1-1W.
+
+RAK4631/4630, T-Beam 1W and Station G2/G3 profiles are **experimental**;
+RAK modules need the [correct carrier, fitted display and controls](docs/RAK4630-EXPERIMENTAL.md).
+See the [experimental screen matrix](docs/EXPERIMENTAL-SCREEN-TARGETS.md)
+for further DX-only targets and board-specific limitations. Its experimental
+profiles are not hardware-accepted; optional-display boards need a fitted panel
+and controls. Screenless and e-ink profiles are excluded.
+
+These additional DX-only targets are retained, but are **untested on hardware**;
+there are no corresponding Water/Air aliases:
+
+| Board / radio | DX environment |
 | --- | --- |
-| ThinkNode M2 | ThinkNode_M2_LoRaFish_companion_ble |
-| Heltec V3 | Heltec_v3_LoRaFish_companion_ble |
-| Heltec V4 | heltec_v4_LoRaFish_companion_ble |
-| M5Stack CardPuter | cardputer_loragotchi |
-| Heltec T114 | Heltec_t114_LoRaFish_companion_ble -t create_uf2 |
-| Heltec T096 | Heltec_t096_LoRaFish_companion_ble -t create_uf2 |
-| LilyGo T-Deck | LilyGo_TDeck_loragotchi_dx_ble / LilyGo_TDeck_loragotchi_dx_usb |
+| T-Beam SX1262 | `Tbeam_SX1262_LoRaFish_companion_ble` |
+| T-Beam SX1276 | `Tbeam_SX1276_LoRaFish_companion_ble` |
+| T-Watch S3 SX1262, BLE | `TWatch_S3_LoRaFish_companion_ble` |
+| T-Watch S3 SX1262, no Bluetooth | `TWatch_S3_LoRaFish_standalone` |
+| T-Watch S3 SX1280, 2.4 GHz | `TWatch_S3_1280_LoRaFish_companion_ble` |
 
-| Untested nodes | build Environment |
-| --- | --- |
-| T-Beam (SX1262) | Tbeam_SX1262_LoRaFish_companion_ble
-| T-Beam (SX1276) | Tbeam_SX1276_LoRaFish_companion_ble
-| LilyGo T-Watch S3 (BLE) | TWatch_S3_LoRaFish_companion_ble
-| LilyGo T-Watch S3 (no Bluetooth) | TWatch_S3_LoRaFish_standalone
-| LilyGo T-Watch S3 SX1280 2.4 GHz (BLE) | TWatch_S3_1280_LoRaFish_companion_ble
+## Build and install DX, Water or Air
 
-## Additional experimental TFT/OLED devices
+### 1. Get the shared source and choose an edition
 
-See the [experimental screen target matrix](docs/EXPERIMENTAL-SCREEN-TARGETS.md).
-These additional builds are **experimental and have not been tested on real hardware**.
-Screenless and e-ink variants are excluded; optional-display boards require a fitted panel and controls.
+Install Git and [PlatformIO Core](https://docs.platformio.org/en/latest/core/installation/index.html),
+then clone `main`:
 
-## Building
-
-Start with the [main-based DX / Water / Air build guide](docs/BUILDING.md).
-It lists all 15 Water and 15 Air aliases beside their DX board targets.
-The examples below are additional DX examples; environment names are case-sensitive.
-
-Install PlatformIO, clone the repository, then build the required environment from the repository root. For example:
-
-```bash
-git clone <your-repository-url>
-cd LoRaGotchi-DX
-pio run -e [BUILD ENVIRONMENT]
+```sh
+git clone --branch main https://github.com/DrToxic/LoRagotchi-DX.git
+cd LoRagotchi-DX
 ```
-⚠️ The build environment is Case Specific!
 
-Examples:
-```bash
-git clone <your-repository-url>
-cd LoRaGotchi-DX
-pio run -e Heltec_t114_LoRaFish_companion_ble -t create_uf2
+Run **one** command for your chosen edition. These examples are for a
+**Heltec V3**; replace the environment using the
+[board/edition matrix](docs/BUILDING.md#board-and-edition-selection) for other boards.
+Do not run an unqualified `pio run`, which selects unrelated upstream targets.
+
+```sh
+pio run -e Heltec_v3_LoRaFish_companion_ble -j 1  # DX
+pio run -e water_heltec_v3_ble -j 1              # Water
+pio run -e air_heltec_v3_ble -j 1                # Air
 ```
-The resulting file will end up in `LoRagotchi-DX-main\.pio\build\Heltec_t114_LoRaFish_companion_ble\firmware.uf2`
-NRF52 devices, After the build, enter the board's UF2 bootloader and copy `firmware.uf2` to its mounted drive. 
-```bash
-git clone <your-repository-url>
-cd LoRaGotchi-DX
-pio run -e heltec_v4_LoRaFish_companion_ble
-```
-The resulting file will end up in `LoRagotchi-DX-main\.pio\build\heltec_v4_LoRaFish_companion_ble\firmware.bin`
-Upload with PlatformIO using the normal `-t upload` target for supported serial-programmed boards. The T096 uses -t create_uf2 and the UF2 procedure above.
-the meshcore.io/flasher also works, scroll to the bottom and select custom device firmware!
+
+### 2. Check the device and protect existing data
+
+Building does not install anything. Before writing to a device, confirm the
+board/radio/display variant and export or back up its identity/keys, settings,
+contacts and pet data using a verified recovery route. Keep key backups private.
+Read the [Water](WATER-EDITION.md) or [Air](AIR-EDITION.md) save/compatibility
+notes before changing editions; matching storage layouts do not guarantee
+saved-data retention.
+
+**Station G2, Station G3 ESP32 and T-Beam 1W:** stop and read the
+[partition migration and data-loss warning](docs/SINGLE-APP-MIGRATION.md)
+first. These profiles use a single factory app with no OTA. An app-only update
+does not migrate an old partition table; the generic upload example below is
+not a migration procedure. Do not erase flash, upload a filesystem or blindly
+write a combined image to make a firmware fit.
+
+### 3. Install using the board's matching method
+
+- **ESP32 (BIN):** `.pio/build/<environment>/firmware.bin` is an application,
+  not a complete installer. For a supported serial-programmed board with a
+  compatible installed layout, connect its USB data cable and use PlatformIO's
+  board-specific upload recipe with the **same environment**. For Water on
+  Heltec V3, for example:
+
+  ```sh
+  pio run -e water_heltec_v3_ble -j 1 -t upload
+  ```
+
+  Select the correct serial device with `--upload-port <port>` if necessary;
+  use the board's documented boot/download-mode procedure if it cannot connect.
+  An upload may also write bootloader/partition images: it is not a promise of
+  app-only writes or data retention. Do not flash an application BIN at address
+  zero or assume a web flasher migrates partition tables.
+- **nRF52 (UF2):** build with `-t create_uf2`. For Water on **Heltec T096**:
+
+  ```sh
+  pio run -e water_heltec_t096_ble -j 1 -t create_uf2
+  ```
+
+  Enter the board's existing UF2 bootloader using its documented procedure,
+  then copy `.pio/build/water_heltec_t096_ble/firmware.uf2` to the mounted
+  bootloader drive. Use the selected environment's own UF2 for DX, Air or
+  another board; do not copy the application BIN instead. If no UF2 drive
+  appears, consult the board's bootloader instructions rather than erasing or
+  replacing its bootloader blindly.
+
+After reboot, check the splash shows the intended edition and verify display,
+controls, pairing and saved state. The [full build guide](docs/BUILDING.md)
+also covers exact-commit hosted artifacts. A successful build is neither a
+published release nor physical hardware acceptance.
 
 ### Buzzer pins
 
