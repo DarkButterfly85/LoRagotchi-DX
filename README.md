@@ -4,6 +4,10 @@
 
 # LoRaGotchi-DX — DX, Water and Air editions
 
+**Build from `main`, then select your board and DX, Water or Air edition.**
+Use the [single-source build guide and board/edition table](docs/BUILDING.md);
+old feature/fix branches are history, not separate build sources.
+
 Current product source candidate: **v1.1.0**, separate from underlying MeshCore
 **v1.18.0** and the **Water v1** species registry. This version was already chosen
 in the supplied in-progress source; it is not a claim that a v1.1.0 release exists.
@@ -11,7 +15,7 @@ The splash now reads **DX v1.1.0**, **WATER v1.1.0** or **AIR v1.1.0** from one 
 Historical v1.0 release notes remain historical.
 
 **Existing target names stay DX by default.** Water is opt-in through the explicit
-aliases below. DX retains the original fish art, four fish-name markers, five-row
+aliases in the [board/edition table](docs/BUILDING.md#board-and-edition-selection). DX retains the original fish art, four fish-name markers, five-row
 Display menu and colour setup; Water adds 14 species, the new-game chooser and
 Water markers. Both use the same mesh transport and compatible saved prefix.
 See [Water controls and compatibility](WATER-EDITION.md).
@@ -103,6 +107,10 @@ These additional builds are **experimental and have not been tested on real hard
 Screenless and e-ink variants are excluded; optional-display boards require a fitted panel and controls.
 
 ## Building
+
+Start with the [main-based DX / Water / Air build guide](docs/BUILDING.md).
+It lists all 15 Water and 15 Air aliases beside their DX board targets.
+The examples below are additional DX examples; environment names are case-sensitive.
 
 Install PlatformIO, clone the repository, then build the required environment from the repository root. For example:
 
