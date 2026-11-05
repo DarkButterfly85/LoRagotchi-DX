@@ -31,7 +31,7 @@ adapters; retain independently functional desktop and HA apps, no paid service.
 
 Permanent uint16 Water registry v1 IDs:
 0 tropical fish, 1 blowfish, 2 shark, 3 dolphin, 4 whale, 5 seal, 6 shrimp,
-7 squid, 8 lobster, 9 crab, 10 octopus, 11 jellyfish, 12 shell-dweller, 13 sea star.
+7 squid, 8 lobster, 9 crab, 10 octopus, 11 jellyfish, 12 shell-dweller, 13 sea star, 14 Anglerfish (owner fork extension).
 Species is not stage, fish ID, hue or emoji/name. Unknown IDs round-trip exactly
 and render a neutral fish fallback. Sizes are stylised, with no species visit ban.
 
@@ -85,7 +85,7 @@ or infer an adopted species from a model/name/parent. No accepted egg rerolls.
 1. One stable registry through decode/domain model/SQLite migrations, export/import,
    demo/replay/operator/reshare flows. Legacy missing values default fish; unknown
    IDs survive. Partial/old reshares must not erase earlier known species/genes.
-2. Distinct native animated creatures for all 14, adapted to Aquarium's art style,
+2. Distinct native animated creatures for all 15, adapted to Aquarium's art style,
    not enlarged tiny firmware masks. Shared stage/genetic colour roles, neutral
    juvenile eyes, clear silhouettes/swim/crawl/pulse/tentacle movement, bounded
    frame time and low-quality fallback. Do not block species visits.

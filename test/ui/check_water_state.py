@@ -9,13 +9,13 @@ code='\n'.join(f.parts[:-1])+f.parts[-1].split('int main() {',1)[0]
 code+=f.block('static void ensureLoRaFishMysterySeed(')+f.block('static void chooseLoRaFishMysteryColours(')
 code+=r'''
 int main() {
-  for(unsigned id=0;id<14;++id) {
-    resetAt(5000);loRaFishSpecies=id;loRaFishEggSpecies=13-id;loRaFishMysterySeed=0x12345678;
+  for(unsigned id=0;id<15;++id) {
+    resetAt(5000);loRaFishSpecies=id;loRaFishEggSpecies=14-id;loRaFishMysterySeed=0x12345678;
     loRaFishNeedsPetSetup=true;saveLoRaFishSettings();saveLoRaFish();reboot();
-    assert(loRaFishSpecies==id && loRaFishEggSpecies==13-id && loRaFishMysterySeed==0x12345678 && loRaFishNeedsPetSetup);
+    assert(loRaFishSpecies==id && loRaFishEggSpecies==14-id && loRaFishMysterySeed==0x12345678 && loRaFishNeedsPetSetup);
     assert(loRaFishPage==LORAFISH_PET_SETUP_PAGE);assert(fish.ageMinutes==5000);
   }
-  pass("all 14 identities, pending species and setup/mystery state survive real serializers");
+  pass("all 15 identities, pending species and setup/mystery state survive real serializers");
   resetAt(5000);loRaFishSpecies=65535;loRaFishEggSpecies=54321;saveLoRaFishSettings();saveLoRaFish();reboot();
   assert(loRaFishSpecies==65535 && loRaFishEggSpecies==54321);
   assert(LoRaFishSpecies::renderId(loRaFishSpecies)==0);
@@ -34,7 +34,7 @@ int main() {
     assert(loRaFishSpecies==0 && loRaFishEggSpecies==0);
   }
   pass("legacy prefixes, every truncated tail, every single-bit corrupt tail fall back without changing genes");
-  for(unsigned id=0;id<14;++id) {
+  for(unsigned id=0;id<15;++id) {
     resetAt(LORAFISH_LIFESPAN_MINUTES);loRaFishSpecies=id;ensureLoRaFishOffspring();
     assert(loRaFishEggSpecies==id);saveLoRaFish();reboot();assert(loRaFishEggSpecies==id);
     hatchLoRaFishOffspring();assert(loRaFishSpecies==id && loRaFishGeneration==8);

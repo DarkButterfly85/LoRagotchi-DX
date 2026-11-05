@@ -9,7 +9,7 @@ code=f.pre+f.structs+f.globals+f.receive+f.methods+r'''
 int main() {
  MyMesh m;ContactInfo owner,impostor;owner.id.pub_key[0]=9;impostor=owner;impostor.id.pub_key[31]=1;
  m.contacts={owner,impostor};
- for(unsigned id=0;id<14;++id) {
+ for(unsigned id=0;id<15;++id) {
    loragotchiDXGuest={};loragotchiDXReservation={};loragotchiDXGuestReturn={};loRaFishArrival={};
    char req[128],commit[128];snprintf(req,sizeof(req),"LFG1|REQ|%u|2|2|Water",id+1);
    snprintf(commit,sizeof(commit),"LFG1|COMMIT|%u|2|C|0|4|6|944|H1|220|120|6|P1|2|S1|%u",id+1,id);
@@ -19,7 +19,7 @@ int main() {
    snprintf(commit,sizeof(commit),"LFG1|COMMIT|%u|2",id+1);m.receive(owner,commit);assert(loragotchiDXGuest.species==id);
    snprintf(commit,sizeof(commit),"LFG1|COMMIT|%u|2|C|0|4|6|944|S1|65535",id+1);m.receive(owner,commit);assert(loragotchiDXGuest.species==id);
  }
- puts("PASS all 14 species, full-key binding, composable H1/P1/S1 and short/full duplicates preserve identity");
+ puts("PASS all 15 species, full-key binding, composable H1/P1/S1 and short/full duplicates preserve identity");
  for(const char* tail:{"65536","-1","+1","1x","9999999999999999999999","1|S1|2",""}) {
    loragotchiDXGuest={};loragotchiDXReservation={};loragotchiDXGuestReturn={};
    m.receive(owner,"LFG1|REQ|77|2|2|Water");char p[160];snprintf(p,sizeof(p),"LFG1|COMMIT|77|2|C|0|4|6|944|S1|%s",tail);
@@ -31,14 +31,14 @@ int main() {
  puts("PASS malformed/overflow metadata rejected without consuming reservation; unknown retained; legacy defaults fish");
  loragotchiDXHome={};loragotchiDXHome.pending=true;loragotchiDXHome.destinationKnown=true;
  memcpy(loragotchiDXHome.destinationKey,owner.id.pub_key,32);loragotchiDXHome.txid=7;loragotchiDXHome.fishid=8;
- loragotchiDXLocalSpecies=13;loragotchiDXVisit={};now=100;m.estimate=30000;
- m.receive(owner,"LFG1|ACK|7|8|S1");const std::string first=m.sent.back();assert(first.find("|S1|13")!=std::string::npos);
+ loragotchiDXLocalSpecies=14;loragotchiDXVisit={};now=100;m.estimate=30000;
+ m.receive(owner,"LFG1|ACK|7|8|S1");const std::string first=m.sent.back();assert(first.find("|S1|14")!=std::string::npos);
  // First complete packet is dropped. Deliver the actual retry first to a fresh guest.
  loragotchiDXLocalSpecies=1;loragotchiDXLocalColorIndex=0;
  auto count=m.sent.size();now=loragotchiDXVisit.due-1;m.serviceLoRaFishVisit();assert(m.sent.size()==count);
  now=loragotchiDXVisit.due;m.serviceLoRaFishVisit();assert(m.sent.back()==first);
  loragotchiDXGuest={};loragotchiDXReservation={};loragotchiDXGuestReturn={};
- const std::string retry=m.sent.back();m.receive(owner,"LFG1|REQ|7|8|2|Retry");m.receive(owner,retry.c_str());assert(loragotchiDXGuest.species==13);
+ const std::string retry=m.sent.back();m.receive(owner,"LFG1|REQ|7|8|2|Retry");m.receive(owner,retry.c_str());assert(loragotchiDXGuest.species==14);
  assert(!loRaFishCommitFrame.forVisit(impostor.id.pub_key,7,8));
  puts("PASS lost first COMMIT: production retry preserves frozen species/genes and full identity; deadline unchanged");
 }
@@ -50,7 +50,7 @@ with tempfile.TemporaryDirectory(prefix='water-wire-') as tmp:
 legacy_main=r'''
 int main() {
  MyMesh m;ContactInfo owner;owner.id.pub_key[0]=9;m.contacts={owner};
- for(unsigned id=0;id<14;++id) {
+ for(unsigned id=0;id<15;++id) {
   loragotchiDXGuest={};loragotchiDXReservation={};loragotchiDXGuestReturn={};loRaFishArrival={};
   LoRaFishCommitFrame frame;frame.prepare(owner.id.pub_key,7,8,true,220,120,6,944,2,id);
   m.receive(owner,"LFG1|REQ|7|8|2|Water visitor");

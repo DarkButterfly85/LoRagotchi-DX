@@ -28,6 +28,16 @@ int main() {
   assert(loragotchiDXGuest.color==220 && loragotchiDXGuest.scalesColor==120);
   m.receive(owner,"LFG1|RECALL|7|8");assert(loragotchiDXGuestReturn.status!=LoRaFishGuestReturn::Idle);
  }
+ // Appended Water14 is unknown to pre-Air Water, not invalid wire data.
+ loragotchiDXGuest={};loragotchiDXReservation={};loragotchiDXGuestReturn={};loRaFishArrival={};
+ m.receive(owner,"LFG1|REQ|9|10|2|Anglerfish");
+ LoRaFishCommitFrame angler;angler.prepare(owner.id.pub_key,9,10,true,220,120,6,944,2,14,true);
+ m.receive(owner,angler.forVisit(owner.id.pub_key,9,10));
+ assert(loragotchiDXGuest.present && loragotchiDXGuest.species==14);
+ assert(!PreAirSpecies::known(14) && PreAirSpecies::renderId(14)==0);
+ m.receive(owner,"LFG1|COMMIT|9|10");assert(loragotchiDXGuest.species==14);
+ m.receive(owner,"LFG1|RECALL|9|10");assert(loragotchiDXGuestReturn.status!=LoRaFishGuestReturn::Idle);
+ puts("PASS Anglerfish to preserved old S1 Water: opaque ID14 retained, fish fallback, short duplicate/recall unchanged");
  puts("PASS preserved pre-Air Water production: exact S1 ACK, all Air visitors fish fallback with genes/recall; old Water-to-Air conservatively legacy");
 }
 '''

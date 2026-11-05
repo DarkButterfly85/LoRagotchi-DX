@@ -9,7 +9,7 @@ habitat flags is a build error. No native-resolution/display-transport refactor.
 ## Registry and taxonomy
 
 Shared unsigned 16-bit namespace, independent of names, emoji, menu positions,
-stage, genetics or fish/device IDs. Water 0..13 is unchanged; 14..255 remains
+stage, genetics or fish/device IDs. Water 0..13 is unchanged; Anglerfish is appended at 14; 15..255 remains
 reserved. Air v1 owns **256..273**, permanently and in the original candidate
 order. Other uint16 values remain opaque identities, never array indices.
 No mapping to unofficial/third-party wolf IDs is asserted.
@@ -50,7 +50,8 @@ Eagle egg; after adoption is skipped/times out, **CHOOSE AIR PET** offers specie
 Mystery egg, independent Mystery colours, existing manual colour setup on colour
 panels, and explicit **Start pet**. Mono panels can choose species and mystery
 genes too. Browsing/cancel never rolls. Both mysteries retain the one saved seed;
-Water's existing mystery mapping is byte-for-byte unchanged.
+Air's 18-choice mystery mapping is unchanged. Water now offers 15 choices;
+already selected/saved species remain unchanged (see WATER-EDITION.md).
 
 Options → Display → Pet species offers all 18 without changing age, genes or an
 already-laid egg. Solo succession copies species; visitor breeding chooses one
@@ -119,7 +120,7 @@ The existing explicit LRX1 repeater/type guards stay intact.
 ## Art and resource bounds
 
 18 original two-frame 32×24 sprites, packed transparent/body/wings/detail roles:
-**6,912 bytes**. Air also retains the unchanged **4,992-byte** Water masks for old
+**6,912 bytes**. Air also retains the **5,376-byte** Water masks (including Anglerfish) for old
 saves/visitors: total packed masks **11,904 bytes**, not RGB565-per-palette frames.
 No heap/per-species framebuffer. Runtime horizontal runs draw at most 768 source
 pixels/runs per full sprite; actual juveniles use 20×15 and 26×19 sampling.

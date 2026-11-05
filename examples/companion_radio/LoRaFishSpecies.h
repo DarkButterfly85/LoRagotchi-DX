@@ -4,16 +4,16 @@
 #include <string.h>
 #include "LoRaGotchiVersion.h"
 
-// Shared registry: Water 0..13, Air 256..273; 14..255 reserved. IDs are permanent protocol identities, not menu positions.
+// Shared registry: Water 0..14, Air 256..273; 15..255 reserved. IDs are permanent protocol identities, not menu positions.
 namespace LoRaFishSpecies {
 enum : uint16_t {
   TropicalFish=0, Blowfish=1, Shark=2, Dolphin=3, Whale=4, Seal=5, Shrimp=6,
-  Squid=7, Lobster=8, Crab=9, Octopus=10, Jellyfish=11, ShellDweller=12, SeaStar=13,
+  Squid=7, Lobster=8, Crab=9, Octopus=10, Jellyfish=11, ShellDweller=12, SeaStar=13, Anglerfish=14,
   Eagle=256, Bird=257, Owl=258, Duck=259, Swan=260, Penguin=261, Parrot=262,
   Flamingo=263, Peacock=264, Turkey=265, Rooster=266, Dove=267, Bat=268,
   Honeybee=269, Butterfly=270, Fly=271, Worm=272, Bug=273
 };
-static constexpr uint8_t count=14;
+static constexpr uint8_t count=15;
 static constexpr uint8_t airCount=18;
 inline bool waterKnown(uint16_t id) { return id<count; }
 inline bool airKnown(uint16_t id) { return id>=Eagle && id<=Bug; }
@@ -60,7 +60,7 @@ inline void habitatPosition(uint16_t id,uint8_t stage,int width,uint32_t now,
 inline uint16_t renderId(uint16_t id) { return known(id) ? id : (uint16_t)TropicalFish; }
 inline const char* label(uint16_t id) {
   static const char* const names[]={"Tropical fish","Blowfish","Shark","Dolphin","Whale",
-    "Seal","Shrimp","Squid","Lobster","Crab","Octopus","Jellyfish","Shell-dweller","Sea star"};
+    "Seal","Shrimp","Squid","Lobster","Crab","Octopus","Jellyfish","Shell-dweller","Sea star","Anglerfish"};
   static const char* const airNames[]={"Eagle","Bird","Owl","Duck","Swan","Penguin",
     "Parrot","Flamingo","Peacock","Turkey","Rooster","Dove","Bat",
     "Honeybee","Butterfly","Fly","Worm","Bug"};

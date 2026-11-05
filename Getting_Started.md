@@ -7,7 +7,7 @@
 > unsupported mesh peers explicitly receive a fish, never an unnegotiated Air ID.
 > Read [Air controls and compatibility](AIR-EDITION.md). Not a tested release.
 
-> **Water candidate 1:** All 14 Water species, independent new-game Mystery egg/
+> **Water source candidate:** All 15 Water species (including Anglerfish), independent new-game Mystery egg/
 > Mystery colours, and negotiated S1 visits. Existing pets migrate to fish;
 > LEG1 adopted eggs preserve accepted fish identity/genetics and bypass Mystery
 > setup. Read [Water controls/compatibility](WATER-EDITION.md) before mixed-version tests.

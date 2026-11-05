@@ -25,9 +25,9 @@ int main() {
  for(const char* bad:{"Eagle","Air","Penguin","Worm","wind 🌬️","cloud ☁️","🦄","🐸","turtle 🐢","\xf0\x9f\xa6"})
   assert(!LoRaFishText::hasFish(bad,strlen(bad)));
  for(unsigned id=0;id<65536;++id) {
-  assert(LoRaFishSpecies::waterKnown(id)==(id<14));
+  assert(LoRaFishSpecies::waterKnown(id)==(id<15));
   assert(LoRaFishSpecies::airKnown(id)==(id>=256 && id<=273));
-  assert(LoRaFishSpecies::known(id)==(id<14 || (id>=256 && id<=273)));
+  assert(LoRaFishSpecies::known(id)==(id<15 || (id>=256 && id<=273)));
  }
  for(unsigned i=0;i<18;++i) {
   assert(LoRaFishSpecies::selectionId(i)==256+i);

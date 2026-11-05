@@ -255,6 +255,21 @@ int main(){
     task.handleLongPress(KEY_ENTER);assert(loRaFishPage==0 && !loRaFishNeedsPetSetup && !loRaFishNeedsAppearanceSetup);
   }
   puts("PASS initial pet chooser mono/colour routes, independent mysteries, cancel no-reroll and explicit Start pet");
+#if LORAGOTCHI_WATER_EDITION
+  for(bool colour:{false,true}) {
+    loRaFishColorDisplay=colour;loRaFishNeedsPetSetup=true;loRaFishNeedsAppearanceSetup=colour;
+    loRaFishPage=LORAFISH_PET_SETUP_PAGE;loRaFishPetSetupField=0;loRaFishSpecies=0;
+    const auto age=fish.ageMinutes;const auto body=loRaFishColor,scales=loRaFishScaleColor,eyes=loRaFishEyeColor;
+    task.handleLongPress(KEY_ENTER);
+    for(int i=0;i<14;++i)shortPress(KEY_NEXT);
+    task.display.clearBounds();drawLoRaFishValuePicker(task.display);
+    task.handleLongPress(KEY_ENTER);assert(loRaFishSpecies==LoRaFishSpecies::Anglerfish);
+    assert(fish.ageMinutes==age && loRaFishColor==body && loRaFishScaleColor==scales && loRaFishEyeColor==eyes);
+    assert(loRaFishNeedsPetSetup);loRaFishPetSetupField=3;task.handleLongPress(KEY_ENTER);
+    assert(!loRaFishNeedsPetSetup && loRaFishSpecies==14);
+  }
+  puts("PASS Anglerfish explicit mono/colour chooser route; Start pet retains age and all genes");
+#endif
 
 #else
   // DX cannot open the Water-only species picker, even with a stale row index.
