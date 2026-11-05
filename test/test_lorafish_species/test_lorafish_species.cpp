@@ -3,8 +3,22 @@
 #include "../../examples/companion_radio/LoRaFishCommit.h"
 TEST(WaterSpecies, StableRegistryAndUnknownFallback) {
   EXPECT_EQ(LoRaFishSpecies::TropicalFish,0);EXPECT_EQ(LoRaFishSpecies::SeaStar,13);
-  for(unsigned i=0;i<14;++i) {EXPECT_TRUE(LoRaFishSpecies::known(i));EXPECT_EQ(LoRaFishSpecies::renderId(i),i);}
+  for(unsigned i=0;i<15;++i) {EXPECT_TRUE(LoRaFishSpecies::known(i));EXPECT_EQ(LoRaFishSpecies::renderId(i),i);}
   EXPECT_EQ(LoRaFishSpecies::renderId(65535),0);EXPECT_STREQ(LoRaFishSpecies::label(65535),"Unknown (fish)");
+}
+TEST(WaterSpecies, AppendOnlyAnglerfishIdentity) {
+  using namespace LoRaFishSpecies;
+  const uint16_t stable[]={TropicalFish,Blowfish,Shark,Dolphin,Whale,Seal,Shrimp,
+    Squid,Lobster,Crab,Octopus,Jellyfish,ShellDweller,SeaStar,Anglerfish};
+  for(unsigned i=0;i<15;++i)EXPECT_EQ(stable[i],i);
+  EXPECT_EQ(count,15);EXPECT_EQ(Anglerfish,14);EXPECT_STREQ(label(Anglerfish),"Anglerfish");
+  EXPECT_FALSE(known(15));EXPECT_FALSE(known(255));
+  EXPECT_EQ(wireSpecies(Anglerfish,"LFG1|ACK|1|2|S1"),Anglerfish);
+  EXPECT_EQ(wireSpecies(Anglerfish,"LFG1|ACK|1|2|S1|A1"),Anglerfish);
+  uint8_t bytes[savedSize];encode(bytes,Anglerfish,Anglerfish,123,true);
+  uint16_t local=0,egg=0;uint32_t seed=0;bool setup=false;
+  ASSERT_TRUE(decode(bytes,sizeof(bytes),local,egg,seed,setup));
+  EXPECT_EQ(local,14);EXPECT_EQ(egg,14);EXPECT_EQ(seed,123);EXPECT_TRUE(setup);
 }
 TEST(WaterSpecies, StrictWireNumbersAndDuplicateExtension) {
   uint16_t id=9;bool present=true;

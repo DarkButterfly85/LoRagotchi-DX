@@ -1,5 +1,7 @@
 # Water verification history and edition-split checks
 
+> Current Anglerfish extension: Water now has 15 species / 5,376 bytes of masks. Counts below are historical; see [current checks and limitations](ANGLERFISH-TESTING.md).
+
 ## Historical Water candidate 1 (856d420)
 
 Baseline: owner-local f310240 (monochrome panel profiles) plus the accepted

@@ -1,0 +1,205 @@
+name: Anglerfish Water matrix and DX Air regressions
+permissions:
+  contents: read
+concurrency:
+  group: anglerfish-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        ref: ${{ github.sha }}
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+    - run: pip install platformio==6.1.19
+    - run: pio test -e native -e native_water -e native_air -e native_kiss_modem
+    - run: python3 test/boards/check_edition_targets.py
+    - run: python3 test/boards/check_experimental_screens.py
+    - run: python3 test/boards/check_single_app_partitions.py
+    - name: Self-contained production host checks
+      run: |
+        set -euo pipefail
+        python3 - <<'PY'
+        import os, subprocess
+        from pathlib import Path
+        for test in sorted(Path('test/ui').glob('check_*.py')):
+            if test.name in {'check_dx_colour_retries.py','check_busy_mesh.py'}:
+                print(f'NOT RUN standalone: {test.name} requires independent RX/Aquarium checkout',flush=True)
+                continue
+            subprocess.run(['python3',str(test)],check=True)
+            if test.name in {'check_menu_navigation.py','check_emoji_dx.py'}:
+                subprocess.run(['python3',str(test)],check=True,
+                    env=dict(os.environ,LORAGOTCHI_TEST_EDITION='1'))
+        subprocess.run(['python3','test/ble/check_pairing_pin.py'],check=True)
+        PY
+  build:
+    needs: checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        include:
+        - environment: water_heltec_v3_ble
+          target: build
+          format: bin
+          tier: standard
+        - environment: water_heltec_v4_oled_ble
+          target: build
+          format: bin
+          tier: standard
+        - environment: water_heltec_t096_ble
+          target: create_uf2
+          format: uf2
+          tier: standard
+        - environment: water_heltec_t114_ble
+          target: create_uf2
+          format: uf2
+          tier: standard
+        - environment: water_thinknode_m2_ble
+          target: build
+          format: bin
+          tier: standard
+        - environment: water_m5stack_cardputer
+          target: build
+          format: bin
+          tier: standard
+        - environment: water_lilygo_tdeck_ble
+          target: build
+          format: bin
+          tier: standard
+        - environment: water_lilygo_tdeck_usb
+          target: build
+          format: bin
+          tier: standard
+        - environment: water_wio_tracker_l1_ble
+          target: create_uf2
+          format: uf2
+          tier: standard
+        - environment: water_wio_tracker_l1_1w_ble
+          target: create_uf2
+          format: uf2
+          tier: standard
+        - environment: water_rak4631_ble
+          target: create_uf2
+          format: uf2
+          tier: experimental
+        - environment: water_lilygo_tbeam_1w_ble
+          target: build
+          format: bin
+          tier: experimental
+        - environment: water_station_g2_ble
+          target: build
+          format: bin
+          tier: experimental
+        - environment: water_station_g3_esp32_ble
+          target: build
+          format: bin
+          tier: experimental
+        - environment: air_heltec_v3_ble
+          target: build
+          format: bin
+          tier: Air-regression
+        - environment: air_heltec_v4_oled_ble
+          target: build
+          format: bin
+          tier: Air-regression
+        - environment: air_heltec_t096_ble
+          target: create_uf2
+          format: uf2
+          tier: Air-regression
+        - environment: Heltec_v3_LoRaFish_companion_ble
+          target: build
+          format: bin
+          tier: DX-regression
+        - environment: heltec_v4_LoRaFish_companion_ble
+          target: build
+          format: bin
+          tier: DX-regression
+        - environment: Heltec_t096_LoRaFish_companion_ble
+          target: create_uf2
+          format: uf2
+          tier: DX-regression
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        ref: ${{ github.sha }}
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+    - run: pip install platformio==6.1.19
+    - name: Build selected board only
+      env:
+        BUILD_ENV: ${{ matrix.environment }}
+        BUILD_TARGET: ${{ matrix.target }}
+      run: |
+        set -euo pipefail
+        if [ "$BUILD_TARGET" = create_uf2 ]; then
+          pio run -e "$BUILD_ENV" -t create_uf2 -j 1 2>&1 | tee build.log
+        else
+          pio run -e "$BUILD_ENV" -j 1 2>&1 | tee build.log
+        fi
+    - name: Stage exact-revision evidence
+      env:
+        BUILD_ENV: ${{ matrix.environment }}
+        FORMAT: ${{ matrix.format }}
+        TIER: ${{ matrix.tier }}
+      run: |
+        set -euo pipefail
+        mkdir -p artifact
+        cp ".pio/build/$BUILD_ENV/firmware.$FORMAT" artifact/
+        cp ".pio/build/$BUILD_ENV/firmware.elf" artifact/
+        if [ "$FORMAT" = bin ]; then
+          cp ".pio/build/$BUILD_ENV/partitions.bin" artifact/
+        fi
+        git rev-parse HEAD > artifact/source-sha.txt
+        pio project config --json-output > artifact/platformio-config.json
+        pio pkg list -e "$BUILD_ENV" > artifact/dependencies.txt
+        cp AIR-EDITION.md WATER-EDITION.md docs/ANGLERFISH-TESTING.md docs/RAK4630-EXPERIMENTAL.md docs/SINGLE-APP-MIGRATION.md artifact/
+        cp build.log artifact/
+        python3 - <<'META'
+        import json,os,shutil
+        from pathlib import Path
+        env=os.environ['BUILD_ENV']
+        cfg={s:dict(v) for s,v in json.loads(Path('artifact/platformio-config.json').read_text())}['env:'+env]
+        board=cfg['board']
+        paths=[Path('boards')/(board+'.json')]+list((Path.home()/'.platformio/platforms').glob('*/boards/'+board+'.json'))
+        shutil.copy2(next(p for p in paths if p.is_file()),'artifact/board.json')
+        if os.environ['FORMAT']=='uf2':shutil.copy2(cfg['board_build.ldscript'],'artifact/application.ld')
+        if cfg.get('board_build.partitions')=='variants/loragotchi_experimental/single_app.csv':
+         shutil.copy2(cfg['board_build.partitions'],'artifact/partition-source.csv')
+        Path('artifact/environment.txt').write_text(env)
+        Path('artifact/classification.txt').write_text(os.environ['TIER'])
+        META
+        echo 'Compilation only. Not hardware acceptance. ESP32 app BIN is not a merged installer. Validate image/partition/linker bounds before flashing.' > artifact/BUILD-NOTES.txt
+        cd artifact
+        sha256sum * > SHA256SUMS
+    - uses: actions/upload-artifact@v4
+      with:
+        name: anglerfish-${{ matrix.tier }}-${{ matrix.environment }}-${{ github.sha }}
+        path: artifact/*
+        retention-days: 14
+    - name: Keep build diagnostics
+      if: always()
+      run: |
+        mkdir -p diagnostic
+        [ ! -f build.log ] || cp build.log diagnostic/
+        git rev-parse HEAD > diagnostic/source-sha.txt
+        echo 'Diagnostics only, not an installable firmware artifact.' > diagnostic/NOT-FOR-FLASHING.txt
+    - uses: actions/upload-artifact@v4
+      with:
+        name: anglerfish-diagnostic-${{ matrix.tier }}-${{ matrix.environment }}-${{ github.sha }}
+        path: diagnostic/*
+        retention-days: 14
+        if-no-files-found: error
+      if: always()
+'on':
+  push:
+    branches:
+    - feature/water-anglerfish-20261105
+  workflow_dispatch: {}

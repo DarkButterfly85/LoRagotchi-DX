@@ -26,13 +26,13 @@ struct Canvas {
 };
 int main() {
  static_assert(sizeof(LoRaFishAirArt::masks)==6912,"Air ROM asset ceiling");
- static_assert(sizeof(LoRaFishWaterArt::masks)==4992,"Water assets unchanged");
+ static_assert(sizeof(LoRaFishWaterArt::masks)==5376,"Water ROM asset ceiling");
  static_assert(LoRaFishSpecies::savedSize==18,"save tail must not grow");
  for(unsigned id=0;id<65536;++id) {
   Canvas d;LoRaFishAirSprite::draw(d,64,32,true,id,2,0,1U,2U,3U,0U);
   assert((d.calls!=0)==LoRaFishSpecies::airKnown(id));
   Canvas w;LoRaFishWaterSprite::draw(w,64,32,true,id,2,0,1U,2U,3U,0U);
-  assert((w.calls!=0)==(id>0 && id<14));
+  assert((w.calls!=0)==(id>0 && id<15));
  }
  for(unsigned id=256;id<274;++id)for(unsigned stage=0;stage<4;++stage)
  for(unsigned phase=0;phase<2;++phase)for(bool right:{false,true})
@@ -42,12 +42,12 @@ int main() {
   assert(d.buffer.front()==1234 && d.buffer.back()==5678);
  }
  uint8_t key[32]={};LoRaFishCommitFrame frame;
- for(unsigned id:{0U,13U,256U,273U,65535U}) {
+ for(unsigned id:{0U,13U,14U,256U,273U,65535U}) {
   frame.prepare(key,UINT32_MAX,UINT32_MAX,true,247,247,247,65535,2,id,true);
   const char* p=frame.forVisit(key,UINT32_MAX,UINT32_MAX);assert(p && strlen(p)<128);
   uint16_t result;bool present;assert(LoRaFishSpecies::extension(p,result,present) && present && result==id);
  }
- puts("PASS C++11 ASan/UBSan: all 65536 IDs, 12096 clipped/mirrored/staged frames, <=768 pixels/calls, Air 6912B + retained Water 4992B, unchanged SPC1 and <=127B COMMIT");
+ puts("PASS C++11 ASan/UBSan: all 65536 IDs, 12096 clipped/mirrored/staged frames, <=768 pixels/calls, Air 6912B + Water 5376B, unchanged SPC1 and <=127B COMMIT");
 }
 '''
 with tempfile.TemporaryDirectory(prefix='air-resource-') as t:

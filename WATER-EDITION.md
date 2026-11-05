@@ -1,8 +1,8 @@
 # LoRagotchi-DX Water — v1.1.0 source candidate
 
 > **Air coexistence:** the new shared sender also recognizes an exact S1|A1 ACK.
-> Water still advertises S1 only and keeps IDs 0..13, existing saves, mystery
-> outcomes and artwork. Stored Air IDs are preserved but render as fish; outgoing
+> Water still advertises S1 only. Existing IDs 0..13 are unchanged; Anglerfish
+> is appended as ID 14. Existing saves and artwork remain compatible. Stored Air IDs are preserved but render as fish; outgoing
 > Air IDs require A1 and otherwise explicitly visit as fish. Pre-Air Water
 > senders remain strict-S1 and conservatively send legacy fish to an Air peer.
 > See [Air interoperability and validation gates](AIR-EDITION.md).
@@ -40,8 +40,9 @@ Registry **Water v1**, permanent unsigned 16-bit species IDs:
 | 4 | Whale | 11 | Jellyfish |
 | 5 | Seal | 12 | Shell-dweller |
 | 6 | Shrimp | 13 | Sea star |
+| 14 | Anglerfish | | |
 
-All 14 approved concept-sheet animals are included. Sizes are stylised, not
+The original 14 animals plus **Anglerfish (ID 14)** are included. Sizes are stylised, not
 biological scale. This is a habitat edition, not a separate mono/colour firmware
 architecture. No species-based visiting/breeding restriction is introduced;
 existing custody and safety rules remain.
@@ -49,7 +50,7 @@ existing custody and safety rules remain.
 Fresh games and explicit pet reset retain the existing notice/egg-adoption flow.
 After skipping/timing out adoption, **CHOOSE WATER PET** offers:
 
-- Species: all 14, plus **Mystery egg**. Click browses, hold selects, double-click
+- Species: all 15, plus **Mystery egg**. Click browses, hold selects, double-click
   cancels the draft. Mystery resolves only on selection, never while browsing.
 - **Mystery colours** independently chooses the three initial H1 genes. It works
   on OLEDs too; those genes travel to colour peers.
@@ -83,9 +84,9 @@ Species-aware Aquarium adoption requires a separate capability change; see the
 ## Art, stages and resource scope
 
 Species 0 keeps the original fish renderer plus accepted juvenile-colour work.
-13 original aquatic sprite sets each have two independently drawn animation
+14 aquatic sprite sets each have two independently drawn animation
 frames, packed as **2-bit semantic masks**: transparent/body/fins/eyes-detail.
-Mask storage is **4,992 bytes**, not RGB565 frames per palette. The renderer uses
+Mask storage is **5,376 bytes** (+384 for Anglerfish), not RGB565 frames per palette. The renderer uses
 a four-colour stack palette, no heap and no per-species framebuffer. Adult/elder
 max footprint is 32×24; fry/young sample 20×15 / 26×19. Existing world motion is
 shared; tails/flippers/legs/tentacles/blowhole/shell details animate at 280 ms
@@ -109,6 +110,41 @@ CI consumes the committed mask header without Pillow. Preview frames run exact
 production drawing functions on a clipped host framebuffer, not concept art,
 photographs or electrical panel emulation. Real board flash/RAM and frame timing
 remain subject to CI and physical checks.
+
+### Anglerfish extension and mixed registries
+
+Anglerfish uses permanent **ID 14**, not a reordered menu value. Its arched
+lantern, broad jaw, toothy grin and moving tail/lure have two production frames;
+the stalk and bulb remain present on both mono themes, both phases and all four
+stages. Body and fin/lure colours use existing genetics, including juvenile tints.
+The egg and memorial presentation/timing are unchanged.
+
+![Production Anglerfish ages, colour and monochrome](docs/images/water-anglerfish.png)
+[Animated production preview](docs/images/water-anglerfish.gif). These are clipped
+host framebuffer pixels, not photographed or electrically emulated panels.
+
+The original IDs 0..13, Air 256..273, every old 4,992-byte aquatic mask and all
+wire/save formats are unchanged. Mystery now samples all **15** Water choices.
+Saved selected species/pending eggs are never recomputed on load. An unresolved
+or explicitly reselected Mystery uses the expanded catalogue; the same seed can
+map differently than a 14-choice build. Mystery colours and Air choices are
+unchanged. Downgrading and reselecting Mystery can likewise change that result.
+
+Updated Water and Air builds display Anglerfish; DX displays a fish. Older
+S1-capable Water/Air peers retain opaque ID 14 but display their unknown/fish
+fallback; S1 advertises the schema, **not a complete species inventory**. Legacy
+plain-ACK DX/RX receives exactly the original nine-field fish COMMIT with no S1,
+H1 or P1 suffix. Home species/genes are not changed by that fallback. LEG1 eggs
+still adopt as fish, not Anglerfish. Use existing **💦** or fish discovery markers;
+no new Unicode marker or capability is invented.
+
+ID 14 is reserved by this owner fork; no global cross-project registry authority
+is implied. Independently maintained Aquarium/HA/RX/Lodestar registries must be
+coordinated before claiming end-to-end Anglerfish identity or artwork. They are
+not silently modified here. A peer assigning another animal to 14 cannot be
+detected with S1 alone; avoid such mixed registries until reconciled. See the
+[extension test report](docs/ANGLERFISH-TESTING.md) for exact checked versions and
+remaining limitations.
 
 ## Save migration
 
@@ -194,7 +230,7 @@ Existing workflows are retained. Read-only permissions, three parallel build job
 and 14-day artifacts remain. No release, merge, flash or hardware result is implied.
 
 Run native tests plus all test/ui/check_*.py. The Water tests cover real settings
-migration/corrupt tails/mystery state, all 14 production sprites/stages/mirroring/
+migration/corrupt tails/mystery state, all 15 production sprites/stages/mirroring/
 travel, and actual production packet-loss/full-key/capability handlers. Preserved
 f310240 production receiver and colour-codec fixtures prove old DX fallback. The
 separate older RX→Aquarium test verifies the real nine-field fallback and SQLite
