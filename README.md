@@ -18,7 +18,7 @@ Historical v1.0 release notes remain historical.
 
 - **DX** is the original fish-only edition. Existing LoRaFish/LoRaGotchi
   environment names build DX; they do not change edition automatically.
-- **Water** contains 14 animals in total, including fish. Select a `water_*`
+- **Water** contains 15 animals in total, including fish and Anglerfish. Select a `water_*`
   build target. See [Water controls and compatibility](WATER-EDITION.md).
 - **Air** contains 18 animals. Select an `air_*` build target. See
   [Air controls, saves and compatibility](AIR-EDITION.md).

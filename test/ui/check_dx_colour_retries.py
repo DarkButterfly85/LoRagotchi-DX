@@ -38,7 +38,9 @@ int main(int argc,char** argv) {
  loragotchiDXHome.txid=7;loragotchiDXHome.fishid=8;
  loragotchiDXLocalHasColorGenes=true;loragotchiDXLocalColorIndex=5;
  loragotchiDXLocalScalesColorIndex=4;loragotchiDXLocalEyesColorIndex=2;
+ loragotchiDXLocalSpecies=LoRaFishSpecies::Anglerfish;
  the_mesh.receive(dest,"LFG1|ACK|7|8");
+ assert(loragotchiDXLocalSpecies==14); // legacy rendering must not mutate home identity
  const std::string first=the_mesh.sent.back();assert(first=="LFG1|COMMIT|7|8|C|5|4|2|31");
  assert(loragotchiDXHome.committing && !loragotchiDXHome.pending);
  IO io;lrx::Receiver r(io);r.begin(nullptr,0);r.receive(owner,"LFG1|REQ|7|8|2|Colour Fish",0);
@@ -98,8 +100,9 @@ with tempfile.TemporaryDirectory(prefix='dx-colour-retry-') as directory:
     # Forward to the unchanged production RX header; avoid a dependency copy.
     (temp/'RX-under-test.h').write_text('#include "'+str(rx/'examples/companion_radio/LoRagotchiRX.h')+'"\n')
     cpp.write_text(source)
-    subprocess.run(['g++','-std=c++17','-I',str(root),str(cpp),'-o',str(binary)],check=True)
-    subprocess.run([str(binary),str(event_file)],check=True)
+    for edition in ('0','1'):
+        subprocess.run(['g++','-std=c++17','-DLORAGOTCHI_WATER_EDITION='+edition,'-I',str(root),str(cpp),'-o',str(binary)],check=True)
+        subprocess.run([str(binary),str(event_file)],check=True)
     sys.path.insert(0,str(aquarium))
     from tank.protocol import decode_event, encode_event
     from tank.store import Store

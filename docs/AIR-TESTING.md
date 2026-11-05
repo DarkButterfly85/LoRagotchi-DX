@@ -1,5 +1,7 @@
 # Air source verification — 2026-11-01
 
+> Current Anglerfish extension: Water now has 15 species / 5,376 bytes of masks. Counts below are historical; see [current checks and limitations](ANGLERFISH-TESTING.md).
+
 ## Revisions and authority
 
 Runtime/art/tests source commit: **945717cec7df7a21196996d39a9c97dee4f11dc6**.

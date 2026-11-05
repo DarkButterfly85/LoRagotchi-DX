@@ -43,6 +43,16 @@ int main(int argc,char** argv) {
   DisplayDriver fallback,unknown;LoRaFishAppearance p={4,2,1};
   drawFishSpriteForStage(fallback,32,20,true,2,p,0);
   drawFishSpriteForStage(unknown,32,20,true,2,p,65535);assert(fallback.pixels==unknown.pixels);
+  // Air retains Water art for visitors and old saves, including appended ID14.
+  for(unsigned stage=0;stage<4;++stage)for(unsigned phase=0;phase<2;++phase)
+  for(bool right:{false,true}) {
+    loRaFishColorDisplay=false;UIColor::window_bkg=0;UIColor::primary_txt=1;tick=phase*280;
+    DisplayDriver actual,expected;
+    drawFishSpriteForStage(actual,32,20,right,stage,{0,4,2},LoRaFishSpecies::Anglerfish);
+    LoRaFishWaterSprite::draw(expected,32,20,right,LoRaFishSpecies::Anglerfish,stage,
+      uint32_t(tick),uint16_t(1),uint16_t(1),uint16_t(0),uint16_t(0));
+    assert(actual.pixels==expected.pixels);++checks;
+  }
   // Every allele is presentation-only, all stages and mirror directions.
   loRaFishColorDisplay=true;
   for(unsigned id=256;id<274;++id)for(unsigned allele=0;allele<248;++allele) {
