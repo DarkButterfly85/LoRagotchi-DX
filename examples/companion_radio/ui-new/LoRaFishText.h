@@ -70,14 +70,19 @@ inline bool isWaterMarker(uint32_t code) {
   return false;
 #endif
 }
-// Historical API name kept for callers. Now tests the exact Water allowlist.
-inline bool hasFish(const char* text, size_t capacity) {
+// Discovery hints only, never proof of habitat, capabilities or stored species.
+inline bool hasDiscoveryMarker(const char* text, size_t capacity) {
   if (!text) return false;
   for (size_t pos = 0; pos < capacity && text[pos]; ) {
     const uint32_t code=next(text,capacity,pos);
     if (isWaterMarker(code) || isAirMarker(code)) return true;
   }
   return false;
+}
+
+// Legacy caller compatibility, including Air markers in Air builds.
+inline bool hasFish(const char* text, size_t capacity) {
+  return hasDiscoveryMarker(text, capacity);
 }
 
 inline void display(char* dest, size_t size, const char* text, size_t capacity) {

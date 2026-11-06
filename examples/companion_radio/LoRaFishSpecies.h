@@ -43,9 +43,42 @@ inline int habitatY(uint16_t id,int swimY,uint32_t now) {
     default:return swimY;
   }
 }
-// Bounded scene movement for Air candidates; Water/legacy callers remain exact.
+// Pure presentation only; ShellDweller is the existing snail-like sprite.
+inline bool waterMotion(uint16_t id) {
+  return id==ShellDweller || id==Crab || id==Jellyfish;
+}
+inline void waterPosition(uint16_t id,uint8_t stage,int width,uint32_t now,
+                          uint32_t offset,int& x,int& y,bool& right) {
+  if(!waterMotion(id))return;
+  uint32_t period=id==ShellDweller ? 32000U : id==Crab ? 12000U : 18000U;
+  if(stage==0)period=period*3U/4U;
+  else if(stage>=3)period=period*5U/4U;
+  const uint32_t clock=now+offset; // explicit Arduino millis rollover
+  const uint32_t t=clock%period, half=period/2U;
+  right=t<half;
+  const uint32_t leg=t%half;
+  uint32_t progress=leg;
+  if(id==Crab) {
+    // Sideways bursts: 700ms scuttle, 800ms rest; facing holds at rest.
+    const uint32_t beat=1500U, moving=700U;
+    const uint32_t within=leg%beat;
+    progress=(leg/beat)*beat+(within<moving ? within*beat/moving : beat);
+    if(progress>half)progress=half;
+  }
+  const int span=width>40 ? width-40 : 1;
+  x=20+(int)((uint32_t)span*(right ? progress : half-progress)/half);
+  y=37; // grounded centre; no inherited fish bob
+  if(id==Jellyfish) {
+    // Quick upward bell stroke followed by a slow settling drift.
+    const uint32_t pulse=clock%2400U;
+    y=pulse<600U ? 36-(int)(6U*pulse/600U)
+                 : 30+(int)(6U*(pulse-600U)/1800U);
+  }
+}
+// Home/visitor hook; other Water and all existing Air paths stay exact.
 inline void habitatPosition(uint16_t id,uint8_t stage,int width,uint32_t now,
                             uint32_t offset,int& x,int& y,bool& right) {
+  if(waterMotion(id)) {waterPosition(id,stage,width,now,offset,x,y,right);return;}
   if(!airKnown(id))return;
   const Movement kind=movement(id);
   uint32_t period=kind==Crawl ? 16000U : kind==Walk ? 10000U : kind==Flutter ? 4200U : 8000U;

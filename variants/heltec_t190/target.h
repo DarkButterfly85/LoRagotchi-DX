@@ -8,7 +8,11 @@
 #include <helpers/AutoDiscoverRTCClock.h>
 #include <helpers/SensorManager.h>
 #ifdef DISPLAY_CLASS
+#ifdef LORAGOTCHI_T190_COLOR
+#include <helpers/ui/ST7789LCDDisplay.h>
+#else
 #include <helpers/ui/ST7789Display.h>
+#endif
 #include <helpers/ui/MomentaryButton.h>
 #endif
 

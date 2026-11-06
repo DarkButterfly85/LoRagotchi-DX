@@ -90,10 +90,10 @@ int main(){
     for(int i=0;i<((selected-loRaFishBrightnessSetting+4)%4);++i)next();
     assert(settingsWrites==before && MockOLED::contrast==loRaFishBrightnessValues[loRaFishBrightnessSetting]);
     enter();brightnessLoop(task._display);
-    assert(settingsWrites==before+1 && loRaFishBrightnessSetting==selected);
+    assert(settingsWrites==before && loRaFishBrightnessSetting==selected);
     assert(MockOLED::contrast==loRaFishBrightnessValues[selected] && !loRaFishBrightnessNeedsApply);
     enter();next();back();brightnessLoop(task._display);
-    assert(settingsWrites==before+1 && loRaFishBrightnessSetting==selected);
+    assert(settingsWrites==before && loRaFishBrightnessSetting==selected);
     assert(MockOLED::contrast==loRaFishBrightnessValues[selected]);
     testTimeout=0;tick+=loRaFishAlwaysOnDimValues[loRaFishAlwaysOnDimSetting];
     brightnessLoop(task._display);
@@ -101,7 +101,7 @@ int main(){
     next();assert(!loRaFishScreenDimmed && MockOLED::contrast==loRaFishBrightnessValues[selected]);
     testTimeout=15000;
     task.display.turnOff();int page=loRaFishPage;
-    enter();assert(task.display.isOn() && loRaFishPage==page && settingsWrites==before+1);
+    enter();assert(task.display.isOn() && loRaFishPage==page && settingsWrites==before);
     assert(MockOLED::contrast==loRaFishBrightnessValues[selected]);
     back();back();
   }
@@ -120,7 +120,7 @@ int main(){
   assert(loRaFishPage==13 && loRaFishValuePicker.active());
   int writes=settingsWrites;next();assert(settingsWrites==writes);
   back();assert(!loRaFishValuePicker.active() && loRaFishPage==12 && settingsWrites==writes);
-  enter();next();enter();assert(!loRaFishValuePicker.active() && loRaFishPage==12 && settingsWrites==writes+1);
+  enter();next();enter();assert(!loRaFishValuePicker.active() && loRaFishPage==12 && settingsWrites==writes);
   back();back();assert(loRaFishPage==0);
   int cleanBefore=cleans;hold(task,PIN_USER_BTN);assert(cleans==cleanBefore+1 && loRaFishPage==0);
   task._alert_expiry=0;loRaFishCleaning=true;hold(task,PIN_USER_BTN);assert(cleans==cleanBefore+1);loRaFishCleaning=false;
@@ -173,7 +173,7 @@ int main(){
     assert(loRaFishSoundField==row);enter();assert(loRaFishValuePicker.active());
     writes=settingsWrites;int previews=task.buzzer.previews;next();back();
     assert(loRaFishPage==14 && settingsWrites==writes && task.buzzer.previews==previews);
-    enter();next();enter();assert(settingsWrites==writes+1);
+    enter();next();enter();assert(settingsWrites==writes);
     bool audible=row==0 ? loRaFishBuzzerVolume>0 : row==1 ? loRaFishWakeSound>0 :
         row==2 ? loRaFishSleepSound>0 : loRaFishMessageSound>0;
     assert(task.buzzer.previews==previews+(audible ? 1 : 0));
@@ -196,7 +196,7 @@ int main(){
   loRaFishPage=LORAFISH_DX_CONTACT_PAGE;task.display.clearBounds();drawLoRaFishDX(task.display);
   assert(resets==0 && the_mesh.sends==0 && the_mesh.dxSends==0);
   // Explicit Enter can still perform each guarded action; browsing never did.
-  back();enter();enter();assert(the_mesh.dxSends==1 && loragotchiDXHome.pending);
+  back();enter();enter();assert(loRaFishVisitWarning && !loRaFishVisitContinue && the_mesh.dxSends==0);next();enter();assert(the_mesh.dxSends==1 && loragotchiDXHome.pending);
   back();back();options();choose(LoRaFishOption::Advert);
   enter();assert(the_mesh.sends==1 && loRaFishPage==5);task._alert_expiry=0;
   choose(LoRaFishOption::Reset);next();enter();assert(resets==1);task._alert_expiry=0;

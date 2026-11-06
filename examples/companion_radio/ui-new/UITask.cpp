@@ -113,6 +113,7 @@ static void tdeckTouchPoll() {
 #include "LoRaFishText.h"
 #include "../LoRaFishColour.h"
 #include "../LoRaFishSpecies.h"
+#include "LoRaFishLifeArt.h"
 #if LORAGOTCHI_SPECIES_EDITION
 #include "LoRaFishWaterSprite.h"
 #if LORAGOTCHI_AIR_EDITION
@@ -322,7 +323,10 @@ static bool loRaFishGuessHigher=true;
 static bool loRaFishGuessResultShown=false;
 static bool loRaFishGuessCorrect=false;
 static bool loRaFishGuessComplete=false;
-static bool loRaFishSimulationMode = false;
+// Byte 23: legacy Smooth=0 / Simulation=1; Efficient=2.
+static uint8_t loRaFishSimulationMode = 0;
+static bool loRaFishSettingsPending = false;
+static bool loRaFishSettingsMenuOpen = false;
 static uint8_t loRaFishTimeField = 0;
 static uint8_t loRaFishTimeoutField = 0;
 static uint8_t loRaFishSoundField = 0;
@@ -341,6 +345,11 @@ static PetResetConfirmation loRaFishResetConfirmation;
 static constexpr uint8_t LORAFISH_ADVERT_PAGE = 18;
 static AdvertMenu loRaFishAdvertMenu;
 static constexpr uint8_t LORAFISH_DX_CONTACT_PAGE = 19;
+// All peers get this warning: emoji do not negotiate rendering support.
+static bool loRaFishVisitWarning = false;
+static bool loRaFishVisitContinue = false;
+static uint8_t loRaFishVisitWarningKey[PUB_KEY_SIZE];
+
 static int8_t loRaFishRfHistory[48] = {0};
 static uint8_t loRaFishRfHistoryCount = 0;
 static uint32_t loRaFishRfSeenSeq = 0;
@@ -349,6 +358,12 @@ static uint8_t loRaFishColor = 0;
 static uint16_t loRaFishSpecies=LoRaFishSpecies::TropicalFish;
 static uint16_t loRaFishEggSpecies=LoRaFishSpecies::TropicalFish;
 static uint32_t loRaFishMysterySeed=0;
+// ART1 stores proven selection and the immutable deceased art snapshot.
+static bool loRaFishMysterySelected=false;
+static bool loRaFishMemorialCaptured=false;
+static uint32_t loRaFishMemorialKey=0;
+static uint8_t loRaFishMemorialBody=0;
+static uint8_t loRaFishMemorialScales=0;
 static bool loRaFishNeedsPetSetup=false;
 static uint8_t loRaFishPetSetupField=0;
 static constexpr uint8_t LORAFISH_PET_SETUP_PAGE=20;
@@ -393,6 +408,7 @@ static uint16_t loRaFishGeneration = 1;
 static bool loRaFishPendingEgg = false;
 static LoRaFishAppearance loRaFishEggAppearance = {0,0,0};
 static int8_t loRaFishMemorialEggSide = 0;
+static uint32_t loRaFishLifeArtFrameMs = 0;
 
 struct LoRaFishThemePalette {
   const char* name;
@@ -522,6 +538,12 @@ static const char* loRaFishAlwaysOnDimNames[] = {"15s","30s","60s"};
 static unsigned long loRaFishLastActivityMs = 0;
 static bool loRaFishScreenDimmed = false;
 static bool loRaFishBrightnessNeedsApply = false;
+static bool loRaFishPartialSupported = false;
+static uint8_t loRaFishPartial = 0;
+static bool loRaFishPartialNeedsApply = false;
+static bool loRaFishOrientationSupported = false;
+static uint8_t loRaFishOrientation = 0;
+static bool loRaFishOrientationNeedsApply = false;
 static uint8_t loRaFishBuzzerVolume = 4;
 static uint8_t loRaFishWakeSound = 0;
 static uint8_t loRaFishSleepSound = 0;
@@ -560,7 +582,7 @@ static uint32_t loRaFishScreenTimeoutMs() {
   return loRaFishTimeoutValues[min((uint8_t)5,setting)];
 }
 static uint8_t loRaFishDisplayOptionCount() {
-  return 5 + (LORAGOTCHI_SPECIES_EDITION ? 1 : 0);
+  return 5 + (LORAGOTCHI_SPECIES_EDITION ? 1 : 0) + loRaFishOrientationSupported + loRaFishPartialSupported;
 }
 static bool loRaFishCanBreed() {
 #ifdef LORAFISH_UI
@@ -602,8 +624,10 @@ static void openLoRaFishValue(LoRaFishSetting setting) {
 #endif
       break;
     case LoRaFishSetting::Theme: value = loRaFishTheme; count = loRaFishThemeCount(); break;
+    case LoRaFishSetting::DisplayUpdate: value = loRaFishPartial; count = loRaFishPartialSupported ? 2 : 0; break;
+    case LoRaFishSetting::Orientation: value = loRaFishOrientation; count = loRaFishOrientationSupported ? 2 : 0; break;
     case LoRaFishSetting::Brightness: value = loRaFishBrightnessSetting; count = 4; break;
-    case LoRaFishSetting::Rendering: value = loRaFishSimulationMode; count = 2; break;
+    case LoRaFishSetting::Rendering: value = loRaFishSimulationMode; count = 3; break;
     case LoRaFishSetting::Scales: value = LoRaFishColour::fallback(loRaFishScaleColor); count = LORAFISH_COLOR_ALLELE_COUNT; break;
     case LoRaFishSetting::Body: value = LoRaFishColour::fallback(loRaFishColor); count = LORAFISH_COLOR_ALLELE_COUNT; break;
     case LoRaFishSetting::Eyes: value = LoRaFishColour::fallback(loRaFishEyeColor); count = LORAFISH_COLOR_ALLELE_COUNT; break;
@@ -641,10 +665,13 @@ static void selectLoRaFishValue() {
   switch (loRaFishValuePicker.key()) {
     case LoRaFishSetting::Species:
 #if LORAGOTCHI_SPECIES_EDITION
+      loRaFishMysterySelected=(value==LoRaFishSpecies::selectableCount);
       if (value==LoRaFishSpecies::selectableCount) { ensureLoRaFishMysterySeed(); loRaFishSpecies=LoRaFishSpecies::mystery(loRaFishMysterySeed); }
       else loRaFishSpecies=LoRaFishSpecies::selectionId(value);
 #endif
       break;
+    case LoRaFishSetting::DisplayUpdate: loRaFishPartial = value; loRaFishPartialNeedsApply = true; break;
+    case LoRaFishSetting::Orientation: loRaFishOrientation = value; loRaFishOrientationNeedsApply = true; break;
     case LoRaFishSetting::Theme: loRaFishTheme = value; applyLoRaFishTheme(); break;
     case LoRaFishSetting::Brightness:
       loRaFishBrightnessSetting = value; loRaFishBrightnessNeedsApply = true; break;
@@ -667,7 +694,12 @@ static void selectLoRaFishValue() {
 #ifdef LORAFISH_UI
   loRaFishSyncDXAppearance();
 #endif
-  saveLoRaFishSettings();
+  // Identity is shared with DX/lifecycle; preserve immediate durability.
+  const auto key = loRaFishValuePicker.key();
+  if (key == LoRaFishSetting::Species || key == LoRaFishSetting::Scales ||
+      key == LoRaFishSetting::Body || key == LoRaFishSetting::Eyes)
+    saveLoRaFishSettings();
+  else loRaFishSettingsPending = true;
   cancelLoRaFishValue();
 }
 static void applyLoRaFishBrightness(DisplayDriver& display, bool dimmed=false) {
@@ -901,6 +933,7 @@ static void resetLoRaFishPet() {
   loRaFishCleaning = false;
   loRaFishGeneration = 1;
   loRaFishSpecies=loRaFishEggSpecies=LoRaFishSpecies::freshSpecies;
+  loRaFishMysterySelected=false; loRaFishMemorialCaptured=false;
   loRaFishMysterySeed=0; loRaFishNeedsPetSetup=(LORAGOTCHI_SPECIES_EDITION!=0); loRaFishPetSetupField=0;
   loRaFishPendingEgg = false;
   loRaFishMemorialEggSide = 0;
@@ -1004,8 +1037,9 @@ static const char* fishStageName() {
 // Preserve the 24-byte settings prefix and 12-byte HAP1 tail. AQU1 is an
 // optional eight-byte extension. HUE1 appends ten bytes of finer colour genes;
 // legacy readers keep the nearest-palette values in the original prefix.
+// ORI1 follows species without repurposing any existing settings byte.
 static constexpr uint32_t LORAFISH_AQUARIUM_SETTINGS_MAGIC = 0x31555141UL; // "AQU1"
-static constexpr size_t LORAFISH_SETTINGS_SIZE = 78;
+static constexpr size_t LORAFISH_SETTINGS_SIZE = 106;
 static constexpr uint32_t LORAFISH_CHECKPOINT_MS = 5UL * 60000UL;
 static constexpr uint32_t LORAFISH_SAVE_RETRY_MS = 5000UL;
 static uint8_t lastWrittenLoRaFishSettings[LORAFISH_SETTINGS_SIZE];
@@ -1029,7 +1063,7 @@ static void encodeLoRaFishSettings(uint8_t* data) {
   data[20] = LoRaFishColour::fallback(loRaFishEggAppearance.body);
   data[21] = LoRaFishColour::fallback(loRaFishEggAppearance.eyes);
   data[22] = loRaFishNeedsAppearanceSetup ? 1 : 0;
-  data[23] = loRaFishSimulationMode ? 1 : 0;
+  data[23] = loRaFishSimulationMode;
   memcpy(data + 24, &LORAFISH_HAPPY_SETTINGS_MAGIC, 4);
   memcpy(data + 28, &loRaFishHappiness.awakeMs, 4);
   memcpy(data + 32, &loRaFishHappiness.mealCooldownMs, 4);
@@ -1043,6 +1077,17 @@ static void encodeLoRaFishSettings(uint8_t* data) {
   data[58]=loRaFishMonoDisplayColour;
   data[59]=0;
   LoRaFishSpecies::encode(data+60,loRaFishSpecies,loRaFishEggSpecies,loRaFishMysterySeed,loRaFishNeedsPetSetup);
+  memcpy(data + 78, "ORI1", 4);
+  data[82] = loRaFishOrientation;
+  data[83] = 0;
+  memcpy(data + 84, "UPD1", 4); data[88] = loRaFishPartial; data[89] = 0;
+  memcpy(data+90,"ART1",4);
+  data[94]=loRaFishMysterySelected; data[95]=loRaFishMemorialCaptured;
+  for(unsigned i=0;i<4;++i) data[96+i]=(uint8_t)(loRaFishMemorialKey>>(8*i));
+  data[100]=loRaFishMemorialBody; data[101]=loRaFishMemorialScales;
+  data[102]=1; data[103]=0;
+  const uint16_t artCRC=LoRaFishSpecies::checksum(data+90,14);
+  data[104]=artCRC; data[105]=artCRC>>8;
 }
 
 static const char* loRaFishRecordKey(const char* path) {
@@ -1085,6 +1130,7 @@ static void saveLoRaFishSettings() {
   if (!loRaFishSettingsSaveFailed && haveLastWrittenLoRaFishSettings &&
       memcmp(data, lastWrittenLoRaFishSettings, sizeof(data)) == 0) {
     loRaFishHappyLastSavedMs = now;
+    loRaFishSettingsPending = false;
     return;
   }
   loRaFishSettingsLastAttempt = now;
@@ -1095,17 +1141,31 @@ static void saveLoRaFishSettings() {
   memcpy(lastWrittenLoRaFishSettings, data, sizeof(data));
   haveLastWrittenLoRaFishSettings = true;
   loRaFishSettingsSaveFailed = false;
+  loRaFishSettingsPending = false;
   lastWrittenLoRaFishHappiness = loRaFishHappiness;
   haveLastWrittenLoRaFishHappiness = true;
   loRaFishHappyLastSavedMs = now;
 }
 
+// Options scope includes action/RF/GNSS/game children, not DX contacts (19).
+// Display-off, screen replacement and non-menu pages close the scope.
+static void serviceLoRaFishSettingsMenu(bool visible) {
+  loRaFishSettingsMenuOpen = visible &&
+      ((loRaFishPage >= 5 && loRaFishPage <= 18) || loRaFishPage == LORAFISH_PET_SETUP_PAGE);
+  if (!loRaFishSettingsMenuOpen && loRaFishSettingsPending) saveLoRaFishSettings();
+}
+
 static void loadLoRaFishSettings() {
+  loRaFishOrientation = 0;
+  loRaFishPartial = 0;
+  loRaFishSettingsPending = false;
   // Only a genuinely fresh game starts with the edition default. Established
   // legacy DAT saves still default to fish when SPC1 is absent/corrupt.
   loRaFishSpecies=loRaFishEggSpecies=loRaFishNeedsPetSetup ?
       LoRaFishSpecies::freshSpecies : LoRaFishSpecies::TropicalFish;
   loRaFishMysterySeed=0;
+  loRaFishMysterySelected=false; loRaFishMemorialCaptured=false;
+  loRaFishMemorialKey=0; loRaFishMemorialBody=loRaFishMemorialScales=0;
   haveLastWrittenLoRaFishSettings = false;
   loRaFishSettingsSaveFailed = false;
   loRaFishHappiness = {};
@@ -1193,7 +1253,7 @@ static void loadLoRaFishSettings() {
     uint8_t appearanceSetup=0;
     if (f.read(&appearanceSetup,1)==1) loRaFishNeedsAppearanceSetup=appearanceSetup!=0;
     uint8_t simulationMode=0;
-    if (f.read(&simulationMode,1)==1) loRaFishSimulationMode=simulationMode!=0;
+    if (f.read(&simulationMode,1)==1) loRaFishSimulationMode=simulationMode<=2 ? simulationMode : 0;
     uint32_t happyMagic = 0;
     LoRaFishHappiness happy;
     const bool hasHappyMagic = f.read((uint8_t*)&happyMagic, sizeof(happyMagic)) == sizeof(happyMagic);
@@ -1235,6 +1295,21 @@ static void loadLoRaFishSettings() {
     if (f.read(speciesTail,sizeof(speciesTail))==sizeof(speciesTail))
       LoRaFishSpecies::decode(speciesTail,sizeof(speciesTail),loRaFishSpecies,
           loRaFishEggSpecies,loRaFishMysterySeed,loRaFishNeedsPetSetup);
+    uint8_t orientation[6] = {};
+    if (f.read(orientation, sizeof(orientation)) == sizeof(orientation) &&
+        !memcmp(orientation, "ORI1", 4) && orientation[4] < 2 && orientation[5] == 0)
+      loRaFishOrientation = orientation[4];
+    uint8_t update[6] = {};
+    if (f.read(update, sizeof(update)) == sizeof(update) && !memcmp(update, "UPD1", 4) && update[4] < 2 && update[5] == 0) loRaFishPartial = update[4];
+    uint8_t art[16]={};
+    if(f.read(art,sizeof(art))==sizeof(art) && !memcmp(art,"ART1",4) &&
+        art[4]<=1 && art[5]<=1 && LoRaFishColour::valid(art[10]) &&
+        LoRaFishColour::valid(art[11]) && art[12]==1 && art[13]==0 &&
+        LoRaFishSpecies::checksum(art,14)==(uint16_t)(art[14]|art[15]<<8)) {
+      loRaFishMysterySelected=art[4]; loRaFishMemorialCaptured=art[5];
+      for(unsigned i=0;i<4;++i) loRaFishMemorialKey|=(uint32_t)art[6+i]<<(8*i);
+      loRaFishMemorialBody=art[10]; loRaFishMemorialScales=art[11];
+    }
     if (!LORAGOTCHI_SPECIES_EDITION) loRaFishNeedsPetSetup=false;
     if (loRaFishNeedsPetSetup && !loRaFishAdoptionEligible) loRaFishPage=LORAFISH_PET_SETUP_PAGE;
     lastWrittenLoRaFishHappiness = loRaFishHappiness;
@@ -1347,7 +1422,18 @@ static void loadLoRaFish() {
 #include "LoRaFishAdoption.h"
 
 static void ensureLoRaFishOffspring() {
-  if (fish.ageMinutes < LORAFISH_LIFESPAN_MINUTES || loRaFishPendingEgg) return;
+  if (fish.ageMinutes < LORAFISH_LIFESPAN_MINUTES) return;
+  bool captured=false;
+  if (!loRaFishMemorialCaptured) {
+    loRaFishMemorialKey=LoRaFishLifeArt::identity(loRaFishMysterySeed,loRaFishGeneration,
+        loRaFishSpecies,loRaFishColor,loRaFishScaleColor,loRaFishEyeColor);
+    loRaFishMemorialBody=loRaFishColor; loRaFishMemorialScales=loRaFishScaleColor;
+    loRaFishMemorialCaptured=true; captured=true;
+  }
+  if (loRaFishPendingEgg) {
+    if(captured) saveLoRaFishSettings();
+    return;
+  }
   // Self-fertilise only when no visitor-bred egg exists. With a single parent,
   // all three inherited traits are its own, including Mono.
   loRaFishEggSpecies=loRaFishSpecies;
@@ -1366,6 +1452,7 @@ static void hatchLoRaFishOffspring() {
   loRaFishHappiness.resetCare();
   loRaFishHappyLastMs = millis();
   loRaFishSpecies=loRaFishEggSpecies;
+  loRaFishMysterySelected=false; loRaFishMemorialCaptured=false;
   loRaFishColor=loRaFishEggAppearance.body;
   loRaFishScaleColor=loRaFishEggAppearance.scales;
   loRaFishEyeColor=loRaFishEggAppearance.eyes;
@@ -1407,7 +1494,8 @@ static void advanceLoRaFishHappiness(uint32_t until) {
 
 static void checkpointLoRaFish(uint32_t now) {
   if (loRaFishSettingsSaveFailed ||
-      now - loRaFishHappyLastSavedMs >= LORAFISH_CHECKPOINT_MS) saveLoRaFishSettings();
+      (!loRaFishSettingsMenuOpen && (loRaFishSettingsPending ||
+       now - loRaFishHappyLastSavedMs >= LORAFISH_CHECKPOINT_MS))) saveLoRaFishSettings();
   if (loRaFishSaveFailed || now - fishLastSave >= LORAFISH_CHECKPOINT_MS) saveLoRaFish();
 }
 
@@ -2207,13 +2295,42 @@ static void drawLoRaFishTankBattery(DisplayDriver& display, UITask* task,
   }
 }
 
+static uint32_t loRaFishLifeArtKey(bool offspring) {
+  if(!offspring && fish.ageMinutes>=LORAFISH_LIFESPAN_MINUTES && loRaFishMemorialCaptured)
+    return loRaFishMemorialKey;
+  const LoRaFishAppearance a=offspring ? loRaFishEggAppearance : loRaFishLocalAppearance();
+  return LoRaFishLifeArt::identity(loRaFishMysterySeed,loRaFishGeneration,
+      offspring ? loRaFishEggSpecies : loRaFishSpecies,a.body,a.scales,a.eyes);
+}
+
 static void drawLoRaFishEggSprite(DisplayDriver& display,int centerX,int topY) {
-  int wobble=((millis()/350UL)%3)-1;
-  display.setColor(UIColor::primary_txt);
-  display.drawRect(centerX-7+wobble,topY+3,14,14);
-  display.fillRect(centerX-5+wobble,topY,10,2);
-  display.fillRect(centerX-6+wobble,topY+2,12,1);
-  display.fillRect(centerX-5+wobble,topY+17,10,2);
+  const bool offspring=fish.ageMinutes>=LORAFISH_LIFESPAN_MINUTES;
+  const uint32_t key=loRaFishLifeArtKey(offspring);
+  const unsigned progress=LoRaFishLifeArt::progress(fish.ageMinutes,
+      offspring ? LORAFISH_LIFESPAN_MINUTES : 0,LORAFISH_EGG_MINUTES);
+  const bool mystery=!offspring && loRaFishMysterySelected;
+  ColorVal shell=loRaFishColorDisplay ? LoRaFishColour::rgb565(8+key%240) : UIColor::window_bkg;
+  if(shell==UIColor::primary_txt) shell=UIColor::window_bkg;
+  LoRaFishLifeArt::egg([&](int x,int y,unsigned role) {
+    // Dark ink on the bright shell; outline/glitter use theme foreground.
+    display.setColor(role==0 ? shell : role==2 ? UIColor::primary_txt :
+        loRaFishColorDisplay ? (shell==UIColor::window_bkg ? UIColor::primary_txt : 0) : UIColor::primary_txt);
+    display.fillRect(x,y,1,1);
+  },centerX,topY,key,progress,loRaFishLifeArtFrameMs,mystery);
+}
+
+static void drawLoRaFishMemorialSprite(DisplayDriver& display,int centerX) {
+  const LoRaFishAppearance a={loRaFishMemorialScales,loRaFishMemorialBody,0};
+  const uint32_t key=loRaFishLifeArtKey(false);
+  ColorVal fill=loRaFishColorDisplay ? loRaFishColorValue(a.body) : UIColor::window_bkg;
+  if(fill==UIColor::primary_txt) fill=UIColor::window_bkg;
+  const ColorVal ink=loRaFishColorDisplay && fill!=UIColor::window_bkg ? 0 : UIColor::primary_txt;
+  ColorVal ornament=loRaFishColorValue(a.scales);
+  if(ornament==fill) ornament=UIColor::primary_txt;
+  LoRaFishLifeArt::memorial([&](int x,int y,unsigned role) {
+    display.setColor(role==0 ? fill : role==2 ? ornament : ink);
+    display.fillRect(x,y,1,1);
+  },centerX,22,key%3);
 }
 
 static void drawLoRaFishTankStatusBar(DisplayDriver& display,const char* stage,UITask* task) {
@@ -2264,17 +2381,11 @@ static void drawLoRaFishMemorial(DisplayDriver& display) {
   drawLoRaFishHeader(display,loRaFishDisplayName(),"REST");
   display.setColor(UIColor::primary_txt);
   if (loRaFishPendingEgg) {
-    if (loRaFishMemorialEggSide==0) loRaFishMemorialEggSide=random(0,2) ? 1 : -1;
-    const int stoneCenter=w/2-loRaFishMemorialEggSide*18;
-    const int eggCenter=w/2+loRaFishMemorialEggSide*18;
-    display.fillRect(stoneCenter-12,28,24,18);
-    display.drawRect(stoneCenter-9,22,18,25);
-    display.drawTextCentered(stoneCenter,29,"RIP");
-    drawLoRaFishEggSprite(display,eggCenter,27);
+    const int side=(loRaFishLifeArtKey(false)&1) ? 1 : -1;
+    drawLoRaFishMemorialSprite(display,w/2-side*18);
+    drawLoRaFishEggSprite(display,w/2+side*18,27);
   } else {
-    display.fillRect(w/2-12,28,24,18);
-    display.drawRect(w/2-9,22,18,25);
-    display.drawTextCentered(w/2,29,"RIP");
+    drawLoRaFishMemorialSprite(display,w/2);
   }
   display.setColor(UIColor::secondary_txt);
   display.fillRect(2,h-15,w-4,1);
@@ -2313,14 +2424,16 @@ static void drawLoRaFishValuePicker(DisplayDriver& display) {
   static const char* titles[] = {"FIRMWARE THEME", "BRIGHTNESS", "GAME RENDERING",
       "SCALES", "BODY / BORDER", "EYES", "SLEEP HOUR", "WAKE HOUR", "UTC OFFSET",
       "AWAKE TIMEOUT", "ASLEEP TIMEOUT", "DIM AFTER", "VOLUME", "WAKE ALARM",
-      "SLEEP CUE", "MESSAGE TONE", "SCREEN COLOUR", "SPECIES"};
+      "SLEEP CUE", "MESSAGE TONE", "SCREEN COLOUR", "SPECIES", "ORIENTATION", "DISPLAY UPDATE"};
   char valueText[24];
   const char* text = valueText;
   switch (setting) {
     case LoRaFishSetting::Species: text = value==LoRaFishSpecies::selectableCount ? "Mystery egg" : LoRaFishSpecies::label(LoRaFishSpecies::selectionId(value)); break;
     case LoRaFishSetting::Theme: text = loRaFishThemes[value].name; break;
     case LoRaFishSetting::Brightness: text = loRaFishBrightnessNames[value]; break;
-    case LoRaFishSetting::Rendering: text = value ? "Simulation" : "Smooth"; break;
+    case LoRaFishSetting::DisplayUpdate: text = value ? "Partial" : "Full"; break;
+    case LoRaFishSetting::Orientation: text = value ? "180 degrees" : "0 degrees"; break;
+    case LoRaFishSetting::Rendering: text = value==2 ? "Efficient 1 FPS" : value==1 ? "Simulation" : "Smooth"; break;
     case LoRaFishSetting::Scales:
     case LoRaFishSetting::Body:
     case LoRaFishSetting::Eyes: text = loRaFishColorNames[value]; break;
@@ -2345,10 +2458,17 @@ static void drawLoRaFishValuePicker(DisplayDriver& display) {
   display.setColor(UIColor::primary_txt);
   display.drawTextCentered(w/2, 27, text);
   display.setColor(UIColor::secondary_txt);
-#if defined(WIO_TRACKER_L1)
-  display.drawTextCentered(w/2, 42, "Center to save");
+#if (defined(PIN_USER_BTN) || defined(PIN_USER_BTN_ANA)) && !defined(UI_HAS_NAV_INPUT) && !defined(WIO_TRACKER_L1) && !defined(LORAFISH_WATCH_TOUCH)
+  if (loRaFishValuePicker.reversible()) {
+    display.drawTextCentered(w/2, 42, loRaFishValuePicker.reverse() ? "Click:- Hold:apply" : "Click:+ Hold:apply");
+    display.drawTextCentered(w/2, 56, "2:+/- 3:BACK");
+    return;
+  }
+  display.drawTextCentered(w/2, 42, "Hold to apply");
+#elif defined(WIO_TRACKER_L1)
+  display.drawTextCentered(w/2, 42, "Center to apply");
 #else
-  display.drawTextCentered(w/2, 42, "Hold to save");
+  display.drawTextCentered(w/2, 42, "Hold to apply");
 #endif
   drawLoRaFishMenuHint(display);
 }
@@ -2573,18 +2693,29 @@ static void drawLoRaFishGuessGame(DisplayDriver& display) {
 #endif
 }
 
+// Explicit positions support advancing drivers and stationary ST7789 print().
+static void drawLoRaFishMenuLabel(DisplayDriver& display, int y, bool selected, const char* label) {
+  if (selected) {
+    display.setCursor(3, y);
+    display.print(">");
+  }
+  display.setCursor(3 + display.getTextWidth("> "), y);
+  display.print(label);
+}
+
 static void drawLoRaFishDisplayMenu(DisplayDriver& display) {
   static const char* monoLabels[] = {"Screen timeout", "Brightness", "Firmware theme", "Screen colour", "Game rendering", "Pet species"};
-  static const char* colorLabels[] = {"Screen timeout", "Brightness", "Firmware theme", "Fish color", "Game rendering", "Pet species"};
+  static const char* colorLabels[] = {"Screen timeout", "Brightness", "Firmware theme", "Pet colours", "Game rendering", "Pet species"};
   const uint8_t count = loRaFishDisplayOptionCount();
   const uint8_t first = loRaFishDisplayOption > 3 ? loRaFishDisplayOption - 3 : 0;
   drawLoRaFishHeader(display, "DISPLAY", "");
   display.setColor(UIColor::primary_txt);
   for (uint8_t row = 0; row < 4 && first + row < count; ++row) {
     const uint8_t option = first + row;
-    display.setCursor(3, 18 + row*9);
-    display.print(option == loRaFishDisplayOption ? "> " : "  ");
-    display.print(loRaFishColorDisplay ? colorLabels[option] : monoLabels[option]);
+    drawLoRaFishMenuLabel(display, 18 + row*9, option == loRaFishDisplayOption,
+        (loRaFishPartialSupported && option == 5 + (LORAGOTCHI_SPECIES_EDITION ? 1 : 0) + loRaFishOrientationSupported) ? "Display update" :
+        (loRaFishOrientationSupported && option == 5 + (LORAGOTCHI_SPECIES_EDITION ? 1 : 0)) ? "Orientation" :
+        (loRaFishColorDisplay ? colorLabels[option] : monoLabels[option]));
   }
   drawLoRaFishMenuHint(display);
 }
@@ -2598,19 +2729,18 @@ static void drawLoRaFishPetSetup(DisplayDriver& display) {
   const char* rows[]={LoRaFishSpecies::label(loRaFishSpecies),"Mystery colours",
       loRaFishColorDisplay ? "Choose colours" : "Keep colours","Start pet"};
   display.setColor(UIColor::primary_txt);
-  for (uint8_t i=0;i<4;++i) { display.setCursor(3,18+i*9);
-    display.print(i==loRaFishPetSetupField ? "> " : "  "); display.print(rows[i]); }
+  for (uint8_t i=0;i<4;++i)
+    drawLoRaFishMenuLabel(display,18+i*9,i==loRaFishPetSetupField,rows[i]);
   drawLoRaFishMenuHint(display);
 }
 static void drawLoRaFishColorMenu(DisplayDriver& display) {
-  static const char* parts[] = {"Scales", "Body", "Eyes", "Start fish"};
+  static const char* parts[] = {"Scales", "Body", "Eyes", "Start pet"};
   const uint8_t colors[] = {loRaFishScaleColor, loRaFishColor, loRaFishEyeColor};
-  drawLoRaFishHeader(display, loRaFishNeedsPetSetup ? "PET COLOURS" : (loRaFishNeedsAppearanceSetup ? "NEW FISH" : "FISH COLOR"), "");
+  drawLoRaFishHeader(display, loRaFishNeedsPetSetup ? "PET COLOURS" : (loRaFishNeedsAppearanceSetup ? "NEW PET" : "PET COLOURS"), "");
   display.setColor(UIColor::primary_txt);
   for (uint8_t row = 0; row < ((loRaFishNeedsAppearanceSetup || loRaFishNeedsPetSetup) ? 4 : 3); ++row) {
-    display.setCursor(3, 18 + row*9);
-    display.print(row == loRaFishColorField ? "> " : "  ");
-    display.print(row==3 && loRaFishNeedsPetSetup ? "Done colours" : parts[row]);
+    drawLoRaFishMenuLabel(display,18+row*9,row==loRaFishColorField,
+        row==3 && loRaFishNeedsPetSetup ? "Done colours" : parts[row]);
     if (row < 3) display.drawTextRightAlign(display.width()-3, 18 + row*9,
         colors[row] > 6 ? "Inherited" : loRaFishColorNames[colors[row]]);
   }
@@ -2628,9 +2758,7 @@ static void drawLoRaFishTimeMenu(DisplayDriver& display) {
   for (uint8_t row=0; row<3; row++) {
     if (row<2) snprintf(value,sizeof(value),"%02d:00",hours[row]);
     else loRaFishFormatUtcOffset(value,sizeof(value),false);
-    display.setCursor(3,22+row*11);
-    display.print(row==loRaFishTimeField ? ">" : " ");
-    display.print(row==2 ? "Offset" : labels[row]);
+    drawLoRaFishMenuLabel(display,22+row*11,row==loRaFishTimeField,row==2 ? "Offset" : labels[row]);
     display.drawTextRightAlign(w-3,22+row*11,value);
   }
   display.setColor(UIColor::secondary_txt);
@@ -2648,9 +2776,7 @@ static void drawLoRaFishTimeoutMenu(DisplayDriver& display) {
     const char* label=row==0 ? "Awake" : row==1 ? "Asleep" : "Dim after";
     const char* value=row<2 ? loRaFishTimeoutShortNames[min((uint8_t)5,setting)]
                 : loRaFishAlwaysOnDimNames[min((uint8_t)2,loRaFishAlwaysOnDimSetting)];
-    display.setCursor(3,22+row*12);
-    display.print(row==loRaFishTimeoutField ? "> " : "  ");
-    display.print(label);
+    drawLoRaFishMenuLabel(display,22+row*12,row==loRaFishTimeoutField,label);
     display.drawTextRightAlign(w-3,22+row*12,value);
   }
   display.setColor(UIColor::secondary_txt);
@@ -2672,9 +2798,7 @@ static void drawLoRaFishSoundMenu(DisplayDriver& display) {
   drawLoRaFishHeader(display,"SOUND","");
   display.setColor(UIColor::primary_txt);
   for (uint8_t row=0; row<4; row++) {
-    display.setCursor(3,18+row*9);
-    display.print(row==loRaFishSoundField ? "> " : "  ");
-    display.print(labels[row]);
+    drawLoRaFishMenuLabel(display,18+row*9,row==loRaFishSoundField,labels[row]);
     display.drawTextRightAlign(w-3,18+row*9,values[row]);
   }
   display.setColor(UIColor::secondary_txt);
@@ -2759,6 +2883,18 @@ static void drawLoRaFishName(DisplayDriver& display, int y, const char* name, si
 static void drawLoRaFishDX(DisplayDriver& display) {
   const int w=display.width(),h=display.height();
   const bool choosingContact = loRaFishPage == LORAFISH_DX_CONTACT_PAGE;
+  if (choosingContact && loRaFishVisitWarning) {
+    drawLoRaFishHeader(display,"VISIT WARNING","");
+    display.setColor(UIColor::primary_txt);
+    display.drawTextCentered(w/2,17,"Pet may appear");
+    display.drawTextCentered(w/2,27,"differently on older");
+    display.drawTextCentered(w/2,37,"or other habitats.");
+    display.setColor(UIColor::secondary_txt);
+    display.drawTextCentered(w/2,47,loRaFishVisitContinue ? "Cancel   > Visit" : "> Cancel   Visit");
+    drawLoRaFishMenuHint(display);
+    return;
+  }
+
   char tb[8],db[24]; loRaFishClock(tb,sizeof(tb),db,sizeof(db));
   drawLoRaFishHeader(display,"DX VISIT",tb);
   display.setColor(UIColor::primary_txt);
@@ -2771,7 +2907,7 @@ static void drawLoRaFishDX(DisplayDriver& display) {
 
   if(loragotchiDXHome.away) {
     display.drawTextCentered(w/2,27,loragotchiDXVisit.phase == LoRaFishVisit::Unconfirmed ?
-        "RETURN UNCONFIRMED" : loragotchiDXVisit.phase == LoRaFishVisit::Recall ? "RECALLING..." : (loragotchiDXAirFallback ? "FISH FALLBACK" : "FISH AWAY"));
+        "RETURN UNCONFIRMED" : loragotchiDXVisit.phase == LoRaFishVisit::Recall ? "RECALLING..." : (loragotchiDXAirFallback ? "FISH FALLBACK" : "PET AWAY"));
     display.setColor(UIColor::secondary_txt);
     drawLoRaFishName(display,39,loragotchiDXHome.destinationName,sizeof(loragotchiDXHome.destinationName));
   } else if(loragotchiDXHome.committing) {
@@ -2799,12 +2935,12 @@ static void drawLoRaFishDX(DisplayDriver& display) {
       drawLoRaFishName(display,27,c.name,sizeof(c.name));
       uint32_t row = 0;
       const uint32_t count = loRaFishDXContactCount(&row);
-      char b[28]; snprintf(b,sizeof(b),"%lu/%lu fish tanks",
+      char b[28]; snprintf(b,sizeof(b),"%lu/%lu habitats",
           (unsigned long)(row+1),(unsigned long)count);
       display.setColor(UIColor::secondary_txt);
       display.drawTextCentered(w/2,39,b);
     } else {
-      display.drawTextCentered(w/2,27,"NO FISH TANKS");
+      display.drawTextCentered(w/2,27,"NO HABITATS");
       display.setColor(UIColor::secondary_txt);
       display.drawTextCentered(w/2,39,LORAGOTCHI_AIR_EDITION ? "Animal-marked peers" : "Water-marked friends");
     }
@@ -2816,21 +2952,21 @@ static void drawLoRaFishDX(DisplayDriver& display) {
   if (choosingContact) {
     if (loragotchiDXHome.away || loragotchiDXHome.committing) hint = "LONG HOLD:RECALL";
     else if (loragotchiDXHome.pending) hint = "";   // nothing to hold for while waiting
-    else hint = "LONG HOLD:SEND";
+    else hint = "LONG HOLD:REVIEW";
   }
 #elif defined(WIO_TRACKER_L1)
   const char* hint = "CENTER:OPEN MENU:BACK";
   if (choosingContact) {
     if (loragotchiDXHome.away || loragotchiDXHome.committing) hint = "CENTER:RECALL M:BACK";
     else if (loragotchiDXHome.pending) hint = "MENU:BACK";
-    else hint = "CENTER:SEND MENU:BACK";
+    else hint = "CENTER:REVIEW M:BACK";
   }
 #else
   const char* hint = "1:NEXT 2:BACK L:OPEN";
   if (choosingContact) {
     if (loragotchiDXHome.away || loragotchiDXHome.committing) hint = "2:BACK L:RECALL";
     else if (loragotchiDXHome.pending) hint = "2:BACK";
-    else hint = "1:NEXT 2:BACK L:SEND";
+    else hint = "1:NEXT 2:BACK L:ASK";
   }
 #endif
   display.drawTextCentered(w/2,h-9,hint);
@@ -3111,9 +3247,8 @@ static void drawLoRaFishAquarium(DisplayDriver& display, UITask* task) {
   int x=0, y=0;
   bool right=true;
   loRaFishNaturalPosition(w,x,y,right);
-#if LORAGOTCHI_AIR_EDITION
-  LoRaFishSpecies::habitatPosition(loRaFishSpecies,fish.evolution,w,(uint32_t)millis(),0,x,y,right);
-#endif
+  if (LORAGOTCHI_AIR_EDITION || LoRaFishSpecies::waterMotion(loRaFishSpecies))
+    LoRaFishSpecies::habitatPosition(loRaFishSpecies,fish.evolution,w,(uint32_t)millis(),0,x,y,right);
 
   if (loRaFishFeeding) {
     const unsigned long elapsed=millis()-loRaFishFeedStarted;
@@ -3191,7 +3326,7 @@ static void drawLoRaFishAquarium(DisplayDriver& display, UITask* task) {
     } else if (!homeTraveling && !loRaFishHomeTravelAnimation.active) {
       drawHomeFishSprite(display,x,y,right);
 #if defined(LORAFISH_FISH_WANDER) && defined(LORAFISH_TALL_TANK)
-      if (!loRaFishFeeding) {
+      if (!loRaFishFeeding && !LoRaFishSpecies::waterMotion(loRaFishSpecies)) {
         int wx, wy; bool wright; LoRaFishWanderInfo info;
         loRaFishWanderPosition(w, fish.evolution, 0, wx, wy, wright, &info);
         drawLoRaFishWanderBubbles(display, x, y, right, fish.evolution, info);
@@ -3205,7 +3340,7 @@ static void drawLoRaFishAquarium(DisplayDriver& display, UITask* task) {
     if (!homeLeaving && !loRaFishGuestTravelAnimation.active && !loragotchiDXGuest.present) {
       display.setColor(UIColor::secondary_txt);
       display.drawTextCentered(w/2,35,loragotchiDXHome.committing ?
-          (loragotchiDXVisit.phase == LoRaFishVisit::Unconfirmed ? "VISIT UNCONFIRMED" : "DELIVERING...") : "FISH DX AWAY");
+          (loragotchiDXVisit.phase == LoRaFishVisit::Unconfirmed ? "VISIT UNCONFIRMED" : "DELIVERING...") : "PET DX AWAY");
     }
   }
 
@@ -3217,10 +3352,10 @@ static void drawLoRaFishAquarium(DisplayDriver& display, UITask* task) {
   else if(guestStage>=3) guestPeriod=11000UL;
   int gx=0,gy=0; bool gright=true;
   loRaFishNaturalPositionForStage(w,guestStage,guestPeriod/2,gx,gy,gright);
-#if LORAGOTCHI_AIR_EDITION
-  LoRaFishSpecies::habitatPosition(guestPresent ? loragotchiDXGuest.species :
-      loRaFishGuestTravelAnimation.species,guestStage,w,(uint32_t)millis(),2700,gx,gy,gright);
-#endif
+  const uint16_t guestMotionSpecies=guestPresent ? loragotchiDXGuest.species :
+      loRaFishGuestTravelAnimation.species;
+  if (LORAGOTCHI_AIR_EDITION || LoRaFishSpecies::waterMotion(guestMotionSpecies))
+    LoRaFishSpecies::habitatPosition(guestMotionSpecies,guestStage,w,(uint32_t)millis(),2700,gx,gy,gright);
   loRaFishBeginTravelAnimation(loRaFishGuestTravelAnimation,w,gx,gy);
   if (guestPresent) {
     // Same movement model as a lone fish, phase shifted by half a cycle.
@@ -3732,9 +3867,9 @@ public:
       // Cardputer LCD uses a framebuffer; 100 ms = only 10 FPS and makes
       // the pixel-stepped fish appear jerky. Target ~30 FPS on this board only.
       // (LORAFISH_25D_10FPS keeps the usual rate, for battery-saving builds.)
-      return loRaFishSimulationMode ? 100 : 33;
+      return loRaFishSimulationMode==2 ? 1000 : loRaFishSimulationMode==1 ? 100 : 33;
 #else
-      return loRaFishSimulationMode ? 250 : 100;
+      return loRaFishSimulationMode==2 ? 1000 : loRaFishSimulationMode==1 ? 250 : 100;
 #endif
     }
     if (loRaFishPage == 2 || loRaFishPage == 4 ||
@@ -4064,7 +4199,8 @@ public:
     const bool previous = c == KEY_PREV || c == KEY_LEFT;
     if (!(previous || c == KEY_ENTER || c == KEY_NEXT || c == KEY_RIGHT)) return true;
     if (loRaFishValuePicker.active()) {
-      loRaFishValuePicker.move(previous);
+      if (c == KEY_ENTER || c == KEY_NEXT) loRaFishValuePicker.step();
+      else loRaFishValuePicker.move(previous);
       return true;
     }
     if (loRaFishPage == LORAFISH_ADVERT_PAGE) {
@@ -4074,6 +4210,10 @@ public:
     }
     if (loRaFishPage == LORAFISH_RESET_CONFIRM_PAGE) {
       loRaFishResetConfirmation.toggle();
+      return true;
+    }
+    if (loRaFishPage == LORAFISH_DX_CONTACT_PAGE && loRaFishVisitWarning) {
+      loRaFishVisitContinue = !loRaFishVisitContinue;
       return true;
     }
     // All short presses navigate; actions and persistence belong to Select.
@@ -4320,6 +4460,8 @@ void UITask::begin(DisplayDriver* display, SensorManager* sensors, NodePrefs* no
 
   ui_started_at = millis();
 #ifdef LORAFISH_UI
+  loRaFishPartialSupported = display && display->supportsPartialUpdates();
+  loRaFishOrientationSupported = display && display->supportsOrientation();
   loRaFishColorDisplay = display && display->supportsColor();
   loadLoRaFish();
   loadLoRaFishSettings();
@@ -4336,6 +4478,8 @@ void UITask::begin(DisplayDriver* display, SensorManager* sensors, NodePrefs* no
   buzzer.startup();
 #endif
   if (display) {
+    display->setPartialUpdates(loRaFishPartial != 0);
+    display->setOrientation(loRaFishOrientation != 0);
     applyLoRaFishBrightness(*display);
     loRaFishRegisterDisplayActivity(*display);
   }
@@ -4534,7 +4678,7 @@ void UITask::setCurrScreen(UIScreen* c) {
 #ifdef LORAFISH_UI
   if (loRaFishPage == LORAFISH_RESET_CONFIRM_PAGE && c != home) cancelLoRaFishReset();
   if (loRaFishPage == LORAFISH_ADVERT_PAGE && c != home) closeLoRaFishAdvertMenu();
-  if (c != home) cancelLoRaFishValue();
+  if (c != home) { cancelLoRaFishValue(); loRaFishVisitWarning = loRaFishVisitContinue = false; }
 #endif
   curr = c;
   _next_refresh = 100;
@@ -4611,7 +4755,7 @@ static bool shouldRenderLoRaFish(bool homeVisible, bool alertVisible, bool force
       // UI settings only: elapsed Happy timers must not dirty a static frame.
       settings[0], settings[2], settings[3], settings[4], settings[5], settings[6],
       settings[7], settings[8], settings[9], settings[10], settings[11], settings[12],
-      settings[13], settings[14], settings[15], settings[22], settings[23]};
+      settings[13], settings[14], settings[15], settings[22], settings[23], settings[82]};
   static_assert(sizeof(frame) <= sizeof(loRaFishStaticFrame), "static frame key capacity");
   const bool changed = forced || !loRaFishStaticFrameValid ||
       memcmp(frame, loRaFishStaticFrame, sizeof(frame)) != 0;
@@ -4645,6 +4789,7 @@ void UITask::loop() {
     cancelLoRaFishReset();
     _next_refresh = 0;
   }
+  serviceLoRaFishSettingsMenu(_display && _display->isOn() && curr == home);
   serviceLoRaFishAdoption(curr == home && !loRaFishNameNotice && !loRaFishChannelNotice && !loRaFishMonoDisplayNotice);
   tickLoRaFish();
 #if defined(LORAFISH_SERIAL_TEST)
@@ -4840,7 +4985,7 @@ void UITask::loop() {
   } else if (ev == BUTTON_EVENT_LONG_PRESS) {
     c = handleLongPress(KEY_ENTER);
   } else if (ev == BUTTON_EVENT_DOUBLE_CLICK) {
-    c = handleDoubleClick(KEY_PREV);
+    c = handleDoubleClick(KEY_PREV, true);
   } else if (ev == BUTTON_EVENT_TRIPLE_CLICK) {
     c = handleTripleClick(KEY_SELECT);
   }
@@ -4864,7 +5009,7 @@ void UITask::loop() {
     } else if (ev == BUTTON_EVENT_LONG_PRESS) {
       c = handleLongPress(KEY_ENTER);
     } else if (ev == BUTTON_EVENT_DOUBLE_CLICK) {
-      c = handleDoubleClick(KEY_PREV);
+      c = handleDoubleClick(KEY_PREV, true);
     } else if (ev == BUTTON_EVENT_TRIPLE_CLICK) {
       c = handleTripleClick(KEY_SELECT);
     }
@@ -4915,6 +5060,17 @@ void UITask::loop() {
       loRaFishTimeoutSleepStateKnown=true;
       _auto_off=loRaFishScreenTimeoutMs() ? millis()+loRaFishScreenTimeoutMs() : 0xFFFFFFFFUL;
     }
+    if (loRaFishPartialNeedsApply) {
+      _display->setPartialUpdates(loRaFishPartial != 0);
+      loRaFishStaticFrameValid = false; _next_refresh = 0; loRaFishPartialNeedsApply = false;
+    }
+    if (loRaFishOrientationNeedsApply) {
+      _display->setOrientation(loRaFishOrientation != 0);
+      _display->forceFullRefresh();
+      loRaFishStaticFrameValid = false;
+      _next_refresh = 0;
+      loRaFishOrientationNeedsApply = false;
+    }
     if (loRaFishBrightnessNeedsApply) {
       applyLoRaFishBrightness(*_display);
       loRaFishScreenDimmed=false;
@@ -4938,6 +5094,10 @@ void UITask::loop() {
       // The aquarium is the animated page that flickered on a full-screen clear,
       // so it is drawn in bands: each band is cleared and pushed on its own.
       banded = (loRaFishPage == 0) && _display->stripRows() > 0;
+#endif
+#ifdef LORAFISH_UI
+      // One immutable animation timestamp across all physical strips.
+      loRaFishLifeArtFrameMs=(uint32_t)millis();
 #endif
       if (banded) {
         const int rows = _display->stripRows();
@@ -4989,6 +5149,11 @@ void UITask::loop() {
 #endif
   }
 
+#ifdef LORAFISH_UI
+  // Catch exits caused by this iteration's input or display timeout immediately.
+  serviceLoRaFishSettingsMenu(_display && _display->isOn() && curr == home);
+#endif
+
 #ifdef PIN_VIBRATION
   vibration.loop();
 #endif
@@ -5020,6 +5185,7 @@ char UITask::checkDisplayOn(char c) {
     if (!_display->isOn()) {
 #ifdef LORAFISH_UI
       if (loRaFishPage == LORAFISH_RESET_CONFIRM_PAGE) cancelLoRaFishReset();
+      loRaFishVisitWarning = loRaFishVisitContinue = false;
 #endif
       _display->turnOn();   // turn display on and consume event
       c = 0;
@@ -5135,7 +5301,7 @@ char UITask::handleLongPress(char c, bool isHold) {
       loRaFishSyncDXAppearance();
       saveLoRaFishSettings();
       saveLoRaFish();
-      showAlert(loRaFishNeedsPetSetup ? "Colours ready!" : "Fish ready!", 700);
+      showAlert(loRaFishNeedsPetSetup ? "Colours ready!" : "Pet ready!", 700);
     } else {
       const LoRaFishSetting fields[] = {LoRaFishSetting::Scales, LoRaFishSetting::Body, LoRaFishSetting::Eyes};
       openLoRaFishValue(fields[loRaFishColorField % 3]);
@@ -5167,7 +5333,12 @@ char UITask::handleLongPress(char c, bool isHold) {
   }
 #endif
   if (loRaFishPage == 12) {
-    if (loRaFishDisplayOption == 0) {
+    if (loRaFishPartialSupported && loRaFishDisplayOption == 5 + (LORAGOTCHI_SPECIES_EDITION ? 1 : 0) + loRaFishOrientationSupported) {
+      loRaFishPage = 15; openLoRaFishValue(LoRaFishSetting::DisplayUpdate);
+    } else if (loRaFishOrientationSupported && loRaFishDisplayOption == 5 + (LORAGOTCHI_SPECIES_EDITION ? 1 : 0)) {
+      loRaFishPage = 15;
+      openLoRaFishValue(LoRaFishSetting::Orientation);
+    } else if (loRaFishDisplayOption == 0) {
       loRaFishTimeoutField = 0;
       loRaFishPage = 11;
     } else if (loRaFishDisplayOption == 1) {
@@ -5199,6 +5370,11 @@ char UITask::handleLongPress(char c, bool isHold) {
     return 0;
   }
   if (loRaFishPage == LORAFISH_DX_CONTACT_PAGE) {
+    if (loRaFishVisitWarning && !loRaFishVisitContinue) {
+      loRaFishVisitWarning = false;
+      _next_refresh=0;
+      return 0;
+    }
     ContactInfo c;
     uint32_t ack=0,to=0;
     if(loragotchiDXHome.away || loragotchiDXHome.committing) {
@@ -5210,7 +5386,7 @@ char UITask::handleLongPress(char c, bool isHold) {
       }
       showAlert(the_mesh.recallLoRaFish() ? "Recall queued" : "No active visit",700);
     } else if(!loragotchiDXHome.pending && !loragotchiDXHome.committing) {
-      if (!loRaFishDXGetContact(c)) { showAlert("No fish tanks", 900); return 0; }
+      if (!loRaFishDXGetContact(c)) { showAlert("No habitats", 900); return 0; }
       // Sleeping fish stay home.  Recall remains available above so an
       // already-away fish can always be recovered at night.
       if (loRaFishIsSleeping()) {
@@ -5219,6 +5395,18 @@ char UITask::handleLongPress(char c, bool isHold) {
         _next_refresh=0;
         return 0;
       }
+      // ACK may immediately trigger COMMIT on legacy firmware: consent before REQ.
+      if (!loRaFishVisitWarning) {
+        memcpy(loRaFishVisitWarningKey,c.id.pub_key,PUB_KEY_SIZE);
+        loRaFishVisitWarning = true;
+        loRaFishVisitContinue = false;
+        _next_refresh=0;
+        return 0;
+      }
+      const bool approved = loRaFishVisitContinue &&
+          !memcmp(loRaFishVisitWarningKey,c.id.pub_key,PUB_KEY_SIZE);
+      loRaFishVisitWarning = loRaFishVisitContinue = false;
+      if (!approved) { _next_refresh=0; return 0; }
       if(!loragotchiDXHome.fishid) {
         loragotchiDXHome.fishid =
             0x4C460000UL ^
@@ -5294,7 +5482,7 @@ char UITask::handleLongPress(char c, bool isHold) {
   return c;
 }
 
-char UITask::handleDoubleClick(char c) {
+char UITask::handleDoubleClick(char c, bool oneButtonDirection) {
   MESH_DEBUG_PRINTLN("UITask: double-click triggered");
 #ifdef LORAFISH_UI
   if (!_display || !_display->isOn()) {
@@ -5311,7 +5499,9 @@ char UITask::handleDoubleClick(char c) {
   }
   if (loRaFishAdoptionEligible) { closeLoRaFishAdoption();return 0; }
   if (loRaFishValuePicker.active()) {
-    cancelLoRaFishValue();
+    if (oneButtonDirection && loRaFishValuePicker.reversible()) loRaFishValuePicker.toggleDirection();
+    else cancelLoRaFishValue();
+    _next_refresh = 0;
     return 0;
   }
   if (loRaFishPage == LORAFISH_ADVERT_PAGE) {
@@ -5323,7 +5513,10 @@ char UITask::handleDoubleClick(char c) {
     return 0;
   }
   switch (loRaFishPage) {
-    case LORAFISH_DX_CONTACT_PAGE: loRaFishPage = 4; break;
+    case LORAFISH_DX_CONTACT_PAGE:
+      if (loRaFishVisitWarning) loRaFishVisitWarning = loRaFishVisitContinue = false;
+      else loRaFishPage = 4;
+      break;
     case 6: returnToLoRaFishOptions(LoRaFishOption::RF); break;
     case 7: returnToLoRaFishOptions(LoRaFishOption::GNSS); break;
     case 10: returnToLoRaFishOptions(LoRaFishOption::Schedule); break;
@@ -5350,9 +5543,20 @@ char UITask::handleDoubleClick(char c) {
 char UITask::handleTripleClick(char c) {
   MESH_DEBUG_PRINTLN("UITask: triple click triggered");
 #ifdef LORAFISH_UI
+  if (loRaFishVisitWarning) {
+    loRaFishVisitWarning = loRaFishVisitContinue = false;
+    checkDisplayOn(0);
+    return 0;
+  }
   if (loRaFishChannelNotice || loRaFishNameNotice) {
     if (_display && _display->isOn() && curr == home) dismissLoRaFishNotice();
     checkDisplayOn(0);
+    return 0;
+  }
+  if (curr == home && loRaFishValuePicker.active() && loRaFishValuePicker.reversible()) {
+    if (!_display || !_display->isOn()) { checkDisplayOn(0); return 0; }
+    checkDisplayOn(0);
+    cancelLoRaFishValue();
     return 0;
   }
 #endif
@@ -5412,6 +5616,7 @@ static bool loRaFishWatchListStep(bool previous) {
     return true;
   }
   if (loRaFishPage == LORAFISH_DX_CONTACT_PAGE) {
+    if (loRaFishVisitWarning) { loRaFishVisitContinue = !loRaFishVisitContinue; return true; }
     if (!loragotchiDXHome.away && !loragotchiDXHome.pending && !loragotchiDXHome.committing)
       moveLoRaFishDXContact(previous);
     return true;

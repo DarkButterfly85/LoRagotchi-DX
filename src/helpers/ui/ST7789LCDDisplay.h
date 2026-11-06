@@ -7,13 +7,18 @@
 #include <Adafruit_ST7789.h>
 #include <helpers/RefCountedDigitalPin.h>
 
+#if defined(LORAGOTCHI_T190_COLOR) && (!defined(HELTEC_VISION_MASTER_T190) || !defined(LORAFISH_TDECK_FRAMEBUFFER))
+#error "T190 colour requires the T190 board and full-frame RGB565 canvas"
+#endif
+
 class ST7789LCDDisplay : public DisplayDriver {
-  #if defined(LILYGO_TDECK) || defined(HELTEC_LORA_V4_TFT) || defined(HELTEC_V4_R8_TFT)
+  #if defined(LILYGO_TDECK) || defined(HELTEC_LORA_V4_TFT) || defined(HELTEC_V4_R8_TFT) || defined(LORAGOTCHI_T190_COLOR)
     SPIClass displaySPI;
   #endif
   Adafruit_ST7789 display;
   bool _isOn;
-  uint16_t _color;
+  bool _rotated = false;
+  uint16_t _color = 0;
   RefCountedDigitalPin* _peripher_power;
 
   // Band buffer for strip redraw: when active, drawing goes into a small
@@ -22,6 +27,13 @@ class ST7789LCDDisplay : public DisplayDriver {
 #ifdef LORAFISH_TDECK_FRAMEBUFFER
   GFXcanvas16* _frame = nullptr;
   bool _frameActive = false;
+#endif
+#ifdef LORAGOTCHI_T190_COLOR
+  bool _partial = false;
+  uint16_t* _presented = nullptr;
+  size_t _presentedBytes = 0;
+  bool _presentedValid = false;
+  void invalidatePresentation() { _presentedValid = false; }
 #endif
   GFXcanvas16* _band = nullptr;
   bool _bandActive = false;
@@ -38,7 +50,7 @@ public:
   {
     _isOn = false;
   }
-#elif defined(LILYGO_TDECK) || defined(HELTEC_LORA_V4_TFT) || defined(HELTEC_V4_R8_TFT)
+#elif defined(LILYGO_TDECK) || defined(HELTEC_LORA_V4_TFT) || defined(HELTEC_V4_R8_TFT) || defined(LORAGOTCHI_T190_COLOR)
   ST7789LCDDisplay(RefCountedDigitalPin* peripher_power=NULL) : DisplayDriver(128, 64),
       displaySPI(HSPI),
       display(&displaySPI, PIN_TFT_CS, PIN_TFT_DC, PIN_TFT_RST),
@@ -63,8 +75,21 @@ public:
   }
 #endif
   bool begin();
+#ifdef LORAGOTCHI_T190_COLOR
+  bool supportsPartialUpdates() const override { return true; }
+  void setPartialUpdates(bool partial) override;
+  void forceFullRefresh() override { invalidatePresentation(); }
+#endif
 
   // RGB565 direct-draw: colour themes and fish colours render as set
+  bool supportsOrientation() const override {
+#if defined(LILYGO_TDECK) || defined(LORAFISH_WATCH_TOUCH)
+    return false; // Touch coordinates/events must be transformed first.
+#else
+    return true;
+#endif
+  }
+  void setOrientation(bool rotated) override;
   bool supportsColor() const override { return true; }
   bool isOn() override { return _isOn; }
   void turnOn() override;
