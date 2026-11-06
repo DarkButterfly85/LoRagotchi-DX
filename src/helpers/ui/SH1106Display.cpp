@@ -1,4 +1,8 @@
+#ifndef DISPLAY_ROTATION
+#define DISPLAY_ROTATION 0
+#endif
 #include "SH1106Display.h"
+#include "MonoI2CPageSink.h"
 #include <Adafruit_GrayOLED.h>
 #include "Adafruit_SH110X.h"
 
@@ -22,6 +26,7 @@ ColorVal UIColor::corp_blue = SH110X_WHITE;
 
 bool SH1106Display::begin()
 {
+  _presenter.invalidate();
   _initialized = false;
   _isOn = false;
   // Wire must already be initialised by board.begin() before this is called.
@@ -39,8 +44,10 @@ bool SH1106Display::begin()
   // can fail before allocating its bus device, so subsequent power/contrast
   // commands must remain guarded until both probing and init succeed.
   bool ok = display.begin(addr ? addr : DISPLAY_ADDRESS, true);
+  _presentAddress = addr ? addr : DISPLAY_ADDRESS;
   _initialized = addr != 0 && ok;
   // Adafruit_SH1106G::begin() finishes with DISPLAYON and resets contrast.
+  display.setRotation((DISPLAY_ROTATION + (_rotated ? 2 : 0)) & 3);
   _isOn = _initialized;
   if (_initialized) setBrightness(_brightness);
   return _initialized;
@@ -48,6 +55,7 @@ bool SH1106Display::begin()
 
 void SH1106Display::turnOn()
 {
+  _presenter.invalidate();
   if (!_initialized) return;
   display.oled_command(SH110X_DISPLAYON);
   _isOn = true;
@@ -56,6 +64,7 @@ void SH1106Display::turnOn()
 
 void SH1106Display::turnOff()
 {
+  _presenter.invalidate();
   if (!_initialized) return;
   display.oled_command(SH110X_DISPLAYOFF);
   _isOn = false;
@@ -71,7 +80,7 @@ void SH1106Display::setBrightness(uint8_t brightness)
 void SH1106Display::clear()
 {
   display.clearDisplay();
-  display.display();
+  endFrame();
 }
 
 void SH1106Display::startFrame(ColorVal bkg)
@@ -127,7 +136,14 @@ uint16_t SH1106Display::getTextWidth(const char *str)
   return w;
 }
 
-void SH1106Display::endFrame()
-{
-  display.display();
+void SH1106Display::endFrame() {
+  if (!_initialized || !_isOn) { _presenter.invalidate(); return; }
+  MonoI2CPageSink sink(Wire, _presentAddress, false, 2);
+  _presenter.present(display.getBuffer(), sink, _partial);
+}
+
+void SH1106Display::setOrientation(bool rotated) {
+  _presenter.invalidate();
+  _rotated = rotated;
+  display.setRotation((DISPLAY_ROTATION + (_rotated ? 2 : 0)) & 3);
 }

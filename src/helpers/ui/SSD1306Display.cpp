@@ -1,4 +1,8 @@
+#ifndef DISPLAY_ROTATION
+#define DISPLAY_ROTATION 0
+#endif
 #include "SSD1306Display.h"
+#include "MonoI2CPageSink.h"
 
 bool SSD1306Display::i2c_probe(TwoWire& wire, uint8_t addr) {
   wire.beginTransmission(addr);
@@ -18,30 +22,35 @@ ColorVal UIColor::popup_txt = SSD1306_WHITE;
 ColorVal UIColor::corp_blue = SSD1306_WHITE;
 
 bool SSD1306Display::begin() {
+  _presenter.invalidate();
   if (!_isOn) {
     if (_peripher_power) _peripher_power->claim();
     _isOn = true;
   }
   #ifdef DISPLAY_ROTATION
-  display.setRotation(DISPLAY_ROTATION);
+  display.setRotation((DISPLAY_ROTATION + (_rotated ? 2 : 0)) & 3);
   #endif
   const bool initialized=display.begin(SSD1306_SWITCHCAPVCC, DISPLAY_ADDRESS, true, false) && i2c_probe(Wire, DISPLAY_ADDRESS);
+  _initialized = initialized;
   if (initialized) setBrightness(_brightness);
   return initialized;
 }
 
 void SSD1306Display::turnOn() {
+  _presenter.invalidate();
   if (!_isOn) {
     if (_peripher_power) _peripher_power->claim();
     _isOn = true;  // set before begin() to prevent double claim
     if (_peripher_power) begin();  // re-init display after power was cut
   }
+  if (!_initialized) return;
   display.ssd1306_command(SSD1306_DISPLAYON);
   setBrightness(_brightness);
 }
 
 void SSD1306Display::turnOff() {
-  display.ssd1306_command(SSD1306_DISPLAYOFF);
+  _presenter.invalidate();
+  if (_initialized) display.ssd1306_command(SSD1306_DISPLAYOFF);
   if (_isOn) {
     if (_peripher_power) {
 #if PIN_OLED_RESET >= 0
@@ -55,7 +64,7 @@ void SSD1306Display::turnOff() {
 
 void SSD1306Display::setBrightness(uint8_t brightness) {
   _brightness=brightness;
-  if (_isOn) {
+  if (_isOn && _initialized) {
     display.ssd1306_command(0x81);
     display.ssd1306_command(_brightness);
   }
@@ -63,7 +72,7 @@ void SSD1306Display::setBrightness(uint8_t brightness) {
 
 void SSD1306Display::clear() {
   display.clearDisplay();
-  display.display();
+  endFrame();
 }
 
 void SSD1306Display::startFrame(ColorVal bkg) {
@@ -112,5 +121,13 @@ uint16_t SSD1306Display::getTextWidth(const char* str) {
 }
 
 void SSD1306Display::endFrame() {
-  display.display();
+  if (!_initialized || !_isOn) { _presenter.invalidate(); return; }
+  MonoI2CPageSink sink(Wire, _presentAddress, true, 0);
+  _presenter.present(display.getBuffer(), sink, _partial);
+}
+
+void SSD1306Display::setOrientation(bool rotated) {
+  _presenter.invalidate();
+  _rotated = rotated;
+  display.setRotation((DISPLAY_ROTATION + (_rotated ? 2 : 0)) & 3);
 }

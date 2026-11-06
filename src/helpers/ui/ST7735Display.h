@@ -7,6 +7,7 @@
 #include <helpers/RefCountedDigitalPin.h>
 
 class ST7735Display : public DisplayDriver {
+  bool _partial = false;
   bool _isOn;
   uint8_t _brightness = 255;
   RefCountedDigitalPin* _peripher_power;
@@ -30,6 +31,9 @@ public:
 #endif
   bool begin();
 
+  bool supportsPartialUpdates() const override { return true; }
+  void setPartialUpdates(bool partial) override;
+  void forceFullRefresh() override;
   bool supportsColor() const override { return true; }
   bool isOn() override { return _isOn; }
   void turnOn() override;

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "DisplayDriver.h"
+#include "MonoPagePresenter.h"
 #include <Wire.h>
 #include <Adafruit_GFX.h>
 #define SSD1306_NO_SPLASH
@@ -17,6 +18,11 @@
 
 class SSD1306Display : public DisplayDriver {
   Adafruit_SSD1306 display;
+  MonoPagePresenter<128, 8> _presenter;
+  bool _partial = false;
+  uint8_t _presentAddress = DISPLAY_ADDRESS;
+  bool _initialized = false;
+  bool _rotated = false;
   bool _isOn;
   uint8_t _brightness = 255;
   uint8_t _color;
@@ -32,6 +38,11 @@ public:
   }
   bool begin();
 
+  bool supportsPartialUpdates() const override { return true; }
+  void setPartialUpdates(bool partial) override { _partial = partial; _presenter.invalidate(); }
+  void forceFullRefresh() override { _presenter.invalidate(); }
+  bool supportsOrientation() const override { return true; }
+  void setOrientation(bool rotated) override;
   bool isOn() override { return _isOn; }
   void turnOn() override;
   void turnOff() override;

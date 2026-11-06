@@ -1,4 +1,5 @@
 #include "SH1107Display.h"
+#include "MonoI2CPageSink.h"
 #include <Adafruit_GrayOLED.h>
 #include "Adafruit_SH110X.h"
 
@@ -25,15 +26,19 @@ bool SH1107Display::i2c_probe(TwoWire &wire, uint8_t addr)
 
 bool SH1107Display::begin()
 {
+  _presenter.invalidate();
   bool result = display.begin(DISPLAY_ADDRESS, true) && i2c_probe(Wire, DISPLAY_ADDRESS);
   if (result) {
-    display.setRotation(DISPLAY_ROTATION);
+    display.setRotation((DISPLAY_ROTATION + (_rotated ? 2 : 0)) & 3);
   }
+  _initialized = result; _isOn = result;
   return result;
 }
 
 void SH1107Display::turnOn()
 {
+  _presenter.invalidate();
+  if (!_initialized) return;
   display.oled_command(SH110X_DISPLAYON);
   uint8_t cmd[] = {0xD5, 0xF0};
   display.oled_commandList(cmd, 2);
@@ -42,6 +47,8 @@ void SH1107Display::turnOn()
 
 void SH1107Display::turnOff()
 {
+  _presenter.invalidate();
+  if (!_initialized) return;
   display.oled_command(SH110X_DISPLAYOFF);
   _isOn = false;
 }
@@ -49,13 +56,13 @@ void SH1107Display::turnOff()
 void SH1107Display::clear()
 {
   display.clearDisplay();
-  display.display();
+  endFrame();
 }
 
 void SH1107Display::startFrame(ColorVal bkg)
 {
   display.clearDisplay(); // TODO: apply 'bkg'
-  display.setContrast(120); // 0-127. default setting was causing some flickering. 
+  if (_initialized) display.setContrast(120); // 0-127. default setting was causing some flickering.
   // display.SH110X_SETPRECHARGE(255);
   _color = SH110X_WHITE;
   display.setTextColor(_color);
@@ -107,7 +114,14 @@ uint16_t SH1107Display::getTextWidth(const char *str)
   return w;
 }
 
-void SH1107Display::endFrame()
-{
-  display.display();
+void SH1107Display::endFrame() {
+  if (!_initialized || !_isOn) { _presenter.invalidate(); return; }
+  MonoI2CPageSink sink(Wire, _presentAddress, false, 0);
+  _presenter.present(display.getBuffer(), sink, _partial);
+}
+
+void SH1107Display::setOrientation(bool rotated) {
+  _presenter.invalidate();
+  _rotated = rotated;
+  display.setRotation((DISPLAY_ROTATION + (_rotated ? 2 : 0)) & 3);
 }

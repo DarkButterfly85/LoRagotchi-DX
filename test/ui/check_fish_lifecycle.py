@@ -29,10 +29,13 @@ def declaration(name):
 
 parts = [r'''
 #include <algorithm>
+#include "examples/companion_radio/ui-new/LoRaFishLifeArt.h"
 #include "examples/companion_radio/LoRaFishColour.h"
 #include "examples/companion_radio/LoRaFishSpecies.h"
 #include <cassert>
 #include <cstdint>
+static uint8_t loRaFishPartial = 0;
+static uint8_t loRaFishOrientation = 0;
 #include <cstdio>
 #include <cstring>
 #include <map>
@@ -105,7 +108,7 @@ static LoRaFishGuestReturn loragotchiDXGuestReturn;
 
 parts += [block('struct ' + name + ' {') + ';' for name in
           ['LoRaFishStateV1', 'LoRaFishState', 'LoRaFishAppearance']]
-names = '''loRaFishSpecies loRaFishEggSpecies loRaFishMysterySeed loRaFishNeedsPetSetup loRaFishPetSetupField LORAFISH_PET_SETUP_PAGE loRaFishMonoDisplayColour loRaFishMonoDisplayColourKnown LORAFISH_MONO_DISPLAY_COLOUR_COUNT LORAFISH_MAGIC LORAFISH_MAGIC_V1 LORAFISH_EGG_MINUTES
+names = '''loRaFishMysterySelected loRaFishMemorialCaptured loRaFishMemorialKey loRaFishMemorialBody loRaFishMemorialScales loRaFishSpecies loRaFishEggSpecies loRaFishMysterySeed loRaFishNeedsPetSetup loRaFishPetSetupField LORAFISH_PET_SETUP_PAGE loRaFishMonoDisplayColour loRaFishMonoDisplayColourKnown LORAFISH_MONO_DISPLAY_COLOUR_COUNT LORAFISH_MAGIC LORAFISH_MAGIC_V1 LORAFISH_EGG_MINUTES
 LORAFISH_LIFESPAN_MINUTES LORAFISH_PACKETS_PER_FEED LORAFISH_MONOCHROME_COLOR
 LORAFISH_MAX_POOP fish fishLastMinute fishLastSave fishReaction fishReactionUntil
 loRaFishGeneration loRaFishPendingEgg loRaFishEggAppearance loRaFishMemorialEggSide
@@ -122,7 +125,7 @@ loRaFishHappiness lastWrittenLoRaFishHappiness haveLastWrittenLoRaFishHappiness
 loRaFishHappyLastMs loRaFishHappyLastSavedMs LORAFISH_HAPPY_SETTINGS_MAGIC LORAFISH_AQUARIUM_SETTINGS_MAGIC
 LORAFISH_SETTINGS_SIZE LORAFISH_CHECKPOINT_MS LORAFISH_SAVE_RETRY_MS
 lastWrittenLoRaFishSettings haveLastWrittenLoRaFishSettings
-loRaFishSettingsSaveFailed loRaFishSaveFailed loRaFishSettingsLastAttempt loRaFishLastAttempt'''.split()
+loRaFishSettingsPending loRaFishSettingsMenuOpen loRaFishSettingsSaveFailed loRaFishSaveFailed loRaFishSettingsLastAttempt loRaFishLastAttempt'''.split()
 parts += [declaration(name) for name in names]
 markers = [
     'static LoRaFishAppearance loRaFishLocalAppearance(',
@@ -136,6 +139,7 @@ markers = [
     'static bool writeLoRaFishRecord(',
     'static void saveLoRaFishSettings() {',
     'static void loadLoRaFishSettings() {',
+    'static void serviceLoRaFishSettingsMenu(',
     'static bool sameLoRaFishRecord(',
     'static void saveLoRaFish() {',
     'static void loadLoRaFish() {',
@@ -144,11 +148,12 @@ markers = [
 # Optional extraction allows running this regression against the pre-fix source.
 if 'static void ensureLoRaFishOffspring(' in SOURCE:
     markers.append('static void ensureLoRaFishOffspring(')
+markers.append('static uint32_t loRaFishLifeArtKey(')
 markers += ['static void hatchLoRaFishOffspring(', 'static void advanceLoRaFishHappiness(uint32_t until) {', 'static void checkpointLoRaFish(', 'static void flushLoRaFish(', 'static void tickLoRaFish() {']
 parts += [block(marker) for marker in markers]
 parts.append(r'''
 static void resetAt(uint32_t age, bool egg=false) {
-  files.clear(); loRaFishNeedsPetSetup=false; loRaFishMysterySeed=0;
+  files.clear(); loRaFishMysterySelected=false; loRaFishMemorialCaptured=false; loRaFishMemorialKey=0; loRaFishNeedsPetSetup=false; loRaFishMysterySeed=0;
   loRaFishSpecies=loRaFishEggSpecies=0;
   clockMs=0; fishLastMinute=fishLastSave=0;
   haveLastWrittenLoRaFish=false; haveLastWrittenLoRaFishSettings=false;
@@ -183,6 +188,38 @@ static void reboot() {
 }
 static void pass(const char* name) { printf("PASS: %s\n", name); fflush(stdout); }
 int main() {
+  resetAt(42); LoRaFishStateV1 old={LORAFISH_MAGIC_V1,42,31,12,7,66,1};
+  files["/lorafish.dat"]=std::vector<uint8_t>((uint8_t*)&old,(uint8_t*)&old+sizeof(old));
+  reboot(); assert(fish.ageMinutes==42 && fish.rfEvents==31 && fish.messages==12 && fish.txAcks==7);
+  assert(fish.happiness==66 && fish.dxVisits==0 && fish.longestUptimeMinutes==0);
+  assert(loRaFishSpecies==LoRaFishSpecies::TropicalFish && !loRaFishMysterySelected);
+  pass("LFM1 state migration retains lifecycle/counters and honest legacy species/provenance");
+  // Provenance is explicit, never inferred from matching seed/species.
+  resetAt(0); loRaFishMysterySeed=123; loRaFishSpecies=LoRaFishSpecies::mystery(123);
+  saveLoRaFishSettings(); saveLoRaFish(); reboot(); assert(!loRaFishMysterySelected);
+  loRaFishMysterySelected=true; saveLoRaFishSettings(); reboot(); assert(loRaFishMysterySelected);
+  auto modern=files["/lorafish.cfg"];
+  for(size_t n=90;n<106;++n) {
+    files["/lorafish.cfg"]=modern; files["/lorafish.cfg"].resize(n);
+    loadLoRaFishSettings(); assert(!loRaFishMysterySelected && !loRaFishMemorialCaptured);
+  }
+  for(unsigned i=90;i<106;++i) {
+    files["/lorafish.cfg"]=modern; files["/lorafish.cfg"][i]^=128;
+    loadLoRaFishSettings(); assert(!loRaFishMysterySelected && !loRaFishMemorialCaptured);
+  }
+  resetAt(LORAFISH_LIFESPAN_MINUTES-1,true); loRaFishMysterySelected=true;
+  minute(); assert(loRaFishMemorialCaptured);
+  const auto key=loRaFishMemorialKey; const auto body=loRaFishMemorialBody, scales=loRaFishMemorialScales;
+  loRaFishSpecies=14; loRaFishMysterySeed=999; loRaFishColor=20; loRaFishScaleColor=30; loRaFishEyeColor=40;
+  saveLoRaFishSettings(); reboot();
+  assert(loRaFishMemorialCaptured && loRaFishMemorialKey==key && loRaFishLifeArtKey(false)==key);
+  assert(loRaFishMemorialBody==body && loRaFishMemorialScales==scales);
+  const int writes=settingsWrites; for(int i=0;i<100;++i)tickLoRaFish(); assert(settingsWrites==writes);
+  for(int i=0;i<5;++i)minute();
+  assert(!loRaFishMysterySelected && !loRaFishMemorialCaptured && loRaFishGeneration==8);
+  reboot(); assert(!loRaFishMysterySelected && !loRaFishMemorialCaptured);
+  pass("explicit provenance, legacy/truncated/corrupt tail, frozen deceased snapshot, visitor successor and reload");
+
   // Check the millisecond immediately before/at the end-of-life minute boundary.
   resetAt(LORAFISH_LIFESPAN_MINUTES-1);
   clockMs=59999; tickLoRaFish();

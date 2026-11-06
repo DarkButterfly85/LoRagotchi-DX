@@ -1,6 +1,7 @@
 #pragma once
 
 #include "DisplayDriver.h"
+#include "MonoPagePresenter.h"
 #include <Wire.h>
 #include <Adafruit_GFX.h>
 #define SH110X_NO_SPLASH
@@ -17,6 +18,10 @@
 class SH1106Display : public DisplayDriver
 {
   Adafruit_SH1106G display;
+  MonoPagePresenter<128, 8> _presenter;
+  bool _partial = false;
+  uint8_t _presentAddress = DISPLAY_ADDRESS;
+  bool _rotated = false;
   bool _isOn;
   bool _initialized = false;
   uint8_t _brightness = 255;
@@ -28,6 +33,11 @@ public:
   SH1106Display() : DisplayDriver(128, 64), display(128, 64, &Wire, PIN_OLED_RESET) { _isOn = false; }
   bool begin();
 
+  bool supportsPartialUpdates() const override { return true; }
+  void setPartialUpdates(bool partial) override { _partial = partial; _presenter.invalidate(); }
+  void forceFullRefresh() override { _presenter.invalidate(); }
+  bool supportsOrientation() const override { return true; }
+  void setOrientation(bool rotated) override;
   bool isOn() override { return _isOn; }
   void turnOn() override;
   void turnOff() override;

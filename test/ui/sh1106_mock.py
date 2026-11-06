@@ -8,7 +8,10 @@ def write_headers(directory):
 #pragma once
 #include <cstdint>
 #include <vector>
+inline void yield() {}
 struct TwoWire {
+  void setClock(unsigned long) {}
+  size_t write(uint8_t) { return 1; }
   uint8_t address=0, present=0x3C;
   std::vector<int> probes;
   void beginTransmission(uint8_t a){address=a;probes.push_back(a);}
@@ -46,6 +49,8 @@ public:
   }
   void oled_command(uint8_t c){assert(MockOLED::ready);MockOLED::events.emplace_back(c,0);}
   void setContrast(uint8_t c){assert(MockOLED::ready);MockOLED::contrast=c;MockOLED::events.emplace_back(0x81,c);}
+  void setRotation(uint8_t) {}
+  uint8_t* getBuffer(){static uint8_t buffer[2048]={};return buffer;}
   void clearDisplay(){} void display(){} void setTextColor(int){}
   void setTextSize(int){} void cp437(bool){} void setCursor(int,int){}
   void print(const char*){} void fillRect(int,int,int,int,int){}

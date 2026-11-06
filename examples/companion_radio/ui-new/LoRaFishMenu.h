@@ -33,7 +33,7 @@ public:
 
 enum class LoRaFishSetting : uint8_t {
   Theme, Brightness, Rendering, Scales, Body, Eyes, SleepHour, WakeHour, UtcOffset,
-  TimeoutAwake, TimeoutAsleep, DimAfter, Volume, WakeSound, SleepSound, MessageSound, MonoDisplayColour, Species
+  TimeoutAwake, TimeoutAsleep, DimAfter, Volume, WakeSound, SleepSound, MessageSound, MonoDisplayColour, Species, Orientation, DisplayUpdate
 };
 
 // Browsing is a draft: only Select produces a value to persist. Back cancels it.
@@ -42,8 +42,10 @@ class LoRaFishValuePicker {
   LoRaFishSetting setting = LoRaFishSetting::Theme;
   uint8_t candidate = 0;
   uint8_t valueCount = 0;
+  bool backwards = false;
 public:
   void open(LoRaFishSetting key, uint8_t value, uint8_t count) {
+    backwards = false;
     setting = key;
     valueCount = count;
     candidate = count ? value % count : 0;
@@ -53,6 +55,13 @@ public:
   LoRaFishSetting key() const { return setting; }
   uint8_t value() const { return candidate; }
   uint8_t count() const { return valueCount; }
+  bool reversible() const {
+    return setting == LoRaFishSetting::SleepHour || setting == LoRaFishSetting::WakeHour ||
+        setting == LoRaFishSetting::UtcOffset;
+  }
+  bool reverse() const { return backwards; }
+  void toggleDirection() { if (editing && reversible()) backwards = !backwards; }
+  void step() { move(backwards); }
   void move(bool previous = false) {
     if (editing) candidate = (candidate + (previous ? valueCount - 1 : 1)) % valueCount;
   }
