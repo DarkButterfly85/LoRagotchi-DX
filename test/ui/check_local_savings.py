@@ -41,6 +41,12 @@ source += r'''
 #include "examples/companion_radio/ui-new/PetResetConfirmation.h"
 static constexpr bool loRaFishHasSound = true;
 struct DisplayDriver {
+  int orientations=0,fullRefreshes=0;
+  bool rotated=false;
+  int updateModes=0;bool partial=false;
+  void setPartialUpdates(bool v) {partial=v;++updateModes;}
+  void setOrientation(bool v) {rotated=v;++orientations;}
+  void forceFullRefresh() {++fullRefreshes;}
   bool on=true;
   int frames=0, brightness=0;
   bool isOn() { return on; }
@@ -64,11 +70,11 @@ struct UITask {
 } ui;
 '''
 source += block('void UITask::handleLoRaFishMessage() {')
-for name in '''loRaFishBatteryValid loRaFishBatterySampledAt loRaFishBatteryMilliVolts
+for name in '''loRaFishLifeArtFrameMs loRaFishBatteryValid loRaFishBatterySampledAt loRaFishBatteryMilliVolts
 loRaFishChannelNotice loRaFishNameNotice loRaFishMonoDisplayNotice loRaFishStaticFrameValid loRaFishStaticFrame loRaFishOption loRaFishDisplayOption
 loRaFishTimeField loRaFishTimeoutField loRaFishSoundField loRaFishValuePicker
 loRaFishResetConfirmation loRaFishAdvertMenu loRaFishScreenDimmed
-loRaFishBrightnessNeedsApply loRaFishTimeoutSleepStateKnown loRaFishTimeoutSleepState
+loRaFishPartialSupported loRaFishPartialNeedsApply loRaFishOrientationNeedsApply loRaFishBrightnessNeedsApply loRaFishTimeoutSleepStateKnown loRaFishTimeoutSleepState
 loRaFishLastActivityMs loRaFishAlwaysOnDimValues loRaFishBrightnessValues
 LORAFISH_RESET_CONFIRM_PAGE LORAFISH_DX_CONTACT_PAGE'''.split():
     source += '\n' + declaration(name)
@@ -101,6 +107,8 @@ static void clearCounts() { saves.clear();opens.clear();payloadBytes.clear(); }
 static void beginCheck(int hour=12) {
   failOpen=shortWrite=failRemove="";
   resetHappy();localEpochBase=hour*3600;
+  loRaFishTheme=0;loRaFishSimulationMode=0;
+  loRaFishSettingsPending=loRaFishSettingsMenuOpen=false;
   fish.messages=0;fish.txAcks=0;
   saveLoRaFishSettings();saveLoRaFish();clearCounts();
 }
@@ -118,6 +126,61 @@ static void hour(int every, int hour=12) {
   }
 }
 int main() {
+  beginCheck();
+  loRaFishPartial=1;loRaFishOrientation=1;saveLoRaFishSettings();
+  auto oriented=files["/lorafish.cfg"];
+  loRaFishPartial=0;loadLoRaFishSettings();assert(loRaFishPartial==1);
+  for(size_t n=84;n<90;++n){files["/lorafish.cfg"]=oriented;files["/lorafish.cfg"].resize(n);loadLoRaFishSettings();assert(loRaFishPartial==0 && loRaFishOrientation==1);}
+  for(int byte:{84,88,89}){files["/lorafish.cfg"]=oriented;files["/lorafish.cfg"][byte]=255;loadLoRaFishSettings();assert(loRaFishPartial==0 && loRaFishOrientation==1);}
+  files["/lorafish.cfg"]=oriented;
+  loRaFishOrientation=0;loadLoRaFishSettings();assert(loRaFishOrientation==1);
+  for(size_t n=78;n<84;++n){files["/lorafish.cfg"]=oriented;files["/lorafish.cfg"].resize(n);loadLoRaFishSettings();assert(loRaFishOrientation==0);}
+  for(int byte:{78,82,83}){files["/lorafish.cfg"]=oriented;files["/lorafish.cfg"][byte]=255;loadLoRaFishSettings();assert(loRaFishOrientation==0);}
+  files["/lorafish.cfg"]=oriented;files["/lorafish.cfg"].resize(78);
+  loadLoRaFishSettings();saveLoRaFishSettings();
+  assert(std::equal(oriented.begin(),oriented.begin()+78,files["/lorafish.cfg"].begin()));
+  pass("orientation roundtrip, old/truncated/corrupt tails, exact legacy-prefix preservation");
+  DisplayDriver rotationDisplay;Screen rotationScreen;uint32_t rotationNext=clockMs+60000;
+  loRaFishPartial=1;loRaFishPartialNeedsApply=true;
+  loRaFishPage=12;loRaFishOrientation=1;loRaFishOrientationNeedsApply=true;
+  loRaFishStaticFrameValid=true;
+  displayLoop(&rotationDisplay,&rotationScreen,&rotationScreen,rotationNext);
+  assert(rotationDisplay.partial && rotationDisplay.updateModes==1 && !loRaFishPartialNeedsApply);
+  assert(rotationDisplay.rotated && rotationDisplay.orientations==1 && rotationDisplay.fullRefreshes==1);
+  assert(!loRaFishOrientationNeedsApply && rotationDisplay.frames==1);
+  pass("accepted orientation applies once and invalidates static screen immediately");
+  loRaFishOrientation=0;
+
+  beginCheck();
+  loRaFishPage=12;serviceLoRaFishSettingsMenu(true);
+  loRaFishTheme=2;loRaFishSettingsPending=true;
+  for(uint8_t page:{5,6,7,8,9,10,11,12,13,14,15,16,17,18,20}) {
+    loRaFishPage=page;serviceLoRaFishSettingsMenu(true);
+    assert(saves.empty() && loRaFishSettingsPending);
+  }
+  loRaFishPage=0;serviceLoRaFishSettingsMenu(true);
+  assert(saves["/lorafish.cfg"]==1 && !loRaFishSettingsPending);
+  for(uint8_t page:{0,1,2,3,4,19}) {
+    clearCounts();loRaFishTheme=loRaFishTheme?0:1;loRaFishSettingsPending=true;
+    loRaFishPage=page;serviceLoRaFishSettingsMenu(true);
+    assert(saves["/lorafish.cfg"]==1 && !loRaFishSettingsPending);
+  }
+  clearCounts();loRaFishPage=12;loRaFishSettingsPending=true;loRaFishTheme=2;
+  failOpen="/lorafish.cfg";serviceLoRaFishSettingsMenu(false);
+  assert(loRaFishSettingsPending && loRaFishSettingsSaveFailed);
+  failOpen="";clockMs+=LORAFISH_SAVE_RETRY_MS;serviceLoRaFishSettingsMenu(false);
+  assert(!loRaFishSettingsPending && !loRaFishSettingsSaveFailed);
+  for(uint8_t mode:{0,1,2}) {
+    loRaFishSimulationMode=mode;saveLoRaFishSettings();
+    assert(files["/lorafish.cfg"][23]==mode);
+    loRaFishSimulationMode=0;loadLoRaFishSettings();assert(loRaFishSimulationMode==mode);
+  }
+  files["/lorafish.cfg"][23]=255;loadLoRaFishSettings();assert(loRaFishSimulationMode==0);
+  beginCheck();loRaFishPage=12;serviceLoRaFishSettingsMenu(true);
+  loRaFishTheme=1;loRaFishSettingsPending=true;
+  assert(files["/lorafish.cfg"][2]==0); // abrupt cut here loses accepted preference
+  flushLoRaFish();reboot();assert(loRaFishTheme==1 && !loRaFishSettingsPending);
+  pass("menu close/interruption/failure retry, legacy/Efficient bytes, pending shutdown flush");
   beginCheck();
   for(int i=0;i<100;++i){saveLoRaFish();saveLoRaFishSettings();}
   assert(saves.empty());
@@ -265,15 +328,15 @@ int main() {
   pass("breeding eligibility, alerts and screen transitions invalidate static menus");
 
   loRaFishAlwaysOnDimSetting=0;
-  for(bool simulation:{false,true}) for(bool dim:{false,true}) {
+  for(uint8_t simulation:{0,1,2}) for(bool dim:{false,true}) {
     loRaFishPage=0;loRaFishSimulationMode=simulation;
     clockMs=dim?20000:1000;loRaFishLastActivityMs=0;
     next=0;drawCalls=0;panel.frames=0;panel.on=true;
     for(int i=0;i<100;++i){displayLoop(&panel,&screen,&screen,next);clockMs+=100;}
-    assert(drawCalls==(simulation?34:100) && panel.frames==drawCalls);
+    assert(drawCalls==(simulation==2?10:simulation==1?34:100) && panel.frames==drawCalls);
     assert(loRaFishScreenDimmed==dim);
   }
-  pass("normal and dimmed aquarium keep identical Smooth/Simulation frame cadence");
+  pass("normal and dimmed aquarium keep identical Smooth/Simulation/Efficient frame cadence");
 
   loRaFishPage=12;next=0;displayLoop(&panel,&screen,&screen,next);
   const int before=panel.frames;panel.on=false;

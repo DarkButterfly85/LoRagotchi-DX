@@ -15,6 +15,8 @@ def block(marker, text=source):
     return text[start:end]
 def declaration(name):
     return re.search(r'^static [^\n]*\b'+name+r'\b.*?;',source,re.M|re.S).group(0)
+assert 'c = handleDoubleClick(KEY_PREV, true);' in source
+assert 'char handleDoubleClick(char c, bool oneButtonDirection = false);' in (root/'examples/companion_radio/ui-new/UITask.h').read_text()
 pre=r'''
 #include <cassert>
 #include "examples/companion_radio/LoRaFishColour.h"
@@ -22,6 +24,7 @@ pre=r'''
 static long random(long lo,long){return lo+42;}
 static uint16_t loRaFishSpecies=0;
 static uint32_t loRaFishMysterySeed=0;
+static bool loRaFishMysterySelected=false;
 static bool loRaFishNeedsPetSetup=false;
 static uint8_t loRaFishPetSetupField=0;
 static constexpr uint8_t LORAFISH_PET_SETUP_PAGE=20;
@@ -137,6 +140,7 @@ class BoundsDisplay : public DisplayDriver {
   struct Box{int x,y,w,h;}; std::vector<Box> boxes;
 public:
   bool on=true;
+  bool advancing=true;
   std::vector<std::string> printed;
   BoundsDisplay():DisplayDriver(128,64){}
   void clearBounds(){boxes.clear();printed.clear();x=y=0;size=1;}
@@ -157,7 +161,7 @@ public:
     for(auto b:boxes) if(x<b.x+b.w && x+w>b.x && y<b.y+b.h && y+h>b.y){
       fprintf(stderr,"OVERLAP (%d,%d) %s\n",x,y,t);abort();
     }
-    boxes.push_back({x,y,w,h});x+=w;
+    boxes.push_back({x,y,w,h});if(advancing)x+=w;
   }
   void fillRect(int x,int y,int w,int h) override {assert(x>=0 && y>=0 && x+w<=width() && y+h<=height());}
   void drawRect(int,int,int,int) override {}
@@ -167,21 +171,21 @@ static void loRaFishRegisterDisplayActivity(DisplayDriver&){}
 static uint32_t loRaFishScreenTimeoutMs(){return 15000;}
 class UITask;
 '''
-names='loRaFishChannelNotice loRaFishNameNotice loRaFishDXDestinationKey loRaFishDXDestinationKnown LORAFISH_DX_CONTACT_PAGE loRaFishPage loRaFishOption loRaFishValuePicker loRaFishDisplayOption loRaFishTimeField loRaFishTimeoutField loRaFishSoundField LORAFISH_PAGE_COUNT LORAFISH_RESET_CONFIRM_PAGE loRaFishResetConfirmation LORAFISH_ADVERT_PAGE loRaFishAdvertMenu loRaFishTheme loRaFishColor loRaFishScaleColor loRaFishEyeColor loRaFishColorField loRaFishNeedsAppearanceSetup loRaFishColorDisplay loRaFishSimulationMode loRaFishGuessNumber loRaFishGuessPrevious loRaFishGuessRounds loRaFishGuessScore loRaFishGuessHigher loRaFishGuessResultShown loRaFishGuessCorrect loRaFishGuessComplete loRaFishTimeoutAwakeSetting loRaFishTimeoutAsleepSetting loRaFishTimeoutShortNames loRaFishBrightnessSetting loRaFishBrightnessNames loRaFishBrightnessNeedsApply loRaFishAlwaysOnDimSetting loRaFishAlwaysOnDimNames loRaFishBuzzerVolume loRaFishWakeSound loRaFishSleepSound loRaFishMessageSound loRaFishVolumeNames loRaFishWakeSoundNames loRaFishSleepSoundNames loRaFishMessageSoundNames loRaFishWakeMelodies loRaFishSleepMelodies loRaFishMessageMelodies loRaFishSleepHour loRaFishWakeHour loRaFishUtcOffsetQuarters loRaFishColorNames'.split()
+names='loRaFishOrientationSupported loRaFishOrientation loRaFishPartial loRaFishPartialSupported loRaFishPartialNeedsApply loRaFishOrientationNeedsApply loRaFishVisitWarning loRaFishVisitContinue loRaFishVisitWarningKey loRaFishSettingsMenuOpen loRaFishSettingsPending loRaFishChannelNotice loRaFishNameNotice loRaFishDXDestinationKey loRaFishDXDestinationKnown LORAFISH_DX_CONTACT_PAGE loRaFishPage loRaFishOption loRaFishValuePicker loRaFishDisplayOption loRaFishTimeField loRaFishTimeoutField loRaFishSoundField LORAFISH_PAGE_COUNT LORAFISH_RESET_CONFIRM_PAGE loRaFishResetConfirmation LORAFISH_ADVERT_PAGE loRaFishAdvertMenu loRaFishTheme loRaFishColor loRaFishScaleColor loRaFishEyeColor loRaFishColorField loRaFishNeedsAppearanceSetup loRaFishColorDisplay loRaFishSimulationMode loRaFishGuessNumber loRaFishGuessPrevious loRaFishGuessRounds loRaFishGuessScore loRaFishGuessHigher loRaFishGuessResultShown loRaFishGuessCorrect loRaFishGuessComplete loRaFishTimeoutAwakeSetting loRaFishTimeoutAsleepSetting loRaFishTimeoutShortNames loRaFishBrightnessSetting loRaFishBrightnessNames loRaFishBrightnessNeedsApply loRaFishAlwaysOnDimSetting loRaFishAlwaysOnDimNames loRaFishBuzzerVolume loRaFishWakeSound loRaFishSleepSound loRaFishMessageSound loRaFishVolumeNames loRaFishWakeSoundNames loRaFishSleepSoundNames loRaFishMessageSoundNames loRaFishWakeMelodies loRaFishSleepMelodies loRaFishMessageMelodies loRaFishSleepHour loRaFishWakeHour loRaFishUtcOffsetQuarters loRaFishColorNames'.split()
 parts=[pre]+[declaration(name) for name in names]
 parts += [block('struct LoRaFishThemePalette')+';',declaration('loRaFishThemes'),
  'static constexpr uint8_t LORAFISH_COLOR_THEME_COUNT=4,LORAFISH_COLOR_ALLELE_COUNT=7;',
  source[source.index('static constexpr bool loRaFishHasSound'):source.index('#endif',source.index('static constexpr bool loRaFishHasSound'))+len('#endif')]]
 for name in ['static void beginLoRaFishChannelNotice(', 'static bool dismissLoRaFishNotice(', 'static void drawLoRaFishChannelNotice(', 'static void beginLoRaFishNameNotice(', 'static const char* loRaFishDisplayName(', 'static const char* loRaFishProtocolName(', 'static uint8_t loRaFishThemeCount(', 'static uint8_t loRaFishDisplayOptionCount(',
  'static uint8_t loRaFishOptionCount(', 'static void returnToLoRaFishOptions(',
- 'static void cancelLoRaFishValue(', 'static void openLoRaFishValue(', 'static void ensureLoRaFishMysterySeed(', 'static void chooseLoRaFishMysteryColours(', 'static void selectLoRaFishValue(',
+ 'static void serviceLoRaFishSettingsMenu(', 'static void cancelLoRaFishValue(', 'static void openLoRaFishValue(', 'static void ensureLoRaFishMysterySeed(', 'static void chooseLoRaFishMysteryColours(', 'static void selectLoRaFishValue(',
  'static void loRaFishFormatUtcOffset(', 'static void drawLoRaFishHeader(',
  'static const char* loRaFishOptionLabel(', 'static void drawLoRaFishMenuHint(',
  'static bool loRaFishDXDestination(', 'static bool loRaFishDXEligible(', 'static uint32_t loRaFishDXContactCount(', 'static bool loRaFishDXGetContact(', 'static void moveLoRaFishDXContact(', 'static void drawLoRaFishName(', 'static void drawLoRaFishNameNotice(', 'static void drawLoRaFishDX(',
  'static void drawLoRaFishValuePicker(', 'static void drawLoRaFishOptions(',
  'static void closeLoRaFishAdvertMenu(', 'static void drawLoRaFishAdvertMenu(',
  'static void cancelLoRaFishReset(', 'static void drawLoRaFishResetConfirmation(',
- 'static void drawLoRaFishDisplayMenu(', 'static void drawLoRaFishPetSetup(', 'static void drawLoRaFishColorMenu(',
+ 'static void drawLoRaFishMenuLabel(', 'static void drawLoRaFishDisplayMenu(', 'static void drawLoRaFishPetSetup(', 'static void drawLoRaFishColorMenu(',
  'static void drawLoRaFishTimeMenu(', 'static void drawLoRaFishTimeoutMenu(',
  'static void drawLoRaFishGuessGame(']:
     parts.append(block(name))
@@ -207,7 +211,7 @@ public:
   void setCurrScreen(UIScreen*);
   char checkDisplayOn(char);
   char handleLongPress(char, bool = true);
-  char handleDoubleClick(char);
+  char handleDoubleClick(char, bool = false);
   void previewLoRaFishSoundSetting(uint8_t);
 };
 ''')
@@ -218,13 +222,51 @@ parts.append(block('void UITask::showAlert(').replace('UITask::showAlert(', 'UIT
 home=source[source.index('class HomeScreen'):]
 short=block('bool handleInput(char c) override',home).replace('bool handleInput(char c) override','bool shortPress(char c)')
 parts.append(short)
+parts.append('static void loRaFishWatchStepOption(bool){}')
+parts.append(block('static bool loRaFishWatchListStep('))
 parts.append(r'''
 static uint8_t pageFor(LoRaFishSetting key){
-  const uint8_t pages[]={8,13,15,9,9,9,10,10,10,11,11,11,14,14,14,14,15,15};
+  const uint8_t pages[]={8,13,15,9,9,9,10,10,10,11,11,11,14,14,14,14,15,15,15,15};
   return pages[static_cast<uint8_t>(key)];
 }
 int main(){
   UITask task;
+  // Optional final row keeps every existing selection stable.
+  loRaFishPartialSupported=true;
+  assert(loRaFishDisplayOptionCount()==6+(LORAGOTCHI_SPECIES_EDITION ? 1 : 0)+loRaFishOrientationSupported);
+  loRaFishPage=12;loRaFishDisplayOption=5+(LORAGOTCHI_SPECIES_EDITION ? 1 : 0)+loRaFishOrientationSupported;
+  task.handleLongPress(KEY_ENTER);assert(loRaFishPage==15 && loRaFishValuePicker.key()==LoRaFishSetting::DisplayUpdate);
+  cancelLoRaFishValue();assert(loRaFishPage==12);
+  openLoRaFishValue(LoRaFishSetting::DisplayUpdate); loRaFishValuePicker.step(); cancelLoRaFishValue(); assert(loRaFishPartial==0);
+  openLoRaFishValue(LoRaFishSetting::DisplayUpdate); loRaFishValuePicker.step(); selectLoRaFishValue(); assert(loRaFishPartial==1 && loRaFishPartialNeedsApply);
+  loRaFishPartialSupported=false;loRaFishPartial=0;loRaFishPartialNeedsApply=false;loRaFishSettingsPending=false;
+  loRaFishOrientationSupported=true;
+  assert(loRaFishDisplayOptionCount()==6+(LORAGOTCHI_SPECIES_EDITION?1:0));
+  openLoRaFishValue(LoRaFishSetting::Orientation);
+  loRaFishValuePicker.step(); cancelLoRaFishValue();
+  assert(loRaFishOrientation==0 && !loRaFishOrientationNeedsApply);
+  openLoRaFishValue(LoRaFishSetting::Orientation);
+  loRaFishValuePicker.step(); selectLoRaFishValue();
+  assert(loRaFishOrientation==1 && loRaFishOrientationNeedsApply && loRaFishSettingsPending);
+  loRaFishOrientation=0;loRaFishOrientationNeedsApply=false;loRaFishSettingsPending=false;
+  loRaFishOrientationSupported=false;
+
+  loRaFishOrientationSupported=true;
+  loRaFishPage=0;
+  for(int i=0;i<5;++i)shortPress(KEY_NEXT);
+  assert(loRaFishPage==5);
+  loRaFishOption=LoRaFishOption::Display;task.handleLongPress(KEY_ENTER);
+  assert(loRaFishPage==12);
+  loRaFishDisplayOption=loRaFishDisplayOptionCount()-1;
+  task.display.clearBounds();drawLoRaFishDisplayMenu(task.display);
+  task.handleLongPress(KEY_ENTER);
+  assert(loRaFishPage==15 && loRaFishValuePicker.key()==LoRaFishSetting::Orientation);
+  shortPress(KEY_NEXT);task.handleDoubleClick(KEY_PREV);
+  assert(loRaFishPage==12 && loRaFishOrientation==0);
+  task.handleLongPress(KEY_ENTER);shortPress(KEY_NEXT);task.handleLongPress(KEY_ENTER);
+  assert(loRaFishPage==12 && loRaFishOrientation==1 && loRaFishOrientationNeedsApply);
+  loRaFishOrientationSupported=false;loRaFishOrientation=0;loRaFishOrientationNeedsApply=false;loRaFishSettingsPending=false;
+
   assert(loRaFishDisplayOptionCount()==(LORAGOTCHI_SPECIES_EDITION ? 6 : 5));
 #if LORAGOTCHI_SPECIES_EDITION
   // New-game picker enters only after notices/adoption; browsing/cancel never rolls.
@@ -238,10 +280,19 @@ int main(){
     task.handleLongPress(KEY_ENTER);
     for(int i=0;i<LoRaFishSpecies::selectableCount;++i)shortPress(KEY_NEXT);
     task.handleLongPress(KEY_ENTER);auto mystery=loRaFishSpecies;auto seed=loRaFishMysterySeed;
-    assert(seed && LoRaFishSpecies::known(mystery));shortPress(KEY_NEXT);assert(loRaFishPetSetupField==1);
+    assert(seed && LoRaFishSpecies::known(mystery) && loRaFishMysterySelected);shortPress(KEY_NEXT);assert(loRaFishPetSetupField==1);
     task.handleLongPress(KEY_ENTER);auto b=loRaFishColor,sc=loRaFishScaleColor,e=loRaFishEyeColor;
     task.handleLongPress(KEY_ENTER);assert(b==loRaFishColor && sc==loRaFishScaleColor && e==loRaFishEyeColor);
     assert(seed==loRaFishMysterySeed && mystery==loRaFishSpecies);
+    assert(loRaFishMysterySelected); // Mystery colours do not change provenance.
+    loRaFishValuePicker.open(LoRaFishSetting::Species,0,LoRaFishSpecies::selectableCount+1);
+    for(unsigned i=0;i<LoRaFishSpecies::selectableCount;++i) {
+      if(LoRaFishSpecies::selectionId(i)==mystery) break;
+      loRaFishValuePicker.step();
+    }
+    selectLoRaFishValue(); assert(loRaFishSpecies==mystery && !loRaFishMysterySelected);
+    chooseLoRaFishMysteryColours(); assert(!loRaFishMysterySelected);
+
     task.handleDoubleClick(KEY_PREV);assert(loRaFishPage==LORAFISH_PET_SETUP_PAGE);
     if(colour) {
       loRaFishPetSetupField=2;task.handleLongPress(KEY_ENTER);assert(loRaFishPage==9);
@@ -317,6 +368,11 @@ int main(){
     task.handleLongPress(KEY_ENTER);assert(the_mesh.dxSends==sent);
     if(state==0)shortPress(KEY_NEXT);
     task.handleLongPress(KEY_ENTER);
+    if(state==0) {
+      assert(loRaFishVisitWarning && !loRaFishVisitContinue && the_mesh.dxSends==sent);
+      task.display.clearBounds();drawLoRaFishDX(task.display);
+      shortPress(KEY_NEXT);task.handleLongPress(KEY_ENTER);
+    }
     assert(the_mesh.dxSends==sent+(state==1?0:1));
     if(state==0) {
       assert(the_mesh.lastMessage.find("LFG1|REQ|")==0 && the_mesh.lastDestination==1);
@@ -327,11 +383,34 @@ int main(){
     task.handleDoubleClick(KEY_PREV);assert(loRaFishPage==4);
   }
   loragotchiDXHome.away=loragotchiDXHome.pending=loragotchiDXHome.committing=false;
+  // Cancel defaults, button/keyboard directions, touch list steps and stale consent.
+  the_mesh.contacts=3;loRaFishPage=LORAFISH_DX_CONTACT_PAGE;task._alert_expiry=0;
+  const int beforeWarning=the_mesh.dxSends, beforeWrites=dxWrites; const auto homeSpecies=loRaFishSpecies;
+  for(int cancel=0;cancel<5;++cancel) {
+    task.handleLongPress(KEY_ENTER);
+    assert(loRaFishVisitWarning && !loRaFishVisitContinue);
+    if(cancel==0) task.handleLongPress(KEY_ENTER); // default Cancel
+    if(cancel==1) {shortPress(KEY_RIGHT);task.handleDoubleClick(KEY_PREV,true);}
+    if(cancel==2) {shortPress(KEY_LEFT);task.handleTripleClick(KEY_ENTER);}
+    if(cancel==3) {shortPress(KEY_NEXT);task.display.turnOff();task.handleLongPress(KEY_ENTER);}
+    if(cancel==4) {shortPress(KEY_PREV);task.setCurrScreen(&task.other);task.setCurrScreen(task.home);}
+    assert(!loRaFishVisitWarning && the_mesh.dxSends==beforeWarning && dxWrites==beforeWrites && loRaFishSpecies==homeSpecies);
+  }
+  task.handleLongPress(KEY_ENTER);
+  assert(loRaFishWatchListStep(false) && loRaFishVisitContinue);
+  assert(loRaFishWatchListStep(true) && !loRaFishVisitContinue);
+  task.handleLongPress(KEY_ENTER);
+  assert(!loRaFishVisitWarning && the_mesh.dxSends==beforeWarning);
+  task.handleLongPress(KEY_ENTER);shortPress(KEY_NEXT);
+  loRaFishDXContactIndex=(loRaFishDXContactIndex+1)%3; // contact identity changed while warning open
+  task.handleLongPress(KEY_ENTER);
+  assert(!loRaFishVisitWarning && the_mesh.dxSends==beforeWarning);
+  task.handleDoubleClick(KEY_PREV);loRaFishPage=LORAFISH_DX_CONTACT_PAGE;
   // No-contact, sleep, alert, and wake guards must survive moving DX actions.
   task._alert_expiry=0;the_mesh.contacts=0;loRaFishPage=4;
   const int sent=the_mesh.dxSends;
   task.handleLongPress(KEY_ENTER);task.handleLongPress(KEY_ENTER);
-  assert(task.alert=="No fish tanks" && the_mesh.dxSends==sent);
+  assert(task.alert=="No habitats" && the_mesh.dxSends==sent);
   the_mesh.contacts=3;task._alert_expiry=0;fishSleeping=true;
   task.handleLongPress(KEY_ENTER);assert(task.alert=="Fish is sleeping" && the_mesh.dxSends==sent);
   fishSleeping=false;task._alert_expiry=tick+500;
@@ -382,11 +461,23 @@ int main(){
       loRaFishPage=pageFor(setting);openLoRaFishValue(setting);
       assert(loRaFishValuePicker.value()==before);
       shortPress(KEY_NEXT);task.handleLongPress(KEY_ENTER);
-      assert(settingsWrites==writes+1 && !loRaFishValuePicker.active());
+      assert(settingsWrites==writes+((key>=3 && key<=5)?1:0) && !loRaFishValuePicker.active());
       openLoRaFishValue(setting);assert(loRaFishValuePicker.value()==(before+1)%count);
       loRaFishValuePicker.cancel();
     }
   }
+  // Confirming applies in RAM; closing the whole Options scope saves once.
+  task._alert_expiry=0;loRaFishPage=10;loRaFishTimeField=0;
+  loRaFishSettingsPending=false;
+  int closeWrites=settingsWrites;
+  task.handleLongPress(KEY_ENTER);shortPress(KEY_NEXT);task.handleLongPress(KEY_ENTER);
+  assert(loRaFishSettingsPending && settingsWrites==closeWrites);
+  serviceLoRaFishSettingsMenu(true);assert(settingsWrites==closeWrites);
+  task.handleDoubleClick(KEY_PREV);assert(loRaFishPage==5);
+  serviceLoRaFishSettingsMenu(true);assert(settingsWrites==closeWrites);
+  task.handleDoubleClick(KEY_PREV);assert(loRaFishPage==0);
+  serviceLoRaFishSettingsMenu(true);assert(settingsWrites==closeWrites+1);
+  loRaFishSettingsPending=false; // persistence is mocked by this navigation fixture
   // Field navigation never edits or persists a setting.
   for(uint8_t page:{9,10,11,14}){
 #ifndef PIN_BUZZER
@@ -409,7 +500,7 @@ int main(){
   int writes=settingsWrites;task.display.turnOff();task.handleLongPress(KEY_ENTER);
   assert(task.display.isOn() && settingsWrites==writes && loRaFishValuePicker.active());
   task._alert_expiry=tick+500;task.handleLongPress(KEY_ENTER);assert(settingsWrites==writes);
-  task._alert_expiry=0;task.handleLongPress(KEY_ENTER);assert(settingsWrites==writes+1);
+  task._alert_expiry=0;task.handleLongPress(KEY_ENTER);assert(settingsWrites==writes && loRaFishSettingsPending);
   // Screen interruption discards an editor; Back on a message returns to the visible home screen.
   loRaFishPage=13;openLoRaFishValue(LoRaFishSetting::Brightness);shortPress(KEY_NEXT);
   writes=settingsWrites;task.setCurrScreen(&task.other);
@@ -429,6 +520,49 @@ int main(){
   task.handleLongPress(KEY_ENTER);assert(the_mesh.sends==1 && loRaFishPage==5 && loRaFishOption==LoRaFishOption::Advert);
   task._alert_expiry=0;task.handleLongPress(KEY_ENTER);task.handleDoubleClick(KEY_PREV);
   assert(the_mesh.sends==1 && loRaFishOption==LoRaFishOption::Advert);
+  // One-button +/- changes only the draft; real Back remains cancellation.
+  loRaFishUtcOffsetQuarters=0;loRaFishPage=10;loRaFishTimeField=2;
+  task.handleLongPress(KEY_ENTER);
+  const int utcWrites=settingsWrites;
+  task.handleDoubleClick(KEY_PREV,true);assert(loRaFishValuePicker.reverse());
+  shortPress(KEY_NEXT);assert(loRaFishValuePicker.value()==47);
+  task.handleLongPress(KEY_ENTER);assert(loRaFishUtcOffsetQuarters==-1 && settingsWrites==utcWrites);
+  task.handleLongPress(KEY_ENTER);assert(!loRaFishValuePicker.reverse());
+  shortPress(KEY_NEXT);shortPress(KEY_NEXT);assert(loRaFishValuePicker.value()==49);
+  task.handleTripleClick(KEY_ENTER);assert(!loRaFishValuePicker.active());
+  assert(loRaFishUtcOffsetQuarters==-1 && settingsWrites==utcWrites);
+  task.handleLongPress(KEY_ENTER);task.handleDoubleClick(KEY_PREV,true);
+  shortPress(KEY_RIGHT);assert(loRaFishValuePicker.value()==48);
+  task.handleDoubleClick(KEY_PREV);assert(!loRaFishValuePicker.active());
+  for(auto key:{LoRaFishSetting::SleepHour,LoRaFishSetting::WakeHour,LoRaFishSetting::UtcOffset}){
+    loRaFishValuePicker.open(key,0,key==LoRaFishSetting::UtcOffset?105:24);
+    loRaFishValuePicker.toggleDirection();loRaFishValuePicker.step();
+    assert(loRaFishValuePicker.value()==loRaFishValuePicker.count()-1);
+    loRaFishValuePicker.toggleDirection();loRaFishValuePicker.step();assert(loRaFishValuePicker.value()==0);
+    loRaFishValuePicker.cancel();
+  }
+  for(bool advancing:{true,false}) {
+  task.display.advancing=advancing;
+  for(bool colour:{true,false}){
+    loRaFishColorDisplay=colour;
+    for(uint8_t selected=0;selected<4;++selected){
+      loRaFishPetSetupField=selected;loRaFishColorField=selected;loRaFishSoundField=selected;
+      loRaFishNeedsPetSetup=true;
+      task.display.clearBounds();drawLoRaFishPetSetup(task.display);
+      task.display.clearBounds();drawLoRaFishColorMenu(task.display);
+      loRaFishNeedsPetSetup=false;
+      for(uint8_t option=0;option<loRaFishDisplayOptionCount();++option){
+        loRaFishDisplayOption=option;
+        task.display.clearBounds();drawLoRaFishDisplayMenu(task.display);
+      }
+      loRaFishTimeField=loRaFishTimeoutField=selected%3;
+      task.display.clearBounds();drawLoRaFishTimeMenu(task.display);
+      task.display.clearBounds();drawLoRaFishTimeoutMenu(task.display);
+#ifdef PIN_BUZZER
+      task.display.clearBounds();drawLoRaFishSoundMenu(task.display);
+#endif
+    }
+  }
   // Field lists and accepted dialogs: detect both clipping and overlapping glyph cells.
   loRaFishScaleColor=loRaFishColor=loRaFishEyeColor=1;loRaFishNeedsAppearanceSetup=true;
   loRaFishTimeoutAwakeSetting=loRaFishTimeoutAsleepSetting=5;
@@ -440,6 +574,7 @@ int main(){
 #ifdef PIN_BUZZER
   task.display.clearBounds();drawLoRaFishSoundMenu(task.display);
 #endif
+  }
   printf("PASS: aquarium-to-Options across 12 contact/travel combinations, DX picker/send/recall guards, production menu handlers/settings bindings, parent returns, optional rows, save/cancel, wake/alert guards, reset/advert regression, text bounds/overlap; sound=%d\n",loRaFishHasSound);
 }
 ''')
@@ -448,7 +583,7 @@ if __name__ == '__main__':
         cpp=Path(temporary)/'menu-host-check.cpp';cpp.write_text('\n'.join(parts))
         for sound in [False,True]:
             out=Path(temporary)/f'menu-host-check-{int(sound)}'
-            cmd=['g++','-std=c++17','-DLORAGOTCHI_WATER_EDITION='+os.environ.get('LORAGOTCHI_TEST_EDITION','0'),'-DLORAGOTCHI_AIR_EDITION='+os.environ.get('LORAGOTCHI_TEST_AIR','0'),'-I',str(root),'-I',str(root/'src'),str(cpp),'-o',str(out)]
+            cmd=['g++','-std=c++17','-DPIN_USER_BTN=0','-DLORAGOTCHI_WATER_EDITION='+os.environ.get('LORAGOTCHI_TEST_EDITION','0'),'-DLORAGOTCHI_AIR_EDITION='+os.environ.get('LORAGOTCHI_TEST_AIR','0'),'-I',str(root),'-I',str(root/'src'),str(cpp),'-o',str(out)]
             if sound:cmd+=['-DPIN_BUZZER=6']
             subprocess.run(cmd,check=True)
             subprocess.run([str(out)],check=True)

@@ -7,6 +7,7 @@ ROOT=Path(__file__).resolve().parents[2]
 config={s:dict(v) for s,v in json.loads(subprocess.check_output(
     ['pio','project','config','--json-output'],cwd=ROOT,text=True))}
 water={
+    'water_heltec_t190_ble':'Heltec_T190_LoRaGotchi_DX_ble',
     'water_wio_tracker_l1_ble':'WioTrackerL1_LoRaGotchi_DX_ble',
     'water_wio_tracker_l1_1w_ble':'WioTrackerL1-1W_LoRaGotchi_DX_ble',
     'water_thinknode_m2_ble':'ThinkNode_M2_LoRaFish_companion_ble',
@@ -40,7 +41,7 @@ flags=' '.join(a['build_flags'])
 for expected in ['DISPLAY_CLASS=SSD1306Display','PIN_BOARD_SDA=13','PIN_BOARD_SCL=14',
                  'PIN_USER_BTN=9','PIN_USER_BTN_ANA=31','USE_SX1262','LORAGOTCHI_EXPERIMENTAL=1']:
  assert expected in flags,expected
-print('PASS 15 explicit Water aliases and RAK4630 DX alias; existing DX, pins, radio, memory and dependencies preserved')
+print('PASS 16 explicit Water aliases and RAK4630 DX alias; existing DX, pins, radio, memory and dependencies preserved')
 
 air={name.replace('water_','air_'):parent for name,parent in water.items()}
 for alias,parent in air.items():
@@ -49,4 +50,4 @@ for alias,parent in air.items():
   if key not in {'extends','build_flags'}:assert a[key]==value,(alias,key)
  assert a['build_flags']==p['build_flags']+['-D LORAGOTCHI_AIR_EDITION=1'],alias
 assert {s[4:] for s in config if s.startswith('env:air_')}==set(air)
-print('PASS 15 Air aliases; original DX/Water hardware, radio, memory and dependencies unchanged')
+print('PASS 16 Air aliases; original DX/Water hardware, radio, memory and dependencies unchanged')

@@ -80,6 +80,13 @@ For setup, controls, menus, pet behavior, and DX travel, see [Getting Started](G
     - Touchscreen
  
   
+## T190 Water and Air (experimental colour)
+
+On `fix/pet-followup-20261106`, build `water_heltec_t190_ble` or
+`air_heltec_t190_ble`; DX remains `Heltec_T190_LoRaGotchi_DX_ble`.
+See [T190 commands and hosted selector](docs/BUILDING.md#t190-colour-edition-builds).
+These are colour pet targets, not the stock companion-radio environment.
+
 ## Boards and edition targets
 
 Use the [complete board/edition matrix](docs/BUILDING.md#board-and-edition-selection)

@@ -14,7 +14,7 @@ These are BLE companion builds. Existing supported DX images remain in the regul
 | `GAT562_30S_Mesh_Kit_LoRaGotchi_DX_ble` | `GAT562_30S_Mesh_Kit_companion_radio_ble` | SSD1306Display | UF2 |
 | `GAT562_Mesh_Tracker_Pro_LoRaGotchi_DX_ble` | `GAT562_Mesh_Tracker_Pro_companion_radio_ble` | SSD1306Display | UF2 |
 | `GAT562_Mesh_Watch13_LoRaGotchi_DX_ble` | `GAT562_Mesh_Watch13_companion_radio_ble` | SSD1306Display | UF2 |
-| `Heltec_T190_LoRaGotchi_DX_ble` | `Heltec_T190_companion_radio_ble_` | ST7789Display | ESP32 application BIN |
+| `Heltec_T190_LoRaGotchi_DX_ble` | `Heltec_T190_companion_radio_ble_` | ST7789LCDDisplay (RGB565 colour) | ESP32 application BIN |
 | `Heltec_Wireless_Tracker_LoRaGotchi_DX_ble` | `Heltec_Wireless_Tracker_companion_radio_ble` | ST7735Display | ESP32 application BIN |
 | `Heltec_t1_LoRaGotchi_DX_ble` | `Heltec_t1_companion_radio_ble` | ST7735Display | UF2 |
 | `Heltec_v2_LoRaGotchi_DX_ble` | `Heltec_v2_companion_radio_ble` | SSD1306Display | ESP32 application BIN |

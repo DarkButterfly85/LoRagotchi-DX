@@ -20,6 +20,12 @@ public:
 
   int width() const { return _w; }
   int height() const { return _h; }
+  // Rotation relative to the existing board mounting baseline.
+  virtual bool supportsOrientation() const { return false; }
+  virtual void setOrientation(bool rotated) { (void)rotated; }
+  // Presentation policy only; composition and simulation cadence stay unchanged.
+  virtual bool supportsPartialUpdates() const { return false; }
+  virtual void setPartialUpdates(bool partial) { (void)partial; }
   virtual bool supportsColor() const { return false; }
 
   virtual bool isOn() = 0;

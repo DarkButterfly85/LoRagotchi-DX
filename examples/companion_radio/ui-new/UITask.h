@@ -83,7 +83,7 @@ class UITask : public AbstractUITask {
   char checkDisplayOn(char c);
   // L1 single-click shares Select, but must not invoke hold-only rescue/cleaning.
   char handleLongPress(char c, bool isHold = true);
-  char handleDoubleClick(char c);
+  char handleDoubleClick(char c, bool oneButtonDirection = false);
   char handleTripleClick(char c);
 
   void setCurrScreen(UIScreen* c);

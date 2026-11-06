@@ -22,7 +22,7 @@ static ContactInfo contact(const char* name,uint8_t type,uint32_t key) {
 static void pass(const char* name){printf("PASS: %s\n",name);fflush(stdout);}
 int main(){
   assert(loRaFishDXEligible(contact("LRX1 Tank 🐟",2,0)));
-  assert(loRaFishDXEligible(contact("LRX1 Tank 🦑",2,0))==bool(LORAGOTCHI_WATER_EDITION));
+  assert(loRaFishDXEligible(contact("LRX1 Tank 🦑",2,0))==bool(LORAGOTCHI_SPECIES_EDITION));
   assert(!loRaFishDXEligible(contact("LRX1 Tank 🌊",2,0)));
   assert(!loRaFishDXEligible(contact("LRX1 Tank 🦑",3,0)));
   assert(!loRaFishDXEligible(contact("LRX1 Tank 🐟",3,0)));
@@ -41,7 +41,7 @@ int main(){
   assert(loRaFishPage==4 && the_mesh.dxSends==0);
   task.handleLongPress(KEY_ENTER);assert(loRaFishPage==LORAFISH_DX_CONTACT_PAGE);
   task.display.clearBounds();drawLoRaFishDX(task.display);assert(loRaFishDXContactIndex==2);
-  assert(std::find(task.display.printed.begin(),task.display.printed.end(),"1/4 fish tanks")!=task.display.printed.end());
+  assert(std::find(task.display.printed.begin(),task.display.printed.end(),"1/4 habitats")!=task.display.printed.end());
   for(uint32_t index:{3,5,6,2}){shortPress(KEY_NEXT);assert(loRaFishDXContactIndex==index);}
   shortPress(KEY_PREV);assert(loRaFishDXContactIndex==6);shortPress(KEY_NEXT);assert(loRaFishDXContactIndex==2);
   pass("aquarium route reaches only fish-marked companions, across all four emoji and both directions");
@@ -50,6 +50,9 @@ int main(){
   loRaFishMeshNodeName="Local 🐠";
   assert(!strcmp(loRaFishDisplayName(),"Local ><>") && !strcmp(loRaFishProtocolName(),"Local"));
   task.handleLongPress(KEY_ENTER);
+  assert(loRaFishVisitWarning && !loRaFishVisitContinue && the_mesh.dxSends==0);
+  task.display.clearBounds();drawLoRaFishDX(task.display);
+  shortPress(KEY_NEXT);task.handleLongPress(KEY_ENTER);
   assert(the_mesh.dxSends==1 && the_mesh.lastDestination==5);
   assert(loragotchiDXHome.destinationIndex==5 && loRaFishDXDestinationKnown);
   assert(!strcmp(loragotchiDXHome.destinationName,"Gamma 🐡"));
@@ -84,7 +87,7 @@ int main(){
   loRaFishDXContactIndex=999;
   ContactInfo c;assert(!loRaFishDXGetContact(c));shortPress(KEY_NEXT);
   task._alert_expiry=0;task.handleLongPress(KEY_ENTER);
-  assert(the_mesh.dxSends==3 && task.alert=="No fish tanks");
+  assert(the_mesh.dxSends==3 && task.alert=="No habitats");
   task.display.clearBounds();drawLoRaFishDX(task.display);
   the_mesh.custom.push_back(contact("New fish 🐠",1,2));
   assert(loRaFishDXGetContact(c) && loRaFishDXContactIndex==2);
@@ -106,7 +109,7 @@ int main(){
   pass("boot reminder is bounded, dismisses without action or save, and returns on the next unmarked boot");
 
   for(const char* name:{"🐟 Home","Home 🐠","Home 🐡️","🦈","🐬","🐳","🐋","🦭","🦐","🦑","🦞","🦀","🐙","🪼","🐚","💦"}) {
-    const bool accepted=LoRaFishText::hasFish(name,strlen(name));
+    const bool accepted=LoRaFishText::hasDiscoveryMarker(name,strlen(name)); assert(LoRaFishText::hasFish(name,strlen(name))==accepted);
     loRaFishMeshNodeName=name;beginLoRaFishNameNotice();assert(loRaFishNameNotice==!accepted);
     auto waterContact=contact(name,1,0);assert(loRaFishDXEligible(waterContact)==accepted);
   }

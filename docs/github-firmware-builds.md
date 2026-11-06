@@ -44,3 +44,13 @@ explicit water_* names select Water; existing standard/experimental names remain
 DX. See README for the full alias table and docs/RAK4630-EXPERIMENTAL.md for RAK
 hardware prerequisites. A listed alias is not automatically included in this
 bounded CI matrix, and a previous candidate build does not validate new source.
+
+## T190 colour DX / Water / Air selection
+
+Use **Air DX and Water selected owner-board test images** → **Run workflow**,
+select branch `fix/pet-followup-20261106`, board **T190**, and the desired
+edition (or **all** for three images). Existing board choices are retained.
+The experimental screen workflow remains DX-only. The generic MeshCore
+companion suffix selector in `build.sh` is not the habitat-edition matrix;
+`bash build.sh list` lists the aliases and explicit `build-firmware <environment>`
+accepts them. See [commands and limitations](BUILDING.md#t190-colour-edition-builds).

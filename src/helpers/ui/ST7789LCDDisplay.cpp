@@ -1,4 +1,7 @@
 #include "ST7789LCDDisplay.h"
+#include <new>
+#include <cstdlib>
+#include <cstring>
 #ifndef PIN_TFT_MISO
   #define PIN_TFT_MISO -1
 #endif
@@ -49,6 +52,10 @@ ColorVal UIColor::popup_txt = ST77XX_BLACK;
 ColorVal UIColor::corp_blue = 0x001A;
 
 bool ST7789LCDDisplay::begin() {
+#ifdef LORAGOTCHI_T190_COLOR
+  invalidatePresentation();
+  _frameActive = false;
+#endif
   if (!_isOn) {
     if (_peripher_power) _peripher_power->claim();
 
@@ -71,12 +78,12 @@ bool ST7789LCDDisplay::begin() {
     }
 
     // Im not sure if this is just a t-deck problem or not, if your display is slow try this.
-    #if defined(LILYGO_TDECK) || defined(HELTEC_LORA_V4_TFT) || defined(HELTEC_V4_R8_TFT)
+    #if defined(LILYGO_TDECK) || defined(HELTEC_LORA_V4_TFT) || defined(HELTEC_V4_R8_TFT) || defined(LORAGOTCHI_T190_COLOR)
       displaySPI.begin(PIN_TFT_SCL, PIN_TFT_MISO, PIN_TFT_SDA, PIN_TFT_CS);
     #endif
 
     display.init(DISPLAY_WIDTH, DISPLAY_HEIGHT);
-    display.setRotation(DISPLAY_ROTATION);
+    display.setRotation((DISPLAY_ROTATION + (_rotated ? 2 : 0)) & 3);
 
     display.setSPISpeed(TFT_SPI_SPEED);
 
@@ -89,7 +96,7 @@ bool ST7789LCDDisplay::begin() {
     if (!_frame) {
       // GFXcanvas16 uses malloc; ESP32 Arduino can route large allocations to PSRAM.
       // Fall back to direct drawing if the allocation cannot be satisfied.
-      _frame = new GFXcanvas16(display.width(), display.height());
+      _frame = new (std::nothrow) GFXcanvas16(display.width(), display.height());
       if (_frame && !_frame->getBuffer()) { delete _frame; _frame = nullptr; }
       if (_frame) {
         _frame->cp437(true);
@@ -115,6 +122,10 @@ void ST7789LCDDisplay::turnOn() {
 #endif
 
 void ST7789LCDDisplay::turnOff() {
+#ifdef LORAGOTCHI_T190_COLOR
+  invalidatePresentation();
+  _frameActive = false;
+#endif
   if (_isOn) {
     if (PIN_TFT_LEDA_CTL != -1) {
       digitalWrite(PIN_TFT_LEDA_CTL, TFT_BL_OFF);
@@ -122,6 +133,10 @@ void ST7789LCDDisplay::turnOff() {
     if (PIN_TFT_RST != -1) {
       digitalWrite(PIN_TFT_RST, LOW);
     }
+#ifdef LORAGOTCHI_T190_COLOR
+    digitalWrite(PIN_TFT_VDD_CTL, HIGH); // VDD active LOW, unlike VEXT
+    _frameActive = false;
+#endif
     _isOn = false;
 
     if (_peripher_power) _peripher_power->release();
@@ -131,6 +146,9 @@ void ST7789LCDDisplay::turnOff() {
 void ST7789LCDDisplay::clear() {
 #ifdef LORAFISH_TDECK_FRAMEBUFFER
   if (_frameActive && _frame) { _frame->fillScreen(ST77XX_BLACK); return; }
+#endif
+#ifdef LORAGOTCHI_T190_COLOR
+  invalidatePresentation();
 #endif
   display.fillScreen(ST77XX_BLACK);
 }
@@ -142,6 +160,9 @@ Adafruit_GFX& ST7789LCDDisplay::gfx() {
 #endif
 #ifdef LORAFISH_STRIP_REDRAW
   if (_bandActive && _band) return *_band;
+#endif
+#ifdef LORAGOTCHI_T190_COLOR
+  invalidatePresentation(); // Direct drawing bypasses the shadow.
 #endif
   return display;
 }
@@ -186,16 +207,52 @@ void ST7789LCDDisplay::print(const char* str) {
 }
 
 void ST7789LCDDisplay::fillRect(int x, int y, int w, int h) {
+#ifdef LORAGOTCHI_T190_COLOR
+  if (w <= 0 || h <= 0) return;
+  const int x0 = static_cast<int>(x * DISPLAY_SCALE_X);
+  const int y0 = static_cast<int>(y * DISPLAY_SCALE_Y);
+  gfx().fillRect(x0, y0 - bandOffset(),
+    static_cast<int>((x + w) * DISPLAY_SCALE_X) - x0,
+    static_cast<int>((y + h) * DISPLAY_SCALE_Y) - y0, _color);
+#else
   gfx().fillRect((int)(x * DISPLAY_SCALE_X), (int)(y * DISPLAY_SCALE_Y) - bandOffset(),
                  (int)(w * DISPLAY_SCALE_X), (int)(h * DISPLAY_SCALE_Y), _color);
+#endif
 }
 
 void ST7789LCDDisplay::drawRect(int x, int y, int w, int h) {
+#ifdef LORAGOTCHI_T190_COLOR
+  if (w <= 0 || h <= 0) return;
+  const int x0 = static_cast<int>(x * DISPLAY_SCALE_X);
+  const int y0 = static_cast<int>(y * DISPLAY_SCALE_Y);
+  gfx().drawRect(x0, y0 - bandOffset(),
+    static_cast<int>((x + w) * DISPLAY_SCALE_X) - x0,
+    static_cast<int>((y + h) * DISPLAY_SCALE_Y) - y0, _color);
+#else
   gfx().drawRect((int)(x * DISPLAY_SCALE_X), (int)(y * DISPLAY_SCALE_Y) - bandOffset(),
                  (int)(w * DISPLAY_SCALE_X), (int)(h * DISPLAY_SCALE_Y), _color);
+#endif
 }
 
 void ST7789LCDDisplay::drawXbm(int x, int y, const uint8_t* bits, int w, int h) {
+#ifdef LORAGOTCHI_T190_COLOR
+  if (!bits || w <= 0 || h <= 0) return;
+  const size_t byteWidth = (static_cast<size_t>(w) + 7) / 8;
+  // Square bitmap pixels, matching the existing driver's intended aspect.
+  // Quantize absolute edges so adjacent fractional cells neither overlap nor gap.
+  const int baseY = static_cast<int>(y * DISPLAY_SCALE_Y);
+  for (int j = 0; j < h; ++j) {
+    const int y0 = baseY + static_cast<int>(j * DISPLAY_SCALE_X);
+    const int y1 = baseY + static_cast<int>((j + 1) * DISPLAY_SCALE_X);
+    for (int i = 0; i < w; ++i) {
+      if (pgm_read_byte(bits + static_cast<size_t>(j) * byteWidth + i / 8) & (0x80 >> (i & 7))) {
+        const int x0 = static_cast<int>((x + i) * DISPLAY_SCALE_X);
+        const int x1 = static_cast<int>((x + i + 1) * DISPLAY_SCALE_X);
+        gfx().fillRect(x0, y0 - bandOffset(), x1 - x0, y1 - y0, _color);
+      }
+    }
+  }
+#else
   uint8_t byteWidth = (w + 7) / 8;
 
   for (int j = 0; j < h; j++) {
@@ -213,6 +270,7 @@ void ST7789LCDDisplay::drawXbm(int x, int y, const uint8_t* bits, int w, int h) 
       }
     }
   }
+#endif
 }
 
 uint16_t ST7789LCDDisplay::getTextWidth(const char* str) {
@@ -227,7 +285,37 @@ void ST7789LCDDisplay::endFrame() {
 #ifdef LORAFISH_TDECK_FRAMEBUFFER
   if (_frameActive && _frame) {
     _frameActive = false;
+#ifdef LORAGOTCHI_T190_COLOR
+    if (!_isOn || !_frame->getBuffer()) { invalidatePresentation(); return; }
+    const int w = _frame->width(), h = _frame->height();
+    const size_t rowBytes = static_cast<size_t>(w) * sizeof(uint16_t);
+    const size_t bytes = rowBytes * h; // 320 * 170 * 2 = 108800 on T190.
+    if (_partial && (!_presented || _presentedBytes != bytes)) {
+      free(_presented);
+      _presented = static_cast<uint16_t*>(malloc(bytes));
+      _presentedBytes = _presented ? bytes : 0;
+      invalidatePresentation();
+    }
+    uint16_t* pixels = _frame->getBuffer();
+    if (!_partial || !_presented || !_presentedValid) {
+      display.drawRGBBitmap(0, 0, pixels, w, h);
+    } else {
+      // Exact final RGB565 rows; coalesce consecutive dirty rows, no hashes.
+      int y = 0;
+      while (y < h) {
+        if (memcmp(pixels + y*w, _presented + y*w, rowBytes) == 0) { ++y; continue; }
+        const int first = y++;
+        while (y < h && memcmp(pixels + y*w, _presented + y*w, rowBytes) != 0) ++y;
+        display.drawRGBBitmap(0, first, pixels + first*w, w, y-first);
+      }
+    }
+    if (_partial && _presented) {
+      memcpy(_presented, pixels, bytes);
+      _presentedValid = true; // SPI has no ACK; assumed panel state.
+    } else invalidatePresentation();
+#else
     display.drawRGBBitmap(0, 0, _frame->getBuffer(), _frame->width(), _frame->height());
+#endif
   }
 #endif
   // display.display();
@@ -251,7 +339,8 @@ int ST7789LCDDisplay::physicalHeight() const {
 void ST7789LCDDisplay::beginStrip(int physY0) {
 #ifdef LORAFISH_STRIP_REDRAW
   if (!_band) {
-    _band = new GFXcanvas16(display.width(), BAND_ROWS);
+    _band = new (std::nothrow) GFXcanvas16(display.width(), BAND_ROWS);
+    if (_band && !_band->getBuffer()) { delete _band; _band = nullptr; }
     if (!_band) return;
     _band->setTextSize(1 * DISPLAY_SCALE_X);
     _band->cp437(true);
@@ -275,3 +364,29 @@ void ST7789LCDDisplay::endStrip() {
   _bandY0 = 0;
 #endif
 }
+
+void ST7789LCDDisplay::setOrientation(bool rotated) {
+  if (!supportsOrientation() || _rotated == rotated) return;
+#ifdef LORAGOTCHI_T190_COLOR
+  invalidatePresentation();
+#endif
+  _rotated = rotated;
+  _bandActive = false;
+#ifdef LORAFISH_TDECK_FRAMEBUFFER
+  _frameActive = false;
+#endif
+  if (_isOn) display.setRotation((DISPLAY_ROTATION + (_rotated ? 2 : 0)) & 3);
+}
+
+#ifdef LORAGOTCHI_T190_COLOR
+void ST7789LCDDisplay::setPartialUpdates(bool partial) {
+  if (_partial == partial) return;
+  _partial = partial;
+  invalidatePresentation();
+  if (!partial) {
+    free(_presented);
+    _presented = nullptr;
+    _presentedBytes = 0;
+  }
+}
+#endif

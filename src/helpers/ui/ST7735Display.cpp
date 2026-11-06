@@ -403,6 +403,8 @@ static void setAddrWindow(uint16_t x, uint16_t y, uint16_t w, uint16_t h) {
 #define SCALE_Y  1.25f      // 80 / 64
 
 static TFT_eSprite *sprite = NULL;
+static uint16_t* presentedPixels = nullptr;
+static bool presentedPixelsValid = false;
 
 bool ST7735Display::i2c_probe(TwoWire& wire, uint8_t addr) {
   return true;
@@ -481,6 +483,7 @@ bool ST7735Display::begin() {
 }
 
 void ST7735Display::_resetAndInit() {
+  presentedPixelsValid = false;
     // Pulse Reset low for 10ms
     digitalWrite(PIN_TFT_RST, HIGH);
     delay(2);
@@ -532,6 +535,7 @@ void ST7735Display::setBrightness(uint8_t brightness) {
 }
 
 void ST7735Display::turnOff() {
+  presentedPixelsValid = false;
   if (_isOn) {
     sendCommand(ST77XX_DISPOFF);
 
@@ -590,12 +594,19 @@ uint16_t ST7735Display::getTextWidth(const char* str) {
 }
 
 void ST7735Display::endFrame() {
+  if (!sprite || !sprite->getPointer()) { presentedPixelsValid = false; return; }
+
+  // Low-memory fallback preserves the original full-frame transport.
+  if (_partial && !presentedPixels) presentedPixels = (uint16_t*)malloc(160 * 80 * sizeof(uint16_t));
   // blit the canvas buffer to LCD
   set_CS(LOW);
   _spi->beginTransaction(_spiSettings);
-  uint16_t x, y;
+  uint16_t y;
   uint16_t* pixels = (uint16_t *) ((TFT_eSprite *) sprite)->getPointer();
   for (y = 0; y < 80; y++, pixels += 160) {
+
+    const uint16_t* previous = presentedPixels ? presentedPixels + y * 160 : nullptr;
+    if (_partial && previous && presentedPixelsValid && memcmp(previous, pixels, 320) == 0) continue;
     setAddrWindow(0, y, 160, 1);
 #ifdef ESP_PLATFORM
     _spi->transferBytes((uint8_t *)pixels, NULL, 2 * 160);
@@ -604,6 +615,22 @@ void ST7735Display::endFrame() {
 #endif
   }
 
+
+  // SPI has no acknowledgement: retain the existing successful-write assumption.
+  if (_partial && presentedPixels) {
+    memcpy(presentedPixels, sprite->getPointer(), 160 * 80 * sizeof(uint16_t));
+    presentedPixelsValid = true;
+  }
   _spi->endTransaction();
   set_CS(HIGH);
 }
+
+void ST7735Display::setPartialUpdates(bool partial) {
+  _partial = partial;
+  presentedPixelsValid = false;
+  if (!partial) {
+    free(presentedPixels);
+    presentedPixels = nullptr;
+  }
+}
+void ST7735Display::forceFullRefresh() { presentedPixelsValid = false; }
