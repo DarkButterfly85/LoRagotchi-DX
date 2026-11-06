@@ -34,7 +34,12 @@ for row in manifest['targets']:
     parent = config['env:' + row['base_environment']]
     flags = candidate['build_flags']
     joined = ' '.join(flags)
-    displays = re.findall(r'DISPLAY_CLASS=(\w+)', joined)
+    # T190 explicitly removes the inherited mono driver before defining RGB565.
+    effective = joined
+    if name == 'Heltec_T190_LoRaGotchi_DX_ble':
+        assert candidate['build_unflags'] == ['-DST7789 -DDISPLAY_CLASS=ST7789Display']
+        effective = effective.replace('-D DISPLAY_CLASS=ST7789Display', '')
+    displays = re.findall(r'DISPLAY_CLASS=(\w+)', effective)
     assert displays and set(displays) == {row['display']} and row['display'] in allowed, name
     assert row['experimental'] and row['hardware_tested'] is False, name
     assert '-D LORAFISH_UI=1' in flags and '-D LORAGOTCHI_EXPERIMENTAL=1' in flags, name
@@ -51,7 +56,17 @@ for row in manifest['targets']:
             assert candidate[key] == value or (name in single_app_profiles and
                 key in partition_override and str(candidate[key]) == partition_override[key]), (name, key)
     assert flags[:len(parent['build_flags'])] == parent['build_flags'], name
-    assert flags[len(parent['build_flags']):] == ['-D LORAFISH_UI=1',
+    additions = flags[len(parent['build_flags']):]
+    if name == 'Heltec_T190_LoRaGotchi_DX_ble':
+        assert additions == ['-D DISPLAY_CLASS=ST7789LCDDisplay',
+            '-D LORAGOTCHI_T190_COLOR=1', '-D LORAFISH_TDECK_FRAMEBUFFER=1',
+            '-D PIN_TFT_MISO=-1', '-D DISPLAY_WIDTH=170', '-D DISPLAY_HEIGHT=320',
+            '-D DISPLAY_ROTATION=1', '-D DISPLAY_SCALE_X=2.5f', '-D DISPLAY_SCALE_Y=2.65625f',
+            '-D LORAFISH_UI=1', '-D LORAGOTCHI_EXPERIMENTAL=1', '-D AUTO_OFF_MILLIS=30000']
+        assert '-<helpers/ui/ST7789Display.cpp>' in candidate['build_src_filter']
+        assert '+<helpers/ui/ST7789LCDDisplay.cpp>' in candidate['build_src_filter']
+        continue
+    assert additions == ['-D LORAFISH_UI=1',
         '-D LORAGOTCHI_EXPERIMENTAL=1', '-D AUTO_OFF_MILLIS=30000'] + [
         '-UENV_INCLUDE_' + sensor for sensor in row.get('disabled_optional_sensors', [])], name
     assert 'GPS' not in row.get('disabled_optional_sensors', []), name

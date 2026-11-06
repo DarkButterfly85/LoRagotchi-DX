@@ -27,6 +27,7 @@ environment, never an unqualified `pio run` over inherited MeshCore targets.
 | Heltec V3 | `Heltec_v3_LoRaFish_companion_ble` | `water_heltec_v3_ble` | `air_heltec_v3_ble` | BIN |
 | Heltec V4 OLED | `heltec_v4_LoRaFish_companion_ble` | `water_heltec_v4_oled_ble` | `air_heltec_v4_oled_ble` | BIN |
 | Heltec T096 | `Heltec_t096_LoRaFish_companion_ble` | `water_heltec_t096_ble` | `air_heltec_t096_ble` | UF2 |
+| Heltec T190 colour (experimental) | `Heltec_T190_LoRaGotchi_DX_ble` | `water_heltec_t190_ble` | `air_heltec_t190_ble` | BIN |
 | Wio Tracker L1 | `WioTrackerL1_LoRaGotchi_DX_ble` | `water_wio_tracker_l1_ble` | `air_wio_tracker_l1_ble` | UF2 |
 | Wio Tracker L1-1W | `WioTrackerL1-1W_LoRaGotchi_DX_ble` | `water_wio_tracker_l1_1w_ble` | `air_wio_tracker_l1_1w_ble` | UF2 |
 | ThinkNode M2 | `ThinkNode_M2_LoRaFish_companion_ble` | `water_thinknode_m2_ble` | `air_thinknode_m2_ble` | BIN |
@@ -48,6 +49,28 @@ boards remain in the [README](../README.md) and
 RAK modules require the fitted display, carrier and controls described in
 [RAK4630 prerequisites](RAK4630-EXPERIMENTAL.md). A target name or successful
 compile is not physical hardware acceptance.
+
+## T190 colour edition builds
+
+On this follow-up branch (`fix/pet-followup-20261106`), select:
+
+```sh
+pio run -e water_heltec_t190_ble -j 1
+pio run -e air_heltec_t190_ble -j 1
+```
+
+Both inherit the experimental DX RGB565 LCD target, 170×320 panel rotated to
+320×170, framebuffer/partial updates, BLE PIN policy, pinned RadioLib,
+dependencies, and existing 16 MB board partition layout. They add only the
+habitat flag. The stock `Heltec_T190_companion_radio_ble_` is not the pet target.
+No save format, wire protocol, partition migration or flash operation is changed.
+
+For hosted builds use **Air DX and Water selected owner-board test images**,
+choose this branch, board **T190**, and edition **Water**, **Air**, **DX** or
+**all**. This manual selector does not run automatically on follow-up branch
+pushes. Artifacts are app-only BINs, not merged installers. Compilation is not
+physical T190 acceptance or a save-retention guarantee. See
+[T190 colour limitations](t190-colour-experimental.md).
 
 ## Find the result; flashing is separate
 
