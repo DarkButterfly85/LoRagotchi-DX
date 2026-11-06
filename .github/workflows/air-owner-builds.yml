@@ -13,7 +13,7 @@ on:
         description: Owner board to compile
         type: choice
         default: all
-        options: [all, V3, V4_OLED, T096, L1, L1_1W]
+        options: [all, V3, V4_OLED, T096, L1, L1_1W, T190]
 permissions:
   contents: read
 concurrency:
@@ -35,6 +35,7 @@ jobs:
       - run: pip install platformio==6.1.19
       - run: pio test -e native -e native_water -e native_air -e native_kiss_modem
       - run: python3 test/boards/check_edition_targets.py
+      - run: python3 test/boards/check_t190_editions.py
       - run: python3 test/boards/check_experimental_screens.py
       - name: Self-contained production host checks
         run: |
@@ -62,8 +63,14 @@ jobs:
           python3 - <<'PYSELECT'
           import json,os
           targets=[{'environment': 'air_heltec_v3_ble', 'target': 'build', 'format': 'bin', 'edition': 'Air', 'board': 'V3'}, {'environment': 'air_heltec_v4_oled_ble', 'target': 'build', 'format': 'bin', 'edition': 'Air', 'board': 'V4_OLED'}, {'environment': 'air_heltec_t096_ble', 'target': 'create_uf2', 'format': 'uf2', 'edition': 'Air', 'board': 'T096'}, {'environment': 'water_heltec_v3_ble', 'target': 'build', 'format': 'bin', 'edition': 'Water', 'board': 'V3'}, {'environment': 'water_heltec_v4_oled_ble', 'target': 'build', 'format': 'bin', 'edition': 'Water', 'board': 'V4_OLED'}, {'environment': 'water_heltec_t096_ble', 'target': 'create_uf2', 'format': 'uf2', 'edition': 'Water', 'board': 'T096'}, {'environment': 'Heltec_v3_LoRaFish_companion_ble', 'target': 'build', 'format': 'bin', 'edition': 'DX', 'board': 'V3'}, {'environment': 'heltec_v4_LoRaFish_companion_ble', 'target': 'build', 'format': 'bin', 'edition': 'DX', 'board': 'V4_OLED'}, {'environment': 'Heltec_t096_LoRaFish_companion_ble', 'target': 'create_uf2', 'format': 'uf2', 'edition': 'DX', 'board': 'T096'}, {'environment': 'WioTrackerL1_LoRaGotchi_DX_ble', 'target': 'create_uf2', 'format': 'uf2', 'edition': 'DX', 'board': 'L1'}, {'environment': 'water_wio_tracker_l1_ble', 'target': 'create_uf2', 'format': 'uf2', 'edition': 'Water', 'board': 'L1'}, {'environment': 'air_wio_tracker_l1_ble', 'target': 'create_uf2', 'format': 'uf2', 'edition': 'Air', 'board': 'L1'}, {'environment': 'WioTrackerL1-1W_LoRaGotchi_DX_ble', 'target': 'create_uf2', 'format': 'uf2', 'edition': 'DX', 'board': 'L1_1W'}, {'environment': 'water_wio_tracker_l1_1w_ble', 'target': 'create_uf2', 'format': 'uf2', 'edition': 'Water', 'board': 'L1_1W'}, {'environment': 'air_wio_tracker_l1_1w_ble', 'target': 'create_uf2', 'format': 'uf2', 'edition': 'Air', 'board': 'L1_1W'}]
+          targets += [
+              {'environment': env, 'target': 'build', 'format': 'bin', 'edition': edition, 'board': 'T190'}
+              for edition,env in [('DX','Heltec_T190_LoRaGotchi_DX_ble'),
+                                  ('Water','water_heltec_t190_ble'),
+                                  ('Air','air_heltec_t190_ble')]
+          ]
           edition=os.environ['EDITION'];board=os.environ['BOARD']
-          assert edition in {'all','Air','DX','Water'} and board in {'all','V3','V4_OLED','T096','L1','L1_1W'}
+          assert edition in {'all','Air','DX','Water'} and board in {'all','V3','V4_OLED','T096','L1','L1_1W','T190'}
           selected=[t for t in targets if (edition=='all' or t['edition']==edition) and (board=='all' or t['board']==board)]
           assert selected and len({t['environment'] for t in selected})==len(selected)
           with open(os.environ['GITHUB_OUTPUT'],'a') as out:

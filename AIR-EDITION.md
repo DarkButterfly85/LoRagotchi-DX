@@ -145,8 +145,8 @@ Owner profiles: **air_heltec_v3_ble**, **air_heltec_v4_oled_ble**,
 only, not implicitly board-qualified; no e-ink or screenless target is added.
 
 The branch-scoped .github/workflows/air-owner-builds.yml offers edition/board
-choices on manual dispatch; pushes to feature/air-edition run all nine bounded
-hosted builds: Air/DX/Water × V3/V4 OLED/T096, after standalone host/native gates.
+choices on manual dispatch; pushes to feature/air-edition run all selected bounded
+hosted builds: Air/DX/Water × V3/V4 OLED/T096/L1/L1-1W/T190, after standalone host/native gates.
 It preserves read-only permissions, explicit exact-SHA checkout, max-parallel 3,
 one compilation job per image, 14-day checksummed artifacts and no release/flash.
 Cross-repository tests explicitly skip on standalone runners; local sibling
@@ -202,7 +202,7 @@ the production stage/home/travel renderer, not a reconstruction of its sprites.
 
 Open **Actions → Air DX and Water selected owner-board test images** and choose
 **feature/air-edition**. Manual inputs select edition **Air/DX/Water/all** and
-board **V3/V4_OLED/T096/all**; the default runs the nine-image regression matrix.
+board **V3/V4_OLED/T096/L1/L1_1W/T190/all**; the default runs the explicit matrix.
 Each successful image is a separate named artifact including its environment and
 source SHA. Air profiles have an air_ prefix; selecting an original DX target is
 not Air. A feature-branch push bootstraps workflow registration because a new
@@ -210,3 +210,8 @@ manual-only workflow absent from default main cannot initially be dispatched.
 No main modification is needed. Existing release/tag automation is not invoked.
 Artifacts are retained for 14 days and require GitHub access; a permanent Air
 Release, its tag/version and prerelease/latest policy need separate confirmation.
+
+### T190 experimental colour
+
+Select `air_heltec_t190_ble`, inheriting the current DX colour target.
+See [T190 commands and hosted selector](docs/BUILDING.md#t190-colour-edition-builds).

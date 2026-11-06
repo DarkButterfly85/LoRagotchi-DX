@@ -241,3 +241,8 @@ After CI, validate images/hashes/partition or UF2/linker bounds before deliverin
 Physical V3/V4/T096 checks still need selection/reset/reboot/adoption/mixed-version
 visits and panel/radio testing. Host faults and pixels are not physical flash,
 RF-loss, power-cut, memory-budget or panel-appearance proof.
+
+### T190 experimental colour
+
+Select `water_heltec_t190_ble`, inheriting the current DX colour target.
+See [T190 commands and hosted selector](docs/BUILDING.md#t190-colour-edition-builds).
