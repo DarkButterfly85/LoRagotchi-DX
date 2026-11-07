@@ -53,7 +53,7 @@ with tempfile.TemporaryDirectory(prefix='dx-life-art-') as tmp:
 ui=(ROOT/'examples/companion_radio/ui-new/UITask.cpp').read_text()
 a=ui.index('static uint32_t loRaFishLifeArtKey(');b=ui.index('static void drawLoRaFishTankStatusBar',a)
 assert 'random(' not in ui[a:b] and 'millis(' not in ui[a:b] and 'saveLoRaFish' not in ui[a:b]
-assert ui.index('loRaFishLifeArtFrameMs=(uint32_t)millis();')<ui.index('for (int y0 = 0; y0 < panelRows;')
+assert ui.index('loRaFishLifeArtFrameMs=(uint32_t)loRaFishRenderMillis();')<ui.index('for (int y0 = 0; y0 < panelRows;')
 print('PASS production egg stages, mystery glyph, tilt/glitter, three memorials, bounds, stable identity, strips')
 
 assert 'const bool mystery=!offspring && loRaFishMysterySelected;' in ui

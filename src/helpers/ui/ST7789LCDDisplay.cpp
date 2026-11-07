@@ -10,6 +10,14 @@
   #define DISPLAY_ROTATION 3
 #endif
 
+#ifdef LORAGOTCHI_NATIVE_UI
+// One UI pixel is one panel pixel for text, rectangles and bitmap art.
+#undef DISPLAY_SCALE_X
+#undef DISPLAY_SCALE_Y
+#define DISPLAY_SCALE_X 1
+#define DISPLAY_SCALE_Y 1
+#endif
+
 #ifndef DISPLAY_SCALE_X
   #define DISPLAY_SCALE_X 2.5f // 320 / 128
 #endif
