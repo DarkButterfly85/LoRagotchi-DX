@@ -91,6 +91,30 @@ inline void habitatPosition(uint16_t id,uint8_t stage,int width,uint32_t now,
   y=habitatY(id,y,now+offset);
 }
 inline uint16_t renderId(uint16_t id) { return known(id) ? id : (uint16_t)TropicalFish; }
+// Species-aware display names; protocol stage values and evolution timing remain unchanged.
+inline const char* lifeStage(uint16_t id, uint8_t stage) {
+  if (stage >= 3) return "ELDER";
+  if (stage == 2) return "ADULT";
+  if (stage == 1) {
+    if (id == Butterfly) return "CHRYSALIS";
+    if (id == Honeybee || id == Fly) return "PUPA";
+    return "JUVENILE";
+  }
+  if (!airKnown(id)) return "FRY";
+  switch (id) {
+    case Duck: return "DUCKLING";
+    case Eagle: return "EAGLET";
+    case Swan: return "CYGNET";
+    case Owl: return "OWLET";
+    case Penguin: case Bird: case Parrot: case Flamingo:
+    case Peacock: case Turkey: case Rooster: case Dove: return "CHICK";
+    case Butterfly: return "CATERPILLAR";
+    case Honeybee: case Fly: case Bug: return "LARVA";
+    case Bat: return "PUP";
+    case Worm: return "HATCHLING";
+    default: return "HATCHLING";
+  }
+}
 inline const char* label(uint16_t id) {
   static const char* const names[]={"Tropical fish","Blowfish","Shark","Dolphin","Whale",
     "Seal","Shrimp","Squid","Lobster","Crab","Octopus","Jellyfish","Shell-dweller","Sea star","Anglerfish"};
