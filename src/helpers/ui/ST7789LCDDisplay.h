@@ -11,6 +11,24 @@
 #error "T190 colour requires the T190 board and full-frame RGB565 canvas"
 #endif
 
+// Opt-in per target; generic MeshCore and touch retain their coordinate contract.
+#ifdef LORAGOTCHI_NATIVE_UI
+#ifndef DISPLAY_WIDTH
+#define DISPLAY_WIDTH 240
+#endif
+#ifndef DISPLAY_HEIGHT
+#define DISPLAY_HEIGHT 320
+#endif
+#ifndef DISPLAY_ROTATION
+#define DISPLAY_ROTATION 3
+#endif
+#define LORAGOTCHI_LCD_WIDTH ((DISPLAY_ROTATION & 1) ? DISPLAY_HEIGHT : DISPLAY_WIDTH)
+#define LORAGOTCHI_LCD_HEIGHT ((DISPLAY_ROTATION & 1) ? DISPLAY_WIDTH : DISPLAY_HEIGHT)
+#else
+#define LORAGOTCHI_LCD_WIDTH 128
+#define LORAGOTCHI_LCD_HEIGHT 64
+#endif
+
 class ST7789LCDDisplay : public DisplayDriver {
   #if defined(LILYGO_TDECK) || defined(HELTEC_LORA_V4_TFT) || defined(HELTEC_V4_R8_TFT) || defined(LORAGOTCHI_T190_COLOR)
     SPIClass displaySPI;
@@ -44,14 +62,14 @@ class ST7789LCDDisplay : public DisplayDriver {
   bool i2c_probe(TwoWire& wire, uint8_t addr);
 public:
 #ifdef USE_PIN_TFT
-  ST7789LCDDisplay(RefCountedDigitalPin* peripher_power=NULL) : DisplayDriver(128, 64), 
+  ST7789LCDDisplay(RefCountedDigitalPin* peripher_power=NULL) : DisplayDriver(LORAGOTCHI_LCD_WIDTH, LORAGOTCHI_LCD_HEIGHT),
       display(PIN_TFT_CS, PIN_TFT_DC, PIN_TFT_SDA, PIN_TFT_SCL, PIN_TFT_RST),
       _peripher_power(peripher_power)
   {
     _isOn = false;
   }
 #elif defined(LILYGO_TDECK) || defined(HELTEC_LORA_V4_TFT) || defined(HELTEC_V4_R8_TFT) || defined(LORAGOTCHI_T190_COLOR)
-  ST7789LCDDisplay(RefCountedDigitalPin* peripher_power=NULL) : DisplayDriver(128, 64),
+  ST7789LCDDisplay(RefCountedDigitalPin* peripher_power=NULL) : DisplayDriver(LORAGOTCHI_LCD_WIDTH, LORAGOTCHI_LCD_HEIGHT),
       displaySPI(HSPI),
       display(&displaySPI, PIN_TFT_CS, PIN_TFT_DC, PIN_TFT_RST),
       _peripher_power(peripher_power)
@@ -60,14 +78,14 @@ public:
   }
 #elif defined(HELTEC_T114_WITH_DISPLAY)
   // T114 TFT sits on SPI1 (SCK 40, MOSI 41), same bus as the ST7789Display driver
-  ST7789LCDDisplay(RefCountedDigitalPin* peripher_power=NULL) : DisplayDriver(128, 64),
+  ST7789LCDDisplay(RefCountedDigitalPin* peripher_power=NULL) : DisplayDriver(LORAGOTCHI_LCD_WIDTH, LORAGOTCHI_LCD_HEIGHT),
       display(&SPI1, PIN_TFT_CS, PIN_TFT_DC, PIN_TFT_RST),
       _peripher_power(peripher_power)
   {
     _isOn = false;
   }
 #else
-  ST7789LCDDisplay(RefCountedDigitalPin* peripher_power=NULL) : DisplayDriver(128, 64),
+  ST7789LCDDisplay(RefCountedDigitalPin* peripher_power=NULL) : DisplayDriver(LORAGOTCHI_LCD_WIDTH, LORAGOTCHI_LCD_HEIGHT),
       display(&SPI, PIN_TFT_CS, PIN_TFT_DC, PIN_TFT_RST),
       _peripher_power(peripher_power)
   {
