@@ -52,3 +52,67 @@ The review also exposed that only life-art animation had an immutable timestamp.
 
 
 Reviewed-source verification completed: all seven firmware environments above rebuilt successfully after the pairing/frame-clock changes (review-build-matrix.log). Twelve focused host scripts passed: native pages, T114 strips, native layout/menus/compositor, menu navigation, species motion, life art, local savings/persistence, T-Deck routes, Air rendering and juvenile legacy pixels. The life-art and local-savings fixtures now consume/assert the actual new render-clock scope. git diff --check passed; reviewed firmware source hashes are recorded in .local-dev/native-ui/source-sha256.txt. No push, commit or flash.
+
+## T190 feedback follow-up — 2026-11-07 (local, uncommitted)
+
+Supersedes the rail/card layout above. Design: edge-anchored telemetry,
+uninterrupted swimming water, native 1px assets; existing theme/font retained.
+Reused the existing renderer and clipping adapter, not another UI framework.
+
+- Removed 112px side rail: full-width home scene below a 24px two-line status
+  ribbon (age/generation/happiness and RF/Msg/ACK/BLE). Long values ellipsized;
+  complete telemetry remains on Stats.
+- Home/visitor swimmers gain slow depth envelopes rather than translated middle
+  strips. Water bottom dwellers and walking/crawling Air species stay near floor.
+  Feeding/travel/sleep precedence remains. Bubbles now reach the surface.
+- Theme-aware perimeter seaweed/rocks or Air shrubs leave central water clear.
+- Pages/notices/pickers/menus use full width/height. Page redistributes anchors,
+  not glyph pixels: top headings, bottom hints, existing navigation/row counts.
+- 128x64 page mapping is identity. Non-native V3/T096 paths retain old coordinates
+  and assets. SPI/radio/storage/rotation/refresh policies/T114 cadence unchanged.
+
+Evidence: .local-dev/native-feedback/. Production-function checks cover all three
+editions, page/selection bounds, depth sweep, ribbon isolation, T190 full/partial,
+orientation/wake/fallback, and T114 full reference versus 16px bands/final 7 rows
+including actual bubbles/scenery and page primitives. Legacy sprite signatures,
+Air/Water rendering, life art, menus, savings and T-Deck routes retained.
+These are bounded actual-function renders, not a whole-device emulator/full
+screenshot suite. No physical panel, RF/current measurement, push or flash.
+
+The new native_habitat check can emit edition-specific PPM diagnostic rasters
+under .local-dev/native-feedback/scenery (actual scenery and bubbles only, no
+pet/text); these are explicitly not marketing/full-UI screenshots. The local
+host lacks Pillow. Firmware matrix: T190 DX/Water/Air, V4 TFT, T114, V3, T096.
+First build attempt caught an early scenery declaration error; fixed and the
+seven-target matrix passed. A final incremental matrix verifies the clipped
+page-bitmap correction too. No commit/push/flash was performed.
+
+### Independent-review correction: compound primitives and bubble bounds
+
+Page now maps both vertical endpoints of filled rectangles/outlines, not just
+origins. Compound RF axes/bars therefore share one mapped baseline, and battery
+fill margins remain inside its mapped outline. Glyph/XBM pixels remain 1:1;
+page graphic heights intentionally follow native anchor geometry. Production RF
+page checks now assert full-history bar baselines and full-battery containment.
+Native bubbles are constrained to y=35 through h-19 (including their footprint,
+strictly above h-15 floor), avoiding header/reaction/name rows. The T114 test
+requires the observed bubble pixel envelope y=35..118 at height135.
+
+Integrated complete home/visitor/sleep/feed aquarium raster capture is still
+not implemented: the bounded scene tests exercise actual scenery/bubbles/layout,
+legacy sprite/travel pixels and production dispatch separately. Builds cover
+all call sites but do not replace this missing integration/physical acceptance.
+
+### Publication verification — 2026-11-07
+
+The feedback changes include the independent-review RF baseline/battery geometry
+correction and bubble footprint bounds above. The final seven-target build record
+(`build-review-fixes.log`) reports all environments successful; its source hash
+manifest matches the final `UITask.cpp` and `LoRaFishLayout.h` bytes. Publication
+reruns the 17 focused host scripts (native pages/strips/layout/menus/compositor/
+habitat, navigation, species motion, life art, local savings, T-Deck, Air/Water,
+juvenile, T190 colour/partial and feature guards) and `git diff --check`.
+Private build logs, diagnostic rasters and binaries are not part of the source
+commit. The earlier “uncommitted/no push” labels describe those local checkpoints;
+publication is to the existing fork feature branch only, not main or upstream.
+The integrated aquarium raster and physical-panel acceptance caveats still apply.

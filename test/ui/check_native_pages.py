@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Render actual production pages through native cards, including pairing branches."""
+"""Render actual production pages through full-area native pages, including pairing branches."""
 from pathlib import Path
 import subprocess,tempfile
 ROOT=Path(__file__).resolve().parents[2]
@@ -42,6 +42,7 @@ struct {LocationProvider*current=nullptr;LocationProvider*getLocationProvider(){
 class Recorder:public DisplayDriver {
  int x=0,y=0,size=1;struct Box{int x,y,w,h;};std::vector<Box>boxes;
 public:
+ struct Shape{int x,y,w,h;bool outline;};std::vector<Shape> shapes;
  std::vector<std::string>printed;
  Recorder(int w,int h):DisplayDriver(w,h){}
  bool isOn()override{return true;}void turnOn()override{}void turnOff()override{}
@@ -54,8 +55,8 @@ public:
   for(auto b:boxes)if(x<b.x+b.w&&x+w>b.x&&y<b.y+b.h&&y+h>b.y){fprintf(stderr,"overlap %s at %d,%d",s,x,y);abort();}
   boxes.push_back({x,y,w,h});printed.emplace_back(s);x+=w;
  }
- void fillRect(int x,int y,int w,int h)override{assert(x>=0&&y>=0&&x+w<=width()&&y+h<=height());}
- void drawRect(int x,int y,int w,int h)override{fillRect(x,y,w,h);}
+ void fillRect(int x,int y,int w,int h)override{assert(x>=0&&y>=0&&x+w<=width()&&y+h<=height());shapes.push_back({x,y,w,h,false});}
+ void drawRect(int x,int y,int w,int h)override{shapes.push_back({x,y,w,h,true});}
  void drawXbm(int,int,const uint8_t*,int,int)override{}
  bool has(const char*s){return std::find(printed.begin(),printed.end(),s)!=printed.end();}
 };
@@ -66,7 +67,7 @@ code+=r'''
 int main(){
  UITask task;
  for(auto dims:{std::pair<int,int>{320,170},{320,240},{240,135}}){
-  auto render=[&](auto draw){Recorder out(dims.first,dims.second);LoRaFishLayout::Region card(out,(dims.first-224)/2,(dims.second-64)/2,224,64);draw(card);return out;};
+  auto render=[&](auto draw){Recorder out(dims.first,dims.second);LoRaFishLayout::Page card(out);draw(card);return out;};
   for(uint32_t pin:{0u,123456u}){
    the_mesh.pin=pin;auto out=render([&](DisplayDriver&d){drawLoRaFishPairing(d);});
    assert(out.has("ENTER: next"));assert(out.has(pin?"123456":"No PIN configured"));
@@ -77,6 +78,20 @@ int main(){
   }
   for(uint16_t mv:{uint16_t(0),uint16_t(3300),uint16_t(4200)}){
    battery=mv;for(unsigned age:{0u,1234u}){lorafish_last_rf_ms=age;++lorafish_rf_sample_seq;render([&](DisplayDriver&d){drawLoRaFishRFMonitor(d,&task);});}
+  }
+  {
+   battery=4200;loRaFishRfHistoryCount=48;lorafish_rf_sample_seq=loRaFishRfSeenSeq;
+   for(int i=0;i<48;++i)loRaFishRfHistory[i]=-40-i;
+   auto out=render([&](DisplayDriver&d){drawLoRaFishRFMonitor(d,&task);});
+   const int baseline=LoRaFishLayout::pageY(51,dims.second);
+   bool gauge=false;for(auto shape:out.shapes){
+    if(shape.x>=3 && shape.x<51 && shape.w==1 && shape.y>=LoRaFishLayout::pageY(31,dims.second) && shape.y<=baseline)
+      assert(shape.y+shape.h==baseline || shape.x==3); // bars end exactly at baseline
+    if(shape.x==3 && shape.w==38 && shape.y==LoRaFishLayout::pageY(55,dims.second)){
+     gauge=true;for(auto fill:out.shapes)if(!fill.outline && fill.x==5 && fill.w==34)
+       assert(fill.y>shape.y && fill.y+fill.h<LoRaFishLayout::pageY(62,dims.second));
+    }
+   }assert(gauge);
   }
   for(bool receiver:{false,true})for(bool enabled:{false,true})for(bool fix:{false,true}){
    sensors.current=receiver?&location:nullptr;task.gps=enabled;location.valid=fix;

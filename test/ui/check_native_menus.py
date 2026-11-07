@@ -13,7 +13,7 @@ int main() {
  for(auto dims:{std::pair<int,int>{320,170},{320,240},{240,135},{128,64}}) {
   BoundsDisplay output(dims.first,dims.second);
   const int width=std::min(dims.first,224),top=(dims.second-64)/2;
-  LoRaFishLayout::Region card(output,(dims.first-width)/2,top,width,64);
+  LoRaFishLayout::Page card(output);
   for(bool advancing:{true,false}) {
    output.advancing=advancing;
    for(bool colour:{true,false}) {
@@ -38,7 +38,7 @@ int main() {
    }
   }
  }
- puts("PASS native production menu cards: 320x170, 320x240, 240x135, 128x64; glyph bounds/overlap, mono/colour, all selections, sound and stationary/advancing text");
+ puts("PASS native production full-area menus: 320x170, 320x240, 240x135, 128x64; glyph bounds/overlap, mono/colour, all selections, sound and stationary/advancing text");
 }
 '''
 with tempfile.TemporaryDirectory() as t:

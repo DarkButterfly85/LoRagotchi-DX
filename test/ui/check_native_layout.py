@@ -35,10 +35,24 @@ int main(int argc,char**) {
    assert(panel[20*320+10]==8 && panel[59*320+39]==8);
    assert(panel[20*320+9]==0 && panel[59*320+40]==0);
  }
+ if(!failCanvas) {
+   d.startFrame(0);d.setColor(9);LoRaFishLayout::Page p(d);
+   const uint8_t edge[]={255,255};p.drawXbm(318,56,edge,8,2);d.endFrame();
+   assert(panel[162*320+318]==9 && panel[163*320+319]==9);
+   int n=0;for(auto pixel:panel)n+=pixel==9;assert(n==4);
+ }
  assert(LoRaFishLayout::bodyOffset(64)==0);
  assert(LoRaFishLayout::bodyOffset(135)==35);
  assert(LoRaFishLayout::bodyOffset(170)==53);
- assert(LoRaFishLayout::sidebarWidth(240)==0 && LoRaFishLayout::sidebarWidth(320)==112);
+ assert(LoRaFishLayout::sidebarWidth(240)==0 && LoRaFishLayout::sidebarWidth(320)==0);
+ for(int h:{111,146,216}) {
+   int low=999,high=0;
+   for(int y=19;y<=41;++y){int p=LoRaFishLayout::habitatY(y,h);assert(p>=34 && p<=h-34);low=std::min(low,p);high=std::max(high,p);}
+   assert(high-low>(h-68)*8/10);
+   assert(LoRaFishLayout::habitatY(37,h,true)==h-30);
+ }
+ assert(LoRaFishLayout::habitatY(38,64)==38);
+ assert(LoRaFishLayout::pageY(56,170)==162);
  d.setOrientation(true);assert(lastRotation==3);d.turnOff();d.turnOn();assert(lastRotation==3);
  d.startFrame(0);d.endFrame(); // wake invalidates the retained presentation
 }

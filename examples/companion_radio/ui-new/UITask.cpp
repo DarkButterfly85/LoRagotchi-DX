@@ -3149,6 +3149,16 @@ static void drawLoRaFishBubbles(DisplayDriver& display) {
   int y2 = h - 10 - ((millis() / 260 + 13) % 38);
   int y3 = h - 10 - ((millis() / 340 + 25) % 36);
 
+#ifdef LORAGOTCHI_NATIVE_UI
+  if(h>64) {
+    // Below the reaction/name rows, strictly above the floor (h-15).
+    const int top=35,bottom=h-19;
+    const unsigned span=(unsigned)std::max(1,bottom-top+1);
+    y1=bottom-(millis()/180)%span;
+    y2=bottom-(millis()/260+13)%span;
+    y3=bottom-(millis()/340+25)%span;
+  }
+#endif
   // Gentle sideways wobble.
   int x1 = 15 + (int)(2.0f * sinf(millis() / 700.0f));
   int x2 = 29 + (int)(2.0f * sinf(millis() / 900.0f));
@@ -3237,6 +3247,30 @@ static void drawLoRaFishAirHabitat(DisplayDriver& display) {
 }
 #endif
 
+static void drawLoRaFishNativeScenery(DisplayDriver& d) {
+#ifdef LORAGOTCHI_NATIVE_UI
+  if(d.height()<=64) return;
+  const int w=d.width(),floor=d.height()-16;
+  d.setColor(UIColor::secondary_txt);
+#if LORAGOTCHI_AIR_EDITION
+  for(int side=0;side<2;++side) {
+    const int x=side ? w-22 : 10;
+    d.fillRect(x,floor-19,2,19);
+    d.fillRect(x-5,floor-15,12,2);d.fillRect(x-3,floor-22,8,2);
+  }
+#else
+  for(int side=0;side<2;++side) {
+    const int x=side ? w-12 : 10;
+    for(int j=0;j<4;++j) {
+      d.fillRect(x+(j%2),floor-5-j*5,2,6);
+      d.fillRect(x-3,floor-7-j*5,4,1);
+    }
+    d.drawRect(side ? w-34 : 23,floor-4,9,4);
+  }
+#endif
+#endif
+}
+
 static void drawLoRaFishAquarium(DisplayDriver& display, UITask* task) {
   const int w=display.width(), h=display.height();
   char tb[8], db[24];
@@ -3248,6 +3282,7 @@ static void drawLoRaFishAquarium(DisplayDriver& display, UITask* task) {
 #elif defined(LORAFISH_TDECK_PIXEL_ART)
   drawTDeckPixelAquarium(display);
 #endif
+  drawLoRaFishNativeScenery(display);
   drawLoRaFishHeader(display,loRaFishDisplayName(),tb);
   drawLoRaFishTankBattery(display,task,tb);
 
@@ -3269,7 +3304,13 @@ static void drawLoRaFishAquarium(DisplayDriver& display, UITask* task) {
     LoRaFishSpecies::habitatPosition(loRaFishSpecies,fish.evolution,w,(uint32_t)millis(),0,x,y,right);
 
   const int bodyOffset=LoRaFishLayout::bodyOffset(h);
-  y+=bodyOffset;
+#ifdef LORAGOTCHI_NATIVE_UI
+  if (h>64 && (!LoRaFishSpecies::waterMotion(loRaFishSpecies) || loRaFishSpecies==LoRaFishSpecies::Jellyfish))
+    y=30+(int)(11*sinf(millis()/5100.0f));
+#endif
+  y=LoRaFishLayout::habitatY(y,h,
+      (LoRaFishSpecies::waterMotion(loRaFishSpecies) && loRaFishSpecies!=LoRaFishSpecies::Jellyfish) ||
+      (LORAGOTCHI_AIR_EDITION && (LoRaFishSpecies::movement(loRaFishSpecies)==LoRaFishSpecies::Walk || LoRaFishSpecies::movement(loRaFishSpecies)==LoRaFishSpecies::Crawl)));
   if (loRaFishFeeding) {
     const unsigned long elapsed=millis()-loRaFishFeedStarted;
     const int foodX=w/2+18;
@@ -3376,7 +3417,13 @@ static void drawLoRaFishAquarium(DisplayDriver& display, UITask* task) {
       loRaFishGuestTravelAnimation.species;
   if (LORAGOTCHI_AIR_EDITION || LoRaFishSpecies::waterMotion(guestMotionSpecies))
     LoRaFishSpecies::habitatPosition(guestMotionSpecies,guestStage,w,(uint32_t)millis(),2700,gx,gy,gright);
-  gy+=bodyOffset;
+#ifdef LORAGOTCHI_NATIVE_UI
+  if (h>64 && (!LoRaFishSpecies::waterMotion(guestMotionSpecies) || guestMotionSpecies==LoRaFishSpecies::Jellyfish))
+    gy=30+(int)(11*sinf((millis()+4300)/5700.0f));
+#endif
+  gy=LoRaFishLayout::habitatY(gy,h,
+      (LoRaFishSpecies::waterMotion(guestMotionSpecies) && guestMotionSpecies!=LoRaFishSpecies::Jellyfish) ||
+      (LORAGOTCHI_AIR_EDITION && (LoRaFishSpecies::movement(guestMotionSpecies)==LoRaFishSpecies::Walk || LoRaFishSpecies::movement(guestMotionSpecies)==LoRaFishSpecies::Crawl)));
   loRaFishBeginTravelAnimation(loRaFishGuestTravelAnimation,w,gx,gy);
   if (guestPresent) {
     // Same movement model as a lone fish, phase shifted by half a cycle.
@@ -3504,6 +3551,7 @@ static void drawLoRaFishSleeping(DisplayDriver& display, UITask* task) {
   drawTDeckPixelAquarium(display);
   drawLoRaFishBubbles(display);
 #endif
+  drawLoRaFishNativeScenery(display);
   drawLoRaFishHeader(display,loRaFishDisplayName(),tb);
   drawLoRaFishTankBattery(display,task,tb);
 
@@ -3646,44 +3694,31 @@ static void drawLoRaFish(DisplayDriver& display, UITask* task) {
   }
 }
 #ifdef LORAGOTCHI_NATIVE_UI
-// A native habitat expands in both dimensions. Wide panels get a separate
-// information rail; compact menus remain readable cards, not stretched rows.
+// Full-width habitat below a quiet two-line status ribbon. No side rail,
+// framebuffer magnification or bordered 64px card on larger native panels.
 static void drawLoRaFishNative(DisplayDriver& display, UITask* task) {
   const int w=display.width(),h=display.height();
   const bool notice=loRaFishChannelNotice || loRaFishNameNotice ||
       loRaFishMonoDisplayNotice || loRaFishAdoptionEligible || loRaFishNeedsPetSetup || loRaFishValuePicker.active();
   if(loRaFishPage==0 && !notice) {
-    const int rail=LoRaFishLayout::sidebarWidth(w);
-    LoRaFishLayout::Region habitat(display,0,0,w-rail,h);
-    drawLoRaFish(habitat,task);
-    if(rail) {
+    const int ribbon=h>64 ? 24 : 0;
+    if(ribbon) {
       display.setTextSize(1);display.setColor(UIColor::secondary_txt);
-      display.fillRect(w-rail,2,1,h-4);
-      LoRaFishLayout::Region info(display,w-rail+5,8,rail-10,h-38);
-      char line[32];
-      info.setColor(UIColor::primary_txt);
-      info.drawTextEllipsized(0,0,info.width(),"PET STATUS");
-      snprintf(line,sizeof(line),"Age %luh %lum",(unsigned long)(fish.ageMinutes/60UL),(unsigned long)(fish.ageMinutes%60UL));
-      info.drawTextEllipsized(0,16,info.width(),line);
-      snprintf(line,sizeof(line),"Generation %u",(unsigned)loRaFishGeneration);
-      info.drawTextEllipsized(0,28,info.width(),line);
-      snprintf(line,sizeof(line),"Happy %u%%",(unsigned)fish.happiness);
-      info.drawTextEllipsized(0,40,info.width(),line);
-      snprintf(line,sizeof(line),"RF %lu",(unsigned long)fish.rfEvents);
-      info.drawTextEllipsized(0,52,info.width(),line);
-      snprintf(line,sizeof(line),"Messages %lu",(unsigned long)fish.messages);
-      info.drawTextEllipsized(0,64,info.width(),line);
-      snprintf(line,sizeof(line),"ACK %lu",(unsigned long)fish.txAcks);
-      info.drawTextEllipsized(0,76,info.width(),line);
-      info.drawTextEllipsized(0,88,info.width(),task->hasConnection() ? "BLE connected" : "BLE offline");
-      display.setColor(UIColor::secondary_txt);
-      display.drawTextCentered(w-rail/2,h-18,"Click: pages");
-      display.drawTextCentered(w-rail/2,h-9,"Hold: options");
+      char line[80];
+      snprintf(line,sizeof(line),"Age %luh %lum  G%u  Happy %u%%",
+        (unsigned long)(fish.ageMinutes/60UL),(unsigned long)(fish.ageMinutes%60UL),
+        (unsigned)loRaFishGeneration,(unsigned)fish.happiness);
+      display.drawTextEllipsized(3,2,w-6,line);
+      snprintf(line,sizeof(line),"RF %lu  Msg %lu  ACK %lu  BLE %s",
+        (unsigned long)fish.rfEvents,(unsigned long)fish.messages,
+        (unsigned long)fish.txAcks,task->hasConnection()?"on":"off");
+      display.drawTextEllipsized(3,13,w-6,line);
     }
+    LoRaFishLayout::Region habitat(display,0,ribbon,w,h-ribbon);
+    drawLoRaFish(habitat,task);
   } else {
-    const int cardWidth=std::min(w,224),top=LoRaFishLayout::bodyOffset(h);
-    LoRaFishLayout::Region card(display,(w-cardWidth)/2,top,cardWidth,64);
-    drawLoRaFish(card,task);
+    LoRaFishLayout::Page page(display);
+    drawLoRaFish(page,task);
   }
 }
 #endif

@@ -45,16 +45,16 @@ int main(){
  UITask task;
  for(auto dims:{std::pair<int,int>{320,170},{320,240},{240,135}}){
   Recorder r(dims.first,dims.second);drawLoRaFishNative(r,&task);
-  assert(sceneW==dims.first-LoRaFishLayout::sidebarWidth(dims.first) && sceneH==dims.second);
+  assert(sceneW==dims.first-LoRaFishLayout::sidebarWidth(dims.first) && sceneH==dims.second-24);
   loRaFishPage=8;Recorder m(dims.first,dims.second);drawLoRaFishNative(m,&task);
-  assert(sceneW==224 && sceneH==64);loRaFishPage=0;
+  assert(sceneW==dims.first && sceneH==dims.second);loRaFishPage=0;
   for(bool* notice:{&loRaFishChannelNotice,&loRaFishNameNotice,&loRaFishMonoDisplayNotice,
                   &loRaFishAdoptionEligible,&loRaFishNeedsPetSetup}){
    *notice=true;Recorder n(dims.first,dims.second);drawLoRaFishNative(n,&task);
-   assert(sceneW==224 && sceneH==64);*notice=false;
+   assert(sceneW==dims.first && sceneH==dims.second);*notice=false;
   }
  }
- puts("PASS production native compositor: native habitat/rail, compact cards, all notice/setup routes, maximum counters no glyph overlap");
+ puts("PASS production native compositor: full-width habitat/top ribbon, full-area pages, all notice/setup routes, maximum counters no glyph overlap");
 }
 '''
 with tempfile.TemporaryDirectory() as t:

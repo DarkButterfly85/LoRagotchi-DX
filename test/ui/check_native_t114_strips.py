@@ -21,7 +21,7 @@ main=r'''
 #include <cassert>
 #include <cmath>
 static unsigned long live=4321;static unsigned long millis(){return live++;}
-'''+clock+chr(10)+'#define millis() loRaFishRenderMillis()'+chr(10)+block('static void drawLoRaFishBubbles(')+chr(10)+'#undef millis'+chr(10)+r'''
+'''+clock+chr(10)+'#define millis() loRaFishRenderMillis()'+chr(10)+block('static void drawLoRaFishBubbles(')+block('static void drawLoRaFishNativeScenery(')+chr(10)+'#undef millis'+chr(10)+r'''
 struct Memory:DisplayDriver {
  std::vector<uint16_t>pixels=std::vector<uint16_t>(240*135);uint16_t color=0;
  Memory():DisplayDriver(240,135){}
@@ -38,9 +38,16 @@ static void scene(DisplayDriver& d){
  d.fillRect(0,134,240,1);d.fillRect(2,14,18,5);d.fillRect(30,30,19,5);
  LoRaFishLayout::Region r(d,50,0,100,135);r.fillRect(0,15,100,3);r.fillRect(0,127,100,8);
  const uint8_t bits[]={255,255,255};d.drawXbm(180,15,bits,8,3);
- drawLoRaFishBubbles(d);
+ drawLoRaFishNativeScenery(d);drawLoRaFishBubbles(d);
+ LoRaFishLayout::Page page(d);page.setColor(9);page.fillRect(90,56,10,7);
 }
 int main(){
+ {Memory probe;int minY=135,maxY=0;
+  for(live=0;live<50000;live+=180){probe.startFrame(0);drawLoRaFishBubbles(probe);
+   for(int y=0;y<135;++y)for(int x=0;x<240;++x)if(probe.pixels[y*240+x]){minY=std::min(minY,y);maxY=std::max(maxY,y);}}
+  assert(minY==35 && maxY==118);
+ }
+
  ST7789LCDDisplay d;assert(d.width()==240&&d.height()==135);d.begin();
  assert(d.stripRows()==16&&d.physicalHeight()==135);
  Memory reference;

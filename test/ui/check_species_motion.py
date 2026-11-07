@@ -69,6 +69,6 @@ assert 'LORAGOTCHI_AIR_EDITION || LoRaFishSpecies::waterMotion(guestMotionSpecie
 assert ui.index('habitatPosition(loRaFishSpecies') < ui.index('const int foodX=w/2+18;')
 assert 'const int homeTargetY=localSleeping ? 38+bodyOffset : y;' in ui
 assert 'const int bodyOffset=LoRaFishLayout::bodyOffset(h);' in ui
-assert 'gy+=bodyOffset;' in ui
+assert 'gy=LoRaFishLayout::habitatY(gy,h,' in ui
 assert '!loRaFishFeeding && !LoRaFishSpecies::waterMotion(loRaFishSpecies)' in ui
 print('PASS home/visitor hooks, feed/sleep precedence, wander bubbles guard')

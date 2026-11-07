@@ -13,7 +13,22 @@ inline int bodyOffset(int height) {
   (void)height; return 0; // Preserve the independent T-Watch tall-tank mapping.
 #endif
 }
-inline int sidebarWidth(int width) { return width >= 288 ? 112 : 0; }
+// Native habitat coordinates leave sprite-sized clearance above the floor and
+// below the header. Legacy choreography and assets are never magnified.
+inline int habitatY(int y,int height,bool bottom=false) {
+#ifdef LORAGOTCHI_NATIVE_UI
+  if(height>64) return bottom ? height-30 : 34+(std::max(18,std::min(42,y))-18)*(height-68)/24;
+#endif
+  return y+bodyOffset(height);
+}
+inline int sidebarWidth(int) { return 0; }
+// Distribute page anchors, not glyph pixels. A 64px page keeps its exact old
+// geometry; larger panels gain row spacing and edge-anchored headings/hints.
+inline int pageY(int y,int height) {
+  if(height<=64 || y<=15) return y;
+  if(y>56) return height-(64-y);
+  return 16+(y-16)*(height-24)/40;
+}
 class Region : public DisplayDriver {
   DisplayDriver& out;
   int ox, oy, cx = 0, cy = 0, textSize = 1;
@@ -56,6 +71,25 @@ public:
     for(int j=std::max(0,-y);j<std::min(h,height()-y);++j)
       for(int i=std::max(0,-x);i<std::min(w,width()-x);++i)
         if(bits[j*stride+i/8] & (0x80>>(i&7))) rect(x+i,y+j,1,1);
+  }
+};
+class Page : public Region {
+public:
+  Page(DisplayDriver& d):Region(d,0,0,d.width(),d.height()) {}
+  void setCursor(int x,int y) override { Region::setCursor(x,pageY(y,height())); }
+  void fillRect(int x,int y,int w,int h) override {
+    Region::fillRect(x,pageY(y,height()),w,std::max(1,pageY(y+h,height())-pageY(y,height())));
+  }
+  void drawRect(int x,int y,int w,int h) override {
+    Region::drawRect(x,pageY(y,height()),w,std::max(1,pageY(y+h,height())-pageY(y,height())));
+  }
+  void drawXbm(int x,int y,const uint8_t* b,int w,int h) override {
+    // Region's clipped bitmap fallback dispatches virtual fillRect; decode
+    // here so a clipped native page bitmap cannot map its row twice.
+    if(!b || w<=0 || h<=0) return;
+    const int top=pageY(y,height()),stride=(w+7)/8;
+    for(int j=0;j<h;++j) for(int i=0;i<w;++i)
+      if(b[j*stride+i/8] & (0x80>>(i&7))) Region::fillRect(x+i,top+j,1,1);
   }
 };
 } // namespace LoRaFishLayout
