@@ -4,8 +4,23 @@ import json
 import subprocess
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[2]
-config={s:dict(v) for s,v in json.loads(subprocess.check_output(
+import re,tempfile
+picker={s:dict(v) for s,v in json.loads(subprocess.check_output(
     ['pio','project','config','--json-output'],cwd=ROOT,text=True))}
+# Some Water/Air parents (LoRaFish companion builds) are hidden from the picker and
+# live in platformio-meshcore.ini. Resolve the picker config plus that file in a
+# scratch project so the aliases are still compared with their real parents.
+with tempfile.TemporaryDirectory() as tmp:
+    tmp=Path(tmp)
+    (tmp/'variants').symlink_to(ROOT/'variants')
+    (tmp/'platformio-meshcore.ini').symlink_to(ROOT/'platformio-meshcore.ini')
+    ini=(ROOT/'platformio.ini').read_text()
+    ini,n=re.subn(r'(extra_configs\s*=\s*\n)',r'\1  platformio-meshcore.ini\n',ini,count=1)
+    assert n==1
+    (tmp/'platformio.ini').write_text(ini)
+    config={s:dict(v) for s,v in json.loads(subprocess.check_output(
+        ['pio','project','config','-d',str(tmp),'--json-output'],text=True))}
+assert set(picker)<=set(config)
 water={
     'water_heltec_t190_ble':'Heltec_T190_LoRaGotchi_DX_ble',
     'water_wio_tracker_l1_ble':'WioTrackerL1_LoRaGotchi_DX_ble',
@@ -25,6 +40,7 @@ water={
     'water_rak4630_ble':'RAK_4631_LoRaGotchi_DX_ble',
 }
 for alias,parent in water.items():
+ assert 'env:'+alias in picker,alias
  a=config['env:'+alias];p=config['env:'+parent]
  for key,value in p.items():
   if key not in {'extends','build_flags'}: assert a[key]==value,(alias,key)
@@ -45,6 +61,7 @@ print('PASS 16 explicit Water aliases and RAK4630 DX alias; existing DX, pins, r
 
 air={name.replace('water_','air_'):parent for name,parent in water.items()}
 for alias,parent in air.items():
+ assert 'env:'+alias in picker,alias
  a=config['env:'+alias];p=config['env:'+parent]
  for key,value in p.items():
   if key not in {'extends','build_flags'}:assert a[key]==value,(alias,key)

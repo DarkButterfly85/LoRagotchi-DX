@@ -25,12 +25,8 @@ jobs:
       fail-fast: false
       matrix:
         environment:
-          # ESP32-S3
-          - Heltec_v3_LoRaFish_companion_ble
           # nRF52
           - RAK_4631_LoRaGotchi_DX_ble
-          # SX1276 (ESP32)
-          - Tbeam_SX1276_LoRaFish_companion_ble
 
     steps:
       - name: Clone Repo
