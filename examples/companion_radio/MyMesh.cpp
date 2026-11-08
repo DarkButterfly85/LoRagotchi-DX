@@ -609,7 +609,7 @@ void MyMesh::queueMessage(const ContactInfo &from, uint8_t txt_type, mesh::Packe
             loRaFishArrival=LoRaFishArrival{};
             memcpy(loragotchiDXGuest.ownerKey,from.id.pub_key,32);loragotchiDXGuest.ownerKnown=true;
             loragotchiDXGuest.txid=tx; loragotchiDXGuest.fishid=fid;
-            loragotchiDXGuest.stage=(uint8_t)st;
+            loragotchiDXGuest.stage=(uint8_t)(st>3 ? 3 : st); // wire value; stages are 0..3
             strncpy(loragotchiDXGuest.guestName,nm,sizeof(loragotchiDXGuest.guestName)-1);
             loragotchiDXGuest.guestName[sizeof(loragotchiDXGuest.guestName)-1]=0;
             strncpy(loragotchiDXGuest.homeName,from.name,sizeof(loragotchiDXGuest.homeName)-1);
