@@ -51,11 +51,21 @@ int main() {
   assert(p.x==20+(int)(88U*(right?t:period-t)/half));
   assert(p.y==habitatY(id,39,now+2700));
  }
+ // Land animals share the Air walk/crawl/fly model: grounded or airborne, always inside the tank.
+ for(uint16_t id=Dog;id<=TRex;++id)for(uint8_t stage=0;stage<4;++stage)
+ for(int width:{128,160,240})for(uint32_t now=0;now<40000;now+=113) {
+  auto p=at(id,stage,now,2700,width);
+  assert(p.x>=20 && p.x<=width-20);
+  assert(p.y==habitatY(id,39,now+2700));
+  auto kind=movement(id);assert(kind==Walk || kind==Crawl || kind==FlyMotion);
+  if(kind==Walk || kind==Crawl)assert(p.y==37);
+ }
+ assert(movement(Dog)==Walk && movement(Snake)==Crawl && movement(Dragon)==FlyMotion);
 }
 '''
 with tempfile.TemporaryDirectory(prefix='dx-motion-') as tmp:
     cpp=Path(tmp)/'motion.cpp';cpp.write_text(source)
-    for edition in ('DX','WATER','AIR'):
+    for edition in ('DX','WATER','AIR','LAND'):
         exe=Path(tmp)/edition
         flags=[] if edition=='DX' else [f'-DLORAGOTCHI_{edition}_EDITION=1']
         subprocess.run(['g++','-std=c++17','-Wall','-Wextra','-Werror','-fsanitize=undefined','-I',str(ROOT),*flags,str(cpp),'-o',str(exe)],check=True)
@@ -65,7 +75,7 @@ ui=(ROOT/'examples/companion_radio/ui-new/UITask.cpp').read_text()
 assert 'habitatPosition(loRaFishSpecies,fish.evolution' in ui
 assert 'guestMotionSpecies=guestPresent ? loragotchiDXGuest.species :' in ui
 assert 'habitatPosition(guestMotionSpecies,guestStage' in ui
-assert 'LORAGOTCHI_AIR_EDITION || LoRaFishSpecies::waterMotion(guestMotionSpecies)' in ui
+assert 'LORAGOTCHI_ANIMAL_EDITION || LoRaFishSpecies::waterMotion(guestMotionSpecies)' in ui
 assert ui.index('habitatPosition(loRaFishSpecies') < ui.index('const int foodX=w/2+18;')
 assert 'const int homeTargetY=localSleeping ? 38+bodyOffset : y;' in ui
 assert 'const int bodyOffset=LoRaFishLayout::bodyOffset(h);' in ui

@@ -15,6 +15,12 @@ code=r'''
 #ifndef LORAGOTCHI_AIR_EDITION
 #define LORAGOTCHI_AIR_EDITION 0
 #endif
+#ifndef LORAGOTCHI_LAND_EDITION
+#define LORAGOTCHI_LAND_EDITION 0
+#endif
+#ifndef LORAGOTCHI_ANIMAL_EDITION
+#define LORAGOTCHI_ANIMAL_EDITION (LORAGOTCHI_AIR_EDITION || LORAGOTCHI_LAND_EDITION)
+#endif
 #include <cassert>
 #include <cstdio>
 #include <vector>
