@@ -392,7 +392,7 @@ Each step is separately shippable; steps 1-3 touch no wire bytes.
 ## 7. Open decisions for the owner
 
 1. ~~Keep rule R0 (same set always visits same set), or enforce habitats even inside a set?~~ **Decided by owner 2026-11-08: keep R0. A creature can always visit its own habitat group.**
-2. May fliers visit water hosts: never (my default), only swimmers (Duck/Swan), or all fliers?
+2. ~~May fliers visit water hosts~~ **Decided by owner 2026-11-08: only swimmers may visit water hosts (for example Duck and Swan), so fliers never do.** Follow-up for the owner: the Water tank needs a layout change to show surface and sub-surface swimmers side by side (for example Penguin and Duck).
 3. Legacy DX hosts and unannounced visitors: allow as fish (my default, no regression) or deny?
 4. Which borderline animals get extra abilities: Seal (walk); Otter, Hippo, Duck, Swan, Penguin (swim); Lizard and Snake amphibious or land-only?
 5. Mythic homes: Dragon and Dragon face land+air, Phoenix air-only, Unicorn/Sauropod/T-Rex land. OK, or Phoenix land+air?
