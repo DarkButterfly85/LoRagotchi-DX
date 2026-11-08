@@ -985,7 +985,11 @@ static bool breedLoRaFishWithGuest() {
   loRaFishEggAppearance.scales=inheritLoRaFishColor(local.scales,visitor.scales);
   loRaFishEggAppearance.body=inheritLoRaFishColor(local.body,visitor.body);
   loRaFishEggAppearance.eyes=inheritLoRaFishColor(local.eyes,visitor.eyes);
-  loRaFishEggSpecies=random(0,2) ? loragotchiDXGuest.species : loRaFishSpecies;
+  // Guest species arrives from the wire: only accept IDs known to this edition,
+  // otherwise breed from the local species.
+  const uint16_t guestSpecies=LoRaFishSpecies::editionKnown(loragotchiDXGuest.species)
+      ? loragotchiDXGuest.species : loRaFishSpecies;
+  loRaFishEggSpecies=random(0,2) ? guestSpecies : loRaFishSpecies;
   loRaFishPendingEgg=true;
   loRaFishMemorialEggSide=0;
   saveLoRaFishSettings();
@@ -1044,14 +1048,8 @@ static uint8_t fishEvolutionForAge(uint32_t mins) {
 }
 
 static const char* fishStageName() {
-  switch (fish.evolution) {
-    case 0: return "FRY";
-    case 1: return "YOUNG";
-    case 2: return "ADULT";
-    default: return "ELDER";
-  }
+  return LoRaFishSpecies::lifeStage(loRaFishSpecies, fish.evolution);
 }
-
 // Preserve the 24-byte settings prefix and 12-byte HAP1 tail. AQU1 is an
 // optional eight-byte extension. HUE1 appends ten bytes of finer colour genes;
 // legacy readers keep the nearest-palette values in the original prefix.
@@ -2297,11 +2295,27 @@ static void drawLoRaFishTankBattery(DisplayDriver& display, UITask* task,
   if (!task) return;
   const int w = display.width();
   const int clockWidth = (int)strlen(clockText) * 6; // default text size 1
+#if defined(LILYGO_TDECK)
+  const int x = w - 2 - clockWidth - 16;
+#else
   const int x = w - 2 - clockWidth - 21;
+#endif
   if (x < 0) return;
   const uint16_t mv = loRaFishDisplayBattery(task);
   const int pct = constrain(((int)mv - 3300) * 100 / 900, 0, 100);
   display.setColor(UIColor::primary_txt);
+#if defined(LILYGO_TDECK)
+  // T-Deck: battery is 12x7, close to the 8px header glyph height.
+  display.drawRect(x, 5, 11, 7);
+  display.fillRect(x + 11, 7, 2, 3);
+  if (mv > 0) {
+    const int fill = (pct * 7 + 50) / 100;
+    if (fill > 0) display.fillRect(x + 2, 7, fill, 3);
+  } else {
+    display.setCursor(x + 3, 5);
+    display.print("?");
+  }
+#else
   display.drawRect(x, 5, 15, 8);
   display.fillRect(x + 15, 7, 2, 4);
   if (mv > 0) {
@@ -2311,6 +2325,7 @@ static void drawLoRaFishTankBattery(DisplayDriver& display, UITask* task,
     display.setCursor(x + 5, 5);
     display.print("?");
   }
+#endif
 }
 
 static uint32_t loRaFishLifeArtKey(bool offspring) {
@@ -2321,7 +2336,7 @@ static uint32_t loRaFishLifeArtKey(bool offspring) {
       offspring ? loRaFishEggSpecies : loRaFishSpecies,a.body,a.scales,a.eyes);
 }
 
-static void drawLoRaFishEggSprite(DisplayDriver& display,int centerX,int topY) {
+static void drawLoRaFishEggSprite(DisplayDriver& display,int centerX,int topY,int scale=1) {
   const bool offspring=fish.ageMinutes>=LORAFISH_LIFESPAN_MINUTES;
   const uint32_t key=loRaFishLifeArtKey(offspring);
   const unsigned progress=LoRaFishLifeArt::progress(fish.ageMinutes,
@@ -2329,12 +2344,22 @@ static void drawLoRaFishEggSprite(DisplayDriver& display,int centerX,int topY) {
   const bool mystery=!offspring && loRaFishMysterySelected;
   ColorVal shell=loRaFishColorDisplay ? LoRaFishColour::rgb565(8+key%240) : UIColor::window_bkg;
   if(shell==UIColor::primary_txt) shell=UIColor::window_bkg;
-  LoRaFishLifeArt::egg([&](int x,int y,unsigned role) {
+  // The final 12 seconds are a distinct, frame-driven hatch sequence.
+  // Only the active egg uses this; memorial/pending eggs retain normal art.
+  const uint32_t elapsedMs=millis()-fishLastMinute;
+  const uint32_t remainingMs=(!offspring && fish.ageMinutes<LORAFISH_EGG_MINUTES)
+      ? (LORAFISH_EGG_MINUTES-fish.ageMinutes)*60000UL -
+          (elapsedMs<60000UL ? elapsedMs : 60000UL) : 60000UL;
+  const bool opening=!offspring && remainingMs<=12000UL;
+  const unsigned hatchPhase=opening ? (unsigned)((12000UL-remainingMs)/2400UL) : 0;
+  auto eggPixel=[&](int x,int y,unsigned role) {
     // Dark ink on the bright shell; outline/glitter use theme foreground.
     display.setColor(role==0 ? shell : role==2 ? UIColor::primary_txt :
         loRaFishColorDisplay ? (shell==UIColor::window_bkg ? UIColor::primary_txt : 0) : UIColor::primary_txt);
-    display.fillRect(x,y,1,1);
-  },centerX,topY,key,progress,loRaFishLifeArtFrameMs,mystery);
+    display.fillRect(centerX+(x-centerX)*scale,topY+(y-topY)*scale,scale,scale);
+  };
+  if(opening) LoRaFishLifeArt::hatch(eggPixel,centerX,topY,hatchPhase,loRaFishLifeArtFrameMs);
+  else LoRaFishLifeArt::egg(eggPixel,centerX,topY,key,progress,loRaFishLifeArtFrameMs,mystery);
 }
 
 static void drawLoRaFishMemorialSprite(DisplayDriver& display,int centerX) {
@@ -2376,7 +2401,12 @@ static void drawLoRaFishEgg(DisplayDriver& display,UITask* task) {
   char tb[8],db[24]; loRaFishClock(tb,sizeof(tb),db,sizeof(db));
   drawLoRaFishHeader(display,loRaFishDisplayName(),tb);
   drawLoRaFishTankBattery(display,task,tb);
+  #if defined(LORAFISH_CARDPUTER_25D) || defined(LILYGO_TDECK)
+  // Larger centred egg (upstream), keeping the lifecycle and animation timing.
+  drawLoRaFishEggSprite(display,w/2,32,3);
+#else
   drawLoRaFishEggSprite(display,w/2,24+LoRaFishLayout::bodyOffset(h));
+#endif
   display.fillRect(2,h-15,w-4,1);
 #if defined(LORAFISH_TALL_TANK)
   // LilyGo T-Watch S3: hatching countdown in the tall tank, above the footer line.
@@ -2564,17 +2594,34 @@ static void drawLoRaFishOptions(DisplayDriver& display, UITask* task) {
     loRaFishOption = LoRaFishOption::Advert;
   const uint8_t selected = LoRaFishOptions::index(loRaFishOption, loRaFishHasSound, breed, loragotchiDXGuest.present);
   const uint8_t count = loRaFishOptionCount();
+  #if defined(LORAFISH_CARDPUTER_25D)
+  const uint8_t first = selected > 5 ? selected - 5 : 0;
+#else
   const uint8_t first = selected > 3 ? selected - 3 : 0;
+#endif
   drawLoRaFishHeader(display, "OPTIONS", "");
   display.setColor(UIColor::primary_txt);
+  #if defined(LORAFISH_CARDPUTER_25D)
+  display.setTextSize(2);
+  for (uint8_t row = 0; row < 6 && first + row < count; ++row) {
+#else
   for (uint8_t row = 0; row < 4 && first + row < count; ++row) {
+#endif
     const auto option = LoRaFishOptions::at(first + row, loRaFishHasSound, breed, loragotchiDXGuest.present);
     char line[24];
     snprintf(line, sizeof(line), "%c %s", option == loRaFishOption ? '>' : ' ', loRaFishOptionLabel(option));
+    #if defined(LORAFISH_CARDPUTER_25D)
+    display.setCursor(6, 22 + row*17);
+#else
     display.setCursor(3, 18 + row*9);
+#endif
     display.print(line);
   }
+#if defined(LORAFISH_CARDPUTER_25D)
+  display.setTextSize(1);
+#else
   drawLoRaFishMenuHint(display);
+#endif
 #endif
 }
 
@@ -3238,12 +3285,37 @@ static void drawLoRaFishHygiene(DisplayDriver& display) {
 
 #if LORAGOTCHI_AIR_EDITION
 static void drawLoRaFishAirHabitat(DisplayDriver& display) {
-  const int w=display.width(),h=display.height();
-  // Native driver primitives, no offscreen buffer or underwater colour-board art.
+  const int w=display.width(), h=display.height();
+  // Keep the header (top 18 px) and footer (bottom 15 px) unobstructed.
+  const int top=28, bottom=h-18;
+  if (w<64 || bottom<=top+12) return;
+  const int drift=(millis()/900U)%((unsigned)(w+48));
+  const int cloudX[3]={w/7, w/2, (w*5)/6};
+  const int cloudY[3]={top+5,top+17,top+8};
   display.setColor(UIColor::secondary_txt);
-  display.fillRect(8,20,10,1);display.fillRect(11,18,4,1);
-  display.fillRect(w-24,23,14,1);display.fillRect(w-20,21,6,1);
-  display.fillRect(2,h-15,w-4,1);
+  // Pixel sun with small rays, tucked into the upper-right sky.
+  const int sx=w-28,sy=top+9;
+  display.drawRect(sx-5,sy-5,11,11);
+  display.fillRect(sx-2,sy-7,5,1);
+  display.fillRect(sx-2,sy+7,5,1);
+  display.fillRect(sx-8,sy,2,1);
+  display.fillRect(sx+7,sy,2,1);
+  // Three gently drifting, stepped pixel clouds.
+  for (int i=0;i<3;i++) {
+    const int x=(cloudX[i]+w+48-(drift/(i+2)))%(w+48)-24;
+    const int y=cloudY[i];
+    display.fillRect(x+5,y,15,1);
+    display.fillRect(x+1,y+3,24,1);
+    display.fillRect(x-3,y+6,31,1);
+    display.fillRect(x+2,y+9,22,1);
+  }
+  // Faraway ridgeline: deliberately low-contrast and below the flying pets.
+  const int ridge=bottom-10;
+  for(int x=0;x<w;x+=16) {
+    const int rise=((x/16)%4==0)?7:((x/16)%4==1?4:2);
+    display.fillRect(x,ridge+8-rise,16,1);
+  }
+  display.fillRect(2,bottom,w-4,1);
 }
 #endif
 
@@ -4426,6 +4498,8 @@ public:
 #endif
   }};
 
+// LoRaFish UI replaces the message preview with pet reactions (handleLoRaFishMessage).
+#ifndef LORAFISH_UI
 #ifndef UI_MSG_PREVIEW_SIZE
   #define UI_MSG_PREVIEW_SIZE 78
 #endif
@@ -4520,6 +4594,7 @@ public:
     return false;
   }
 };
+#endif // !LORAFISH_UI
 
 void UITask::begin(DisplayDriver* display, SensorManager* sensors, NodePrefs* node_prefs) {
 
@@ -4593,7 +4668,11 @@ void UITask::begin(DisplayDriver* display, SensorManager* sensors, NodePrefs* no
 
   splash = new SplashScreen(this);
   home = new HomeScreen(this, &rtc_clock, sensors, node_prefs);
+#ifndef LORAFISH_UI
   msg_preview = new MsgPreviewScreen(this, &rtc_clock);
+#else
+  msg_preview = NULL;
+#endif
   setCurrScreen(splash);
 }
 

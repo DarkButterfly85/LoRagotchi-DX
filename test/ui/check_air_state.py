@@ -42,10 +42,15 @@ int main() {
     assert(loRaFishEggSpecies==id);saveLoRaFish();reboot();assert(loRaFishEggSpecies==id);
     hatchLoRaFishOffspring();assert(loRaFishSpecies==id && loRaFishGeneration==8);
   }
-  resetAt(5000);loRaFishSpecies=9;loragotchiDXGuest.present=true;loragotchiDXGuest.species=12;
-  randomChoice=0;assert(breedLoRaFishWithGuest());assert(loRaFishEggSpecies==9);
-  resetAt(5000);loRaFishSpecies=9;loragotchiDXGuest.present=true;loragotchiDXGuest.species=12;
-  randomChoice=1;assert(breedLoRaFishWithGuest());assert(loRaFishEggSpecies==12);
+  resetAt(5000);loRaFishSpecies=LoRaFishSpecies::Owl;loragotchiDXGuest.present=true;loragotchiDXGuest.species=LoRaFishSpecies::Parrot;
+  randomChoice=0;assert(breedLoRaFishWithGuest());assert(loRaFishEggSpecies==LoRaFishSpecies::Owl);
+  resetAt(5000);loRaFishSpecies=LoRaFishSpecies::Owl;loragotchiDXGuest.present=true;loragotchiDXGuest.species=LoRaFishSpecies::Parrot;
+  randomChoice=1;assert(breedLoRaFishWithGuest());assert(loRaFishEggSpecies==LoRaFishSpecies::Parrot);
+  // Unknown or other-edition guest IDs never reach the egg; the local species is used.
+  for(unsigned bad:{12U,0U,15U,255U,274U,65535U}) {
+    resetAt(5000);loRaFishSpecies=LoRaFishSpecies::Owl;loragotchiDXGuest.present=true;loragotchiDXGuest.species=bad;
+    randomChoice=1;assert(breedLoRaFishWithGuest());assert(loRaFishEggSpecies==LoRaFishSpecies::Owl);
+  }
   pass("solo inheritance and both parent species paths use stable saved egg identity");
   resetAt(0);resetLoRaFishPet();assert(loRaFishNeedsPetSetup && !loRaFishMysterySeed && loRaFishSpecies==256);
   randomChoice=123;chooseLoRaFishMysteryColours();

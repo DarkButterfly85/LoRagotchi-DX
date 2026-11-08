@@ -113,18 +113,6 @@ jobs:
           target: create_uf2
           format: uf2
           tier: Air-regression
-        - environment: Heltec_v3_LoRaFish_companion_ble
-          target: build
-          format: bin
-          tier: DX-regression
-        - environment: heltec_v4_LoRaFish_companion_ble
-          target: build
-          format: bin
-          tier: DX-regression
-        - environment: Heltec_t096_LoRaFish_companion_ble
-          target: create_uf2
-          format: uf2
-          tier: DX-regression
     steps:
     - uses: actions/checkout@v4
       with:

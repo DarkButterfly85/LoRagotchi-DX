@@ -18,6 +18,8 @@ static constexpr uint8_t airCount=18;
 inline bool waterKnown(uint16_t id) { return id<count; }
 inline bool airKnown(uint16_t id) { return id>=Eagle && id<=Bug; }
 inline bool known(uint16_t id) { return waterKnown(id) || airKnown(id); }
+// Known AND belongs to this build's habitat (Air build: Air IDs; otherwise Water IDs).
+inline bool editionKnown(uint16_t id) { return LORAGOTCHI_AIR_EDITION ? airKnown(id) : waterKnown(id); }
 // Menu offsets are never persisted or sent. Legacy saves remain fish.
 static constexpr uint8_t selectableCount=LORAGOTCHI_AIR_EDITION ? airCount : count;
 static constexpr uint16_t freshSpecies=LORAGOTCHI_AIR_EDITION ? Eagle : TropicalFish;
@@ -91,6 +93,30 @@ inline void habitatPosition(uint16_t id,uint8_t stage,int width,uint32_t now,
   y=habitatY(id,y,now+offset);
 }
 inline uint16_t renderId(uint16_t id) { return known(id) ? id : (uint16_t)TropicalFish; }
+// Species-aware display names; protocol stage values and evolution timing remain unchanged.
+inline const char* lifeStage(uint16_t id, uint8_t stage) {
+  if (stage >= 3) return "ELDER";
+  if (stage == 2) return "ADULT";
+  if (stage == 1) {
+    if (id == Butterfly) return "CHRYSALIS";
+    if (id == Honeybee || id == Fly) return "PUPA";
+    return "JUVENILE";
+  }
+  if (!airKnown(id)) return "FRY";
+  switch (id) {
+    case Duck: return "DUCKLING";
+    case Eagle: return "EAGLET";
+    case Swan: return "CYGNET";
+    case Owl: return "OWLET";
+    case Penguin: case Bird: case Parrot: case Flamingo:
+    case Peacock: case Turkey: case Rooster: case Dove: return "CHICK";
+    case Butterfly: return "CATERPILLAR";
+    case Honeybee: case Fly: case Bug: return "LARVA";
+    case Bat: return "PUP";
+    case Worm: return "HATCHLING";
+    default: return "HATCHLING";
+  }
+}
 inline const char* label(uint16_t id) {
   static const char* const names[]={"Tropical fish","Blowfish","Shark","Dolphin","Whale",
     "Seal","Shrimp","Squid","Lobster","Crab","Octopus","Jellyfish","Shell-dweller","Sea star","Anglerfish"};

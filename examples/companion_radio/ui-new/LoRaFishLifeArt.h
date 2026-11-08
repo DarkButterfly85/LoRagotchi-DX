@@ -56,6 +56,45 @@ template<class Pixel> void egg(Pixel pixel,int cx,int top,uint32_t key,
     pixel(cx+sx,top+sy-1,2);pixel(cx+sx,top+sy+1,2);
   }
 }
+// Final hatch: shell halves open, then a tiny hatchling rises from the base.
+// Stateless artwork: phase is supplied by the UI from the remaining egg time.
+template<class Pixel> void hatch(Pixel pixel,int cx,int top,unsigned phase,uint32_t now) {
+  if(phase>4) phase=4;
+  const int opening=(int)phase*2;
+  const int lift=(int)phase;
+  static const uint8_t radius[]={2,3,4,5,5,6,6,7,7,7,7,7,7,6,6,5,4,2};
+  // Upper shell splits into two jagged pieces that slide outward.
+  for(int y=0;y<18;++y) for(int x=-radius[y];x<=radius[y];++x) {
+    const bool left=x<=(y%4<2 ? -1 : 0);
+    const int dx=left ? -opening : opening;
+    const int dy=y<10 ? -lift : 0;
+    const bool edge=x==-radius[y] || x==radius[y] || y==0 || y==17 ||
+                    (y<12 && (left ? x==(y%4<2 ? -1 : 0) : x==(y%4<2 ? 0 : 1)));
+    // As the shell opens, the lower half stays behind as a cradle.
+    if(y>=11 && phase>=3) {
+      pixel(cx+x,top+y,edge ? 1 : 0);
+    } else {
+      pixel(cx+x+dx,top+y+dy,edge ? 1 : 0);
+    }
+  }
+  // Hatchling head, eyes and a tiny mouth; emerges progressively.
+  if(phase>=2) {
+    const int rise=(int)(phase-1)*3;
+    const int hy=top+13-rise;
+    for(int y=0;y<7;++y) for(int x=-5;x<=5;++x) {
+      const int r=(y==0 || y==6) ? 3 : 5;
+      if(x < -r || x > r) continue;
+      const bool edge=x==-r || x==r || y==0 || y==6;
+      pixel(cx+x,hy+y,edge ? 1 : 0);
+    }
+    pixel(cx-2,hy+3,1);pixel(cx+2,hy+3,1);
+    pixel(cx,hy+5,1);
+  }
+  // Two small motion marks during the last stages.
+  if(phase>=3 && ((now/240U)&1U)) {
+    pixel(cx-16,top+5,2);pixel(cx+16,top+5,2);
+  }
+}
 // 0 rounded headstone, 1 stepped obelisk, 2 winged heart memorial.
 template<class Pixel> void memorial(Pixel pixel,int cx,int top,unsigned variant) {
   variant%=3;

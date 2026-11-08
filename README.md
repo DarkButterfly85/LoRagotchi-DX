@@ -86,6 +86,7 @@ On `fix/pet-followup-20261106`, build `water_heltec_t190_ble` or
 `air_heltec_t190_ble`; DX remains `Heltec_T190_LoRaGotchi_DX_ble`.
 See [T190 commands and hosted selector](docs/BUILDING.md#t190-colour-edition-builds).
 These are colour pet targets, not the stock companion-radio environment.
+Fixed Age label, now displays appropriate labels for chosen pet species.
 
 ## Boards and edition targets
 

@@ -1,0 +1,95 @@
+name: Release LoRaGotchi Firmware
+
+# Runs only when a version tag (v*) is pushed. Builds every LoRaGotchi env
+# (DX, Water and Air editions; see tools/ci/list-loragotchi-envs.py) with
+# build.sh and publishes the firmware images as a GitHub Release.
+# Tags containing a hyphen (e.g. v1.1.0-rc1) are marked as pre-releases.
+# Uses only the built-in GITHUB_TOKEN; no secrets are required.
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  generate-build-matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      environments: ${{ steps.get-envs.outputs.environments }}
+    steps:
+      - name: Clone Repo
+        uses: actions/checkout@v6
+
+      - name: Setup Build Environment
+        uses: ./.github/actions/setup-build-environment
+
+      - name: Get LoRaGotchi environments
+        id: get-envs
+        run: echo "environments=$(python3 tools/ci/list-loragotchi-envs.py)" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: generate-build-matrix
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false # build every board so one failure shows the full picture
+      matrix:
+        environment: ${{ fromJson(needs.generate-build-matrix.outputs.environments) }}
+    steps:
+      - name: Clone Repo
+        uses: actions/checkout@v6
+
+      - name: Setup Build Environment
+        uses: ./.github/actions/setup-build-environment
+
+      # build.sh writes out/<env>-<tag>-<shortsha>.<ext>:
+      #   ESP32: .bin (app) and -merged.bin (full flash image)
+      #   nRF52: .uf2 and .zip (DFU package)
+      - name: Build ${{ matrix.environment }}
+        env:
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          FIRMWARE_VERSION="${TAG_NAME//\//-}" /usr/bin/env bash build.sh build-firmware "${{ matrix.environment }}"
+          ls -l out
+
+      - name: Upload Workflow Artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: "${{ matrix.environment }}"
+          path: out
+          if-no-files-found: error
+
+  create-release:
+    # Only publish when every board built, so a release never silently lacks a board.
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download All Artifacts
+        uses: actions/download-artifact@v8
+        with:
+          merge-multiple: true
+          path: out
+
+      - name: Checksums
+        run: |
+          cd out
+          sha256sum * > SHA256SUMS
+          ls -l
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v3
+        with:
+          name: "LoRaGotchi Firmware ${{ github.ref_name }}"
+          generate_release_notes: true
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          files: out/*

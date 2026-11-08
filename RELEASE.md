@@ -1,15 +1,22 @@
 # Releasing Firmware
 
-GitHub Actions is set up to automatically build and release firmware.
+GitHub Actions builds and publishes LoRaGotchi firmware when a version tag is
+pushed (`.github/workflows/release-firmware.yml`).
 
-It will automatically build firmware when one of the following tag formats are pushed.
+- Push a tag starting with `v`, for example `v1.1.0`.
+- A tag containing a hyphen, for example `v1.1.0-rc1`, is published as a
+  **pre-release**.
+- Every LoRaGotchi env is built: the `*LoRaGotchi_DX*` / `*loragotchi*` boards
+  plus the `Water_` and `Air_` edition envs (the list comes from
+  `tools/ci/list-loragotchi-envs.py`). Stock MeshCore envs in
+  `platformio-meshcore.ini` are never built.
+- If every board builds, a GitHub Release is created for the tag with the images
+  and a `SHA256SUMS` file. If any board fails, no release is created.
 
-- `companion-v1.0.0`
-- `repeater-v1.0.0`
-- `room-server-v1.0.0`
+Image names are `<env>-<tag>-<shortsha>.<ext>`:
 
-> NOTE: replace `v1.0.0` with the version you want to release as.
+- ESP32 boards: `.bin` (application) and `-merged.bin` (full flash image)
+- nRF52 boards: `.uf2` and `.zip` (DFU package)
 
-- You can push one, or more tags on the same commit, and they will all build separately.
-- Once the firmware has been built, a new (draft) GitHub Release will be created.
-- You will need to update the release notes, and publish it.
+Pull requests build the same env list in `.github/workflows/pr-build-check.yml`.
+No secrets are needed; the workflow uses the built-in `GITHUB_TOKEN`.

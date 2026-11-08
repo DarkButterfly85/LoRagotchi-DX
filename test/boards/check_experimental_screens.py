@@ -15,11 +15,32 @@ allowed = {'SSD1306Display', 'SH1106Display', 'SH1107Display', 'ST7735Display',
 rejected_size_flags = {'-fno-inline-small-functions', '-fno-inline-functions-called-once'}
 for section, options in config.items():
     assert rejected_size_flags.isdisjoint(options.get('build_flags', [])), section
+
+def canon(value):
+    """Plain sections report raw multi-line strings/scalars where env sections report lists."""
+    if isinstance(value, list):
+        return [str(x) for x in value]
+    return [x.strip() for x in str(value).splitlines() if x.strip()]
+
+
+def resolve_base(section):
+    """Resolve a plain base section's extends chain the way PlatformIO does for envs."""
+    own = config[section]
+    parents = own.get('extends', [])
+    if isinstance(parents, str):
+        parents = [x.strip() for x in re.split(r'[,\n]', parents) if x.strip()]
+    merged = {}
+    for parent in parents:
+        merged.update(resolve_base(parent))
+    merged.update(own)
+    return {k: canon(v) for k, v in merged.items()}
+
 single_app_profiles = {
     'LilyGo_TBeam_1W_LoRaGotchi_DX_ble',
     'Station_G2_LoRaGotchi_DX_ble',
     'Station_G3_ESP32_LoRaGotchi_DX_ble',
 }
+native_ui_profiles = {'heltec_v4_tft_LoRaGotchi_DX_ble', 'heltec_v4_r8_tft_LoRaGotchi_DX_ble'}
 partition_override = {
     'board_build.partitions': 'variants/loragotchi_experimental/single_app.csv',
     'board_upload.flash_size': '16MB',
@@ -31,7 +52,10 @@ for row in manifest['targets']:
     assert name not in seen
     seen.add(name)
     candidate = config['env:' + name]
-    parent = config['env:' + row['base_environment']]
+    # Generic companion_radio parents are no longer buildable [env:] targets; they
+    # survive only as shared base sections that the DX profiles extend.
+    assert 'env:' + row['base_environment'] not in config, row['base_environment']
+    parent = resolve_base(row['base_environment'])
     flags = candidate['build_flags']
     joined = ' '.join(flags)
     # T190 explicitly removes the inherited mono driver before defining RGB565.
@@ -53,20 +77,23 @@ for row in manifest['targets']:
             assert str(candidate[key]) == value, (name, key)
     for key, value in parent.items():
         if key not in {'extends', 'build_flags', 'build_src_filter', 'lib_deps'}:
-            assert candidate[key] == value or (name in single_app_profiles and
+            assert canon(candidate[key]) == value or (name in single_app_profiles and
                 key in partition_override and str(candidate[key]) == partition_override[key]), (name, key)
     assert flags[:len(parent['build_flags'])] == parent['build_flags'], name
     additions = flags[len(parent['build_flags']):]
     if name == 'Heltec_T190_LoRaGotchi_DX_ble':
         assert additions == ['-D DISPLAY_CLASS=ST7789LCDDisplay',
-            '-D LORAGOTCHI_T190_COLOR=1', '-D LORAFISH_TDECK_FRAMEBUFFER=1',
+            '-D LORAGOTCHI_T190_COLOR=1', '-D LORAGOTCHI_NATIVE_UI=1',
+            '-D LORAFISH_TDECK_FRAMEBUFFER=1',
             '-D PIN_TFT_MISO=-1', '-D DISPLAY_WIDTH=170', '-D DISPLAY_HEIGHT=320',
             '-D DISPLAY_ROTATION=1', '-D DISPLAY_SCALE_X=2.5f', '-D DISPLAY_SCALE_Y=2.65625f',
             '-D LORAFISH_UI=1', '-D LORAGOTCHI_EXPERIMENTAL=1', '-D AUTO_OFF_MILLIS=30000']
         assert '-<helpers/ui/ST7789Display.cpp>' in candidate['build_src_filter']
         assert '+<helpers/ui/ST7789LCDDisplay.cpp>' in candidate['build_src_filter']
         continue
-    assert additions == ['-D LORAFISH_UI=1',
+    # docs/native-display-layout.md: V4 and V4-R8 TFT profiles opt in to native layout.
+    native = ['-D LORAGOTCHI_NATIVE_UI=1'] if name in native_ui_profiles else []
+    assert additions == ['-D LORAFISH_UI=1'] + native + [
         '-D LORAGOTCHI_EXPERIMENTAL=1', '-D AUTO_OFF_MILLIS=30000'] + [
         '-UENV_INCLUDE_' + sensor for sensor in row.get('disabled_optional_sensors', [])], name
     assert 'GPS' not in row.get('disabled_optional_sensors', []), name

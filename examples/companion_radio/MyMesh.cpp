@@ -609,7 +609,7 @@ void MyMesh::queueMessage(const ContactInfo &from, uint8_t txt_type, mesh::Packe
             loRaFishArrival=LoRaFishArrival{};
             memcpy(loragotchiDXGuest.ownerKey,from.id.pub_key,32);loragotchiDXGuest.ownerKnown=true;
             loragotchiDXGuest.txid=tx; loragotchiDXGuest.fishid=fid;
-            loragotchiDXGuest.stage=(uint8_t)st;
+            loragotchiDXGuest.stage=(uint8_t)(st>3 ? 3 : st); // wire value; stages are 0..3
             strncpy(loragotchiDXGuest.guestName,nm,sizeof(loragotchiDXGuest.guestName)-1);
             loragotchiDXGuest.guestName[sizeof(loragotchiDXGuest.guestName)-1]=0;
             strncpy(loragotchiDXGuest.homeName,from.name,sizeof(loragotchiDXGuest.homeName)-1);
@@ -680,7 +680,10 @@ void MyMesh::queueMessage(const ContactInfo &from, uint8_t txt_type, mesh::Packe
         if (!LoRaFishSpecies::extension(text,incomingSpecies,hasSpecies)) return;
         // First accepted metadata owns identity. Short/full duplicate retries
         // cannot downgrade or mutate it. Peer/key checks above still apply.
-        if (!loragotchiDXGuest.present) loragotchiDXGuest.species=incomingSpecies;
+        // Wire value: store only registry IDs; unknown IDs render and breed as plain fish.
+        if (!loragotchiDXGuest.present)
+          loragotchiDXGuest.species=LoRaFishSpecies::known(incomingSpecies)
+              ? incomingSpecies : (uint16_t)LoRaFishSpecies::TropicalFish;
         char colorMode='M'; unsigned bodyColor=0,scalesColor=0,eyesColor=0,monoPixelTint=0xFFFF;
         const int fields=sscanf(text+12,"%lu|%lu|%c|%u|%u|%u|%u",
             &tx,&fid,&colorMode,&bodyColor,&scalesColor,&eyesColor,&monoPixelTint);

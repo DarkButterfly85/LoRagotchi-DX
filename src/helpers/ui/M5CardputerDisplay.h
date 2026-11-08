@@ -35,7 +35,7 @@ public:
 
   bool begin() {
     _isOn = true;
-    M5.Display.setRotation(1);  // Landscape orientation
+    M5.Display.setRotation(0);  // Verified landscape orientation on Cardputer hardware
     _frame.setColorDepth(16);
     _buffered = _frame.createSprite(SCREEN_WIDTH, SCREEN_HEIGHT) != nullptr;
     Serial.printf("[Cardputer LCD] 16-bit framebuffer: %s\n", _buffered ? "enabled" : "allocation failed");
