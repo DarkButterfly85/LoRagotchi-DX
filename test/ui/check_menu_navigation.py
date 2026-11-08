@@ -9,9 +9,25 @@ from pathlib import Path
 import os, re, subprocess, tempfile
 root=Path(__file__).resolve().parents[2]; source=(root/'examples/companion_radio/ui-new/UITask.cpp').read_text()
 def block(marker, text=source):
-    start=text.index(marker);op=text.index('{',start);end=op+1;depth=1
+    # Brace matcher that understands #if/#else/#endif: both arms of a conditional
+    # open the same block, so only the first arm is counted (otherwise a function
+    # with '#if X  for(..){  #else  for(..){  #endif' never balances).
+    start=text.index(marker);op=text.index('{',start);end=op+1;depth=1;stack=[]
     while depth:
-        depth+=(text[end]=='{')-(text[end]=='}');end+=1
+        if end>=len(text): raise ValueError('unbalanced braces after '+marker)
+        c=text[end]
+        if c=='#' and not text[text.rfind('\n',0,end)+1:end].strip():
+            eol=text.find('\n',end); eol=len(text) if eol<0 else eol
+            word=re.match(r'#\s*(\w+)',text[end:eol]).group(1)
+            if word in ('if','ifdef','ifndef'): stack.append([depth,None])
+            elif word in ('else','elif') and stack:
+                if stack[-1][1] is None: stack[-1][1]=depth
+                depth=stack[-1][0]
+            elif word=='endif' and stack:
+                top=stack.pop()
+                if top[1] is not None: depth=top[1]
+            end=eol; continue
+        depth+=(c=='{')-(c=='}');end+=1
     return text[start:end]
 def declaration(name):
     return re.search(r'^static [^\n]*\b'+name+r'\b.*?;',source,re.M|re.S).group(0)

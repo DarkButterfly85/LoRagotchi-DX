@@ -52,7 +52,10 @@ with tempfile.TemporaryDirectory(prefix='dx-life-art-') as tmp:
  subprocess.run([str(exe)],check=True)
 ui=(ROOT/'examples/companion_radio/ui-new/UITask.cpp').read_text()
 a=ui.index('static uint32_t loRaFishLifeArtKey(');b=ui.index('static void drawLoRaFishTankStatusBar',a)
-assert 'random(' not in ui[a:b] and 'millis(' not in ui[a:b] and 'saveLoRaFish' not in ui[a:b]
+# Art stays deterministic: no randomness, no saving. The only clock read allowed is
+# the egg's final-12-seconds hatch countdown (elapsedMs), which is intentional.
+assert 'random(' not in ui[a:b] and 'saveLoRaFish' not in ui[a:b]
+assert ui[a:b].count('millis(')==1 and 'const uint32_t elapsedMs=millis()-fishLastMinute;' in ui[a:b]
 assert ui.index('loRaFishLifeArtFrameMs=(uint32_t)loRaFishRenderMillis();')<ui.index('for (int y0 = 0; y0 < panelRows;')
 print('PASS production egg stages, mystery glyph, tilt/glitter, three memorials, bounds, stable identity, strips')
 
