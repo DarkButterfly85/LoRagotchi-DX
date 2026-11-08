@@ -1,9 +1,9 @@
-# Build DX, Water or Air from main
+# Build DX, Water, Air or Land from main
 
 **One repository, one shared source: `main`.** Choose an edition and board with
 its case-sensitive PlatformIO environment; do not hunt for an old feature/fix
 branch. Existing LoRaFish/LoRaGotchi environment names select DX. Only explicit
-`water_*` or `air_*` aliases select those habitat editions. Mono/colour handling
+`water_*`, `air_*` or `land_*` aliases select those habitat editions. Mono/colour handling
 is shared, not a separate firmware branch.
 
 ## Start once
@@ -22,28 +22,29 @@ environment, never an unqualified `pio run` over inherited MeshCore targets.
 
 ## Board and edition selection
 
-| Board | DX | Water | Air | Output |
-| --- | --- | --- | --- | --- |
-| Heltec V3 | `Heltec_v3_LoRaFish_companion_ble` | `water_heltec_v3_ble` | `air_heltec_v3_ble` | BIN |
-| Heltec V4 OLED | `heltec_v4_LoRaFish_companion_ble` | `water_heltec_v4_oled_ble` | `air_heltec_v4_oled_ble` | BIN |
-| Heltec T096 | `Heltec_t096_LoRaFish_companion_ble` | `water_heltec_t096_ble` | `air_heltec_t096_ble` | UF2 |
-| Heltec T190 colour (experimental) | `Heltec_T190_LoRaGotchi_DX_ble` | `water_heltec_t190_ble` | `air_heltec_t190_ble` | BIN |
-| Wio Tracker L1 | `WioTrackerL1_LoRaGotchi_DX_ble` | `water_wio_tracker_l1_ble` | `air_wio_tracker_l1_ble` | UF2 |
-| Wio Tracker L1-1W | `WioTrackerL1-1W_LoRaGotchi_DX_ble` | `water_wio_tracker_l1_1w_ble` | `air_wio_tracker_l1_1w_ble` | UF2 |
-| ThinkNode M2 | `ThinkNode_M2_LoRaFish_companion_ble` | `water_thinknode_m2_ble` | `air_thinknode_m2_ble` | BIN |
-| M5Stack Cardputer | `cardputer_loragotchi` | `water_m5stack_cardputer` | `air_m5stack_cardputer` | BIN |
-| Heltec T114 | `Heltec_t114_LoRaFish_companion_ble` | `water_heltec_t114_ble` | `air_heltec_t114_ble` | UF2 |
-| LilyGo T-Deck BLE | `LilyGo_TDeck_loragotchi_dx_ble` | `water_lilygo_tdeck_ble` | `air_lilygo_tdeck_ble` | BIN |
-| LilyGo T-Deck USB | `LilyGo_TDeck_loragotchi_dx_usb` | `water_lilygo_tdeck_usb` | `air_lilygo_tdeck_usb` | BIN |
-| RAK4631 (experimental) | `RAK_4631_LoRaGotchi_DX_ble` | `water_rak4631_ble` | `air_rak4631_ble` | UF2 |
-| RAK4630 module (experimental) | `RAK_4630_LoRaGotchi_DX_ble` | `water_rak4630_ble` | `air_rak4630_ble` | UF2 |
-| LilyGo T-Beam 1W (experimental) | `LilyGo_TBeam_1W_LoRaGotchi_DX_ble` | `water_lilygo_tbeam_1w_ble` | `air_lilygo_tbeam_1w_ble` | BIN |
-| Station G2 (experimental) | `Station_G2_LoRaGotchi_DX_ble` | `water_station_g2_ble` | `air_station_g2_ble` | BIN |
-| Station G3 ESP32 (experimental) | `Station_G3_ESP32_LoRaGotchi_DX_ble` | `water_station_g3_esp32_ble` | `air_station_g3_esp32_ble` | BIN |
+| Board | DX | Water | Air | Land | Output |
+| --- | --- | --- | --- | --- | --- |
+| Heltec V3 | `Heltec_v3_LoRaFish_companion_ble` | `water_heltec_v3_ble` | `air_heltec_v3_ble` | `land_heltec_v3_ble` | BIN |
+| Heltec V4 OLED | `heltec_v4_LoRaFish_companion_ble` | `water_heltec_v4_oled_ble` | `air_heltec_v4_oled_ble` | `land_heltec_v4_oled_ble` | BIN |
+| Heltec T096 | `Heltec_t096_LoRaFish_companion_ble` | `water_heltec_t096_ble` | `air_heltec_t096_ble` | `land_heltec_t096_ble` | UF2 |
+| Heltec T190 colour (experimental) | `Heltec_T190_LoRaGotchi_DX_ble` | `water_heltec_t190_ble` | `air_heltec_t190_ble` | `land_heltec_t190_ble` | BIN |
+| Wio Tracker L1 | `WioTrackerL1_LoRaGotchi_DX_ble` | `water_wio_tracker_l1_ble` | `air_wio_tracker_l1_ble` | `land_wio_tracker_l1_ble` | UF2 |
+| Wio Tracker L1-1W | `WioTrackerL1-1W_LoRaGotchi_DX_ble` | `water_wio_tracker_l1_1w_ble` | `air_wio_tracker_l1_1w_ble` | `land_wio_tracker_l1_1w_ble` | UF2 |
+| ThinkNode M2 | `ThinkNode_M2_LoRaFish_companion_ble` | `water_thinknode_m2_ble` | `air_thinknode_m2_ble` | `land_thinknode_m2_ble` | BIN |
+| M5Stack Cardputer | `cardputer_loragotchi` | `water_m5stack_cardputer` | `air_m5stack_cardputer` | `land_m5stack_cardputer` | BIN |
+| Heltec T114 | `Heltec_t114_LoRaFish_companion_ble` | `water_heltec_t114_ble` | `air_heltec_t114_ble` | `land_heltec_t114_ble` | UF2 |
+| LilyGo T-Deck BLE | `LilyGo_TDeck_loragotchi_dx_ble` | `water_lilygo_tdeck_ble` | `air_lilygo_tdeck_ble` | `land_lilygo_tdeck_ble` | BIN |
+| LilyGo T-Deck USB | `LilyGo_TDeck_loragotchi_dx_usb` | `water_lilygo_tdeck_usb` | `air_lilygo_tdeck_usb` | `land_lilygo_tdeck_usb` | BIN |
+| RAK4631 (experimental) | `RAK_4631_LoRaGotchi_DX_ble` | `water_rak4631_ble` | `air_rak4631_ble` | `land_rak4631_ble` | UF2 |
+| RAK4630 module (experimental) | `RAK_4630_LoRaGotchi_DX_ble` | `water_rak4630_ble` | `air_rak4630_ble` | `land_rak4630_ble` | UF2 |
+| LilyGo T-Beam 1W (experimental) | `LilyGo_TBeam_1W_LoRaGotchi_DX_ble` | `water_lilygo_tbeam_1w_ble` | `air_lilygo_tbeam_1w_ble` | `land_lilygo_tbeam_1w_ble` | BIN |
+| Station G2 (experimental) | `Station_G2_LoRaGotchi_DX_ble` | `water_station_g2_ble` | `air_station_g2_ble` | `land_station_g2_ble` | BIN |
+| Station G3 ESP32 (experimental) | `Station_G3_ESP32_LoRaGotchi_DX_ble` | `water_station_g3_esp32_ble` | `air_station_g3_esp32_ble` | `land_station_g3_esp32_ble` | BIN |
 
 The aliases inherit their DX board's pins, RF, memory and dependencies; see
 [Water definitions](../variants/loragotchi_water/platformio.ini) and
-[Air definitions](../variants/loragotchi_air/platformio.ini). Other DX-only
+[Air definitions](../variants/loragotchi_air/platformio.ini) and
+[Land definitions](../variants/loragotchi_land/platformio.ini). Other DX-only
 boards remain in the [README](../README.md) and
 [experimental screen matrix](EXPERIMENTAL-SCREEN-TARGETS.md).
 RAK modules require the fitted display, carrier and controls described in
@@ -95,9 +96,10 @@ When manually running a workflow, select `main`; matrices differ and no single
 workflow builds every board/edition. No workflow success implies a published
 release, hardware acceptance or permission to flash.
 
-Current source provides DX, Water (14 species) and Air (18 animals), not a new
+Current source provides DX, Water (14 species), Air (18 animals) and an early Land
+scaffold (39 animals, draft art; see [Land](../LAND-EDITION.md)), not a new
 firmware release. The shared source already selects these by build target.
 Future Water/Air product branding or distribution channels need a separate
-decision, not duplicate source-maintenance branches. Land and combined-habitat
+decision, not duplicate source-maintenance branches. Combined-habitat
 products remain future work. See [Water](../WATER-EDITION.md) and
 [Air](../AIR-EDITION.md) for saves, adoption and negotiated visiting fallbacks.
