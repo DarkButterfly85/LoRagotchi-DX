@@ -110,6 +110,47 @@ inline void habitatPosition(uint16_t id,uint8_t stage,int width,uint32_t now,
   x=20+(int)((uint32_t)span*(right?t:period-t)/half);
   y=habitatY(id,y,now+offset);
 }
+// Water tank bands (Water build only; habitatPosition above and the Air/Land builds are untouched).
+// The tank is split by a fixed row: swimmers that live at the top of the water (air-breathers and
+// drifters) sit in the SURFACE band, everything else in the UNDERWATER band. The band is a data
+// field of the species (table below), never derived from a name or from the movement kind.
+// Rows are sprite-centre rows in the 64 px reference frame that LoRaFishLayout::habitatY() consumes.
+enum Band : uint8_t { Surface, Underwater };
+struct BandEntry { uint16_t id; Band band; };
+static constexpr BandEntry bandTable[]={
+  {TropicalFish,Underwater},{Blowfish,Underwater},{Shark,Underwater},{Dolphin,Surface},{Whale,Surface},
+  {Seal,Surface},{Shrimp,Underwater},{Squid,Underwater},{Lobster,Underwater},{Crab,Underwater},
+  {Octopus,Underwater},{Jellyfish,Surface},{ShellDweller,Underwater},{SeaStar,Underwater},{Anglerfish,Underwater},
+  // Air-set swimmers: not drawn by a Water build today, listed so a future visit rule can place them.
+  {Duck,Surface},{Swan,Surface},{Penguin,Underwater}
+};
+// Unlisted and future IDs use the fish row (Underwater), exactly where the DX fish has always swum.
+inline Band band(uint16_t id) {
+  for(size_t i=0;i<sizeof(bandTable)/sizeof(bandTable[0]);++i)
+    if(bandTable[i].id==id)return bandTable[i].band;
+  return Underwater;
+}
+enum BandLayout : uint8_t { BandCompact, BandTall, BandWander };
+struct BandRows { int8_t top, bottom; };
+// BandCompact: 64 px panels and the Cardputer/T-Deck 2D canvas (fish natural rows 36..40).
+// BandTall: native panels taller than 64 px (habitatY input domain 18..42).
+// BandWander: T-Watch S3 tall tank (wander rows 29..49).
+inline BandRows bandRows(Band b,BandLayout l) {
+  static constexpr BandRows rows[3][2]={{{28,32},{36,40}},{{18,29},{30,42}},{{29,38},{39,49}}};
+  return rows[l][b];
+}
+// First row that belongs to the underwater band; rows above it are surface or open water.
+inline int bandBoundary(BandLayout l) { return l==BandCompact ? 34 : l==BandTall ? 30 : 39; }
+// Map the species' own natural row range [natTop,natBottom] linearly onto its band, so the
+// sprite, speed and bob shape are unchanged and only the vertical envelope moves. When the
+// natural range already equals the band (an underwater fish on a 64 px panel) this is the identity.
+inline int bandFit(uint16_t id,BandLayout l,int y,int natTop,int natBottom) {
+  const BandRows r=bandRows(band(id),l);
+  if(y<natTop)y=natTop;
+  if(y>natBottom)y=natBottom;
+  if(natBottom<=natTop)return y<r.top ? r.top : y>r.bottom ? r.bottom : y;
+  return r.top+(y-natTop)*(r.bottom-r.top)/(natBottom-natTop);
+}
 inline uint16_t renderId(uint16_t id) { return known(id) ? id : (uint16_t)TropicalFish; }
 // Species-aware display names; protocol stage values and evolution timing remain unchanged.
 inline const char* lifeStage(uint16_t id, uint8_t stage) {

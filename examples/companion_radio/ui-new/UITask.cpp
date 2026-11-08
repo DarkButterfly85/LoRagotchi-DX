@@ -3382,6 +3382,28 @@ static void drawLoRaFishNativeScenery(DisplayDriver& d) {
 #endif
 }
 
+#if LORAGOTCHI_WATER_EDITION
+// Water tank only (Air and Land builds keep their own habitat rows): keep each species inside
+// its surface or underwater band. Same sprite, speed and bob; only the vertical envelope moves.
+static int loRaFishBandY(uint16_t species,int y,int h) {
+  using namespace LoRaFishSpecies;
+  const bool floorWalker=waterMotion(species) && species!=Jellyfish; // crab, snail: pinned to the floor
+  if(floorWalker)return y;
+#ifdef LORAGOTCHI_NATIVE_UI
+  if(h>64)return bandFit(species,BandTall,y,19,41); // 30+11*sin, fish and jellyfish alike
+#else
+  (void)h;
+#endif
+#if defined(LORAFISH_FISH_WANDER) && defined(LORAFISH_TALL_TANK)
+  return waterMotion(species) ? bandFit(species,BandWander,y,30,36)   // jellyfish bell stroke
+                              : bandFit(species,BandWander,y,29,49);  // wander rows 30-48 plus bob
+#else
+  return waterMotion(species) ? bandFit(species,BandCompact,y,30,36)
+                              : bandFit(species,BandCompact,y,36,40); // 38 plus-or-minus 2 bob
+#endif
+}
+#endif
+
 static void drawLoRaFishAquarium(DisplayDriver& display, UITask* task) {
   const int w=display.width(), h=display.height();
   char tb[8], db[24];
@@ -3420,6 +3442,9 @@ static void drawLoRaFishAquarium(DisplayDriver& display, UITask* task) {
 #ifdef LORAGOTCHI_NATIVE_UI
   if (h>64 && (!LoRaFishSpecies::waterMotion(loRaFishSpecies) || loRaFishSpecies==LoRaFishSpecies::Jellyfish))
     y=30+(int)(11*sinf(millis()/5100.0f));
+#endif
+#if LORAGOTCHI_WATER_EDITION
+  y=loRaFishBandY(loRaFishSpecies,y,h);
 #endif
   y=LoRaFishLayout::habitatY(y,h,
       (LoRaFishSpecies::waterMotion(loRaFishSpecies) && loRaFishSpecies!=LoRaFishSpecies::Jellyfish) ||
@@ -3533,6 +3558,9 @@ static void drawLoRaFishAquarium(DisplayDriver& display, UITask* task) {
 #ifdef LORAGOTCHI_NATIVE_UI
   if (h>64 && (!LoRaFishSpecies::waterMotion(guestMotionSpecies) || guestMotionSpecies==LoRaFishSpecies::Jellyfish))
     gy=30+(int)(11*sinf((millis()+4300)/5700.0f));
+#endif
+#if LORAGOTCHI_WATER_EDITION
+  gy=loRaFishBandY(guestMotionSpecies,gy,h);
 #endif
   gy=LoRaFishLayout::habitatY(gy,h,
       (LoRaFishSpecies::waterMotion(guestMotionSpecies) && guestMotionSpecies!=LoRaFishSpecies::Jellyfish) ||
