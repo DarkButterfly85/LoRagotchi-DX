@@ -67,18 +67,6 @@ jobs:
           target: create_uf2
           format: uf2
           tier: owner
-        - environment: Heltec_v3_companion_radio_ble
-          target: build
-          format: bin
-          tier: generic
-        - environment: RAK_4631_companion_radio_ble
-          target: create_uf2
-          format: uf2
-          tier: generic
-        - environment: RAK_4631_companion_radio_ethernet
-          target: create_uf2
-          format: uf2
-          tier: generic
         - environment: LilyGo_TBeam_1W_LoRaGotchi_DX_ble
           target: build
           format: bin

@@ -15,6 +15,26 @@ allowed = {'SSD1306Display', 'SH1106Display', 'SH1107Display', 'ST7735Display',
 rejected_size_flags = {'-fno-inline-small-functions', '-fno-inline-functions-called-once'}
 for section, options in config.items():
     assert rejected_size_flags.isdisjoint(options.get('build_flags', [])), section
+
+def canon(value):
+    """Plain sections report raw multi-line strings/scalars where env sections report lists."""
+    if isinstance(value, list):
+        return [str(x) for x in value]
+    return [x.strip() for x in str(value).splitlines() if x.strip()]
+
+
+def resolve_base(section):
+    """Resolve a plain base section's extends chain the way PlatformIO does for envs."""
+    own = config[section]
+    parents = own.get('extends', [])
+    if isinstance(parents, str):
+        parents = [x.strip() for x in re.split(r'[,\n]', parents) if x.strip()]
+    merged = {}
+    for parent in parents:
+        merged.update(resolve_base(parent))
+    merged.update(own)
+    return {k: canon(v) for k, v in merged.items()}
+
 single_app_profiles = {
     'LilyGo_TBeam_1W_LoRaGotchi_DX_ble',
     'Station_G2_LoRaGotchi_DX_ble',
@@ -32,7 +52,10 @@ for row in manifest['targets']:
     assert name not in seen
     seen.add(name)
     candidate = config['env:' + name]
-    parent = config['env:' + row['base_environment']]
+    # Generic companion_radio parents are no longer buildable [env:] targets; they
+    # survive only as shared base sections that the DX profiles extend.
+    assert 'env:' + row['base_environment'] not in config, row['base_environment']
+    parent = resolve_base(row['base_environment'])
     flags = candidate['build_flags']
     joined = ' '.join(flags)
     # T190 explicitly removes the inherited mono driver before defining RGB565.
@@ -54,7 +77,7 @@ for row in manifest['targets']:
             assert str(candidate[key]) == value, (name, key)
     for key, value in parent.items():
         if key not in {'extends', 'build_flags', 'build_src_filter', 'lib_deps'}:
-            assert candidate[key] == value or (name in single_app_profiles and
+            assert canon(candidate[key]) == value or (name in single_app_profiles and
                 key in partition_override and str(candidate[key]) == partition_override[key]), (name, key)
     assert flags[:len(parent['build_flags'])] == parent['build_flags'], name
     additions = flags[len(parent['build_flags']):]
