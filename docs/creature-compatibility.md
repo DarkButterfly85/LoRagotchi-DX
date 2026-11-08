@@ -391,7 +391,7 @@ Each step is separately shippable; steps 1-3 touch no wire bytes.
 
 ## 7. Open decisions for the owner
 
-1. Keep rule R0 (same set always visits same set), or enforce habitats even inside a set?
+1. ~~Keep rule R0 (same set always visits same set), or enforce habitats even inside a set?~~ **Decided by owner 2026-11-08: keep R0. A creature can always visit its own habitat group.**
 2. May fliers visit water hosts: never (my default), only swimmers (Duck/Swan), or all fliers?
 3. Legacy DX hosts and unannounced visitors: allow as fish (my default, no regression) or deny?
 4. Which borderline animals get extra abilities: Seal (walk); Otter, Hippo, Duck, Swan, Penguin (swim); Lizard and Snake amphibious or land-only?
