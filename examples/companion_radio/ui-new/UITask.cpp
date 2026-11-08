@@ -985,7 +985,11 @@ static bool breedLoRaFishWithGuest() {
   loRaFishEggAppearance.scales=inheritLoRaFishColor(local.scales,visitor.scales);
   loRaFishEggAppearance.body=inheritLoRaFishColor(local.body,visitor.body);
   loRaFishEggAppearance.eyes=inheritLoRaFishColor(local.eyes,visitor.eyes);
-  loRaFishEggSpecies=random(0,2) ? loragotchiDXGuest.species : loRaFishSpecies;
+  // Guest species arrives from the wire: only accept IDs known to this edition,
+  // otherwise breed from the local species.
+  const uint16_t guestSpecies=LoRaFishSpecies::editionKnown(loragotchiDXGuest.species)
+      ? loragotchiDXGuest.species : loRaFishSpecies;
+  loRaFishEggSpecies=random(0,2) ? guestSpecies : loRaFishSpecies;
   loRaFishPendingEgg=true;
   loRaFishMemorialEggSide=0;
   saveLoRaFishSettings();
@@ -4494,6 +4498,8 @@ public:
 #endif
   }};
 
+// LoRaFish UI replaces the message preview with pet reactions (handleLoRaFishMessage).
+#ifndef LORAFISH_UI
 #ifndef UI_MSG_PREVIEW_SIZE
   #define UI_MSG_PREVIEW_SIZE 78
 #endif
@@ -4588,6 +4594,7 @@ public:
     return false;
   }
 };
+#endif // !LORAFISH_UI
 
 void UITask::begin(DisplayDriver* display, SensorManager* sensors, NodePrefs* node_prefs) {
 
@@ -4661,7 +4668,11 @@ void UITask::begin(DisplayDriver* display, SensorManager* sensors, NodePrefs* no
 
   splash = new SplashScreen(this);
   home = new HomeScreen(this, &rtc_clock, sensors, node_prefs);
+#ifndef LORAFISH_UI
   msg_preview = new MsgPreviewScreen(this, &rtc_clock);
+#else
+  msg_preview = NULL;
+#endif
   setCurrScreen(splash);
 }
 

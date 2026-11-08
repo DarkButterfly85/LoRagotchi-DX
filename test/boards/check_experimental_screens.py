@@ -20,6 +20,7 @@ single_app_profiles = {
     'Station_G2_LoRaGotchi_DX_ble',
     'Station_G3_ESP32_LoRaGotchi_DX_ble',
 }
+native_ui_profiles = {'heltec_v4_tft_LoRaGotchi_DX_ble', 'heltec_v4_r8_tft_LoRaGotchi_DX_ble'}
 partition_override = {
     'board_build.partitions': 'variants/loragotchi_experimental/single_app.csv',
     'board_upload.flash_size': '16MB',
@@ -59,14 +60,17 @@ for row in manifest['targets']:
     additions = flags[len(parent['build_flags']):]
     if name == 'Heltec_T190_LoRaGotchi_DX_ble':
         assert additions == ['-D DISPLAY_CLASS=ST7789LCDDisplay',
-            '-D LORAGOTCHI_T190_COLOR=1', '-D LORAFISH_TDECK_FRAMEBUFFER=1',
+            '-D LORAGOTCHI_T190_COLOR=1', '-D LORAGOTCHI_NATIVE_UI=1',
+            '-D LORAFISH_TDECK_FRAMEBUFFER=1',
             '-D PIN_TFT_MISO=-1', '-D DISPLAY_WIDTH=170', '-D DISPLAY_HEIGHT=320',
             '-D DISPLAY_ROTATION=1', '-D DISPLAY_SCALE_X=2.5f', '-D DISPLAY_SCALE_Y=2.65625f',
             '-D LORAFISH_UI=1', '-D LORAGOTCHI_EXPERIMENTAL=1', '-D AUTO_OFF_MILLIS=30000']
         assert '-<helpers/ui/ST7789Display.cpp>' in candidate['build_src_filter']
         assert '+<helpers/ui/ST7789LCDDisplay.cpp>' in candidate['build_src_filter']
         continue
-    assert additions == ['-D LORAFISH_UI=1',
+    # docs/native-display-layout.md: V4 and V4-R8 TFT profiles opt in to native layout.
+    native = ['-D LORAGOTCHI_NATIVE_UI=1'] if name in native_ui_profiles else []
+    assert additions == ['-D LORAFISH_UI=1'] + native + [
         '-D LORAGOTCHI_EXPERIMENTAL=1', '-D AUTO_OFF_MILLIS=30000'] + [
         '-UENV_INCLUDE_' + sensor for sensor in row.get('disabled_optional_sensors', [])], name
     assert 'GPS' not in row.get('disabled_optional_sensors', []), name

@@ -30,9 +30,12 @@ for edition in (0, 1, 2):
                 definitions.append('PIN_BUZZER=1')
             generic = preprocess(definitions)
             dx = preprocess(definitions + ['LORAFISH_UI=1'])
-            for required in ('class SplashScreen', 'class HomeScreen', 'class MsgPreviewScreen',
+            for required in ('class SplashScreen', 'class HomeScreen',
                              'void UITask::begin(', 'void UITask::loop()', 'drawUIAlertBox('):
                 assert required in generic and required in dx, required
+            # The message preview exists only in the generic companion UI; LoRaFish never allocates it.
+            assert 'class MsgPreviewScreen' in generic and 'class MsgPreviewScreen' not in dx
+            assert 'new MsgPreviewScreen' in generic and 'new MsgPreviewScreen' not in dx
             for pet_only in ('loragotchiDX', 'static LoRaFishState fish',
                              'LORAFISH_ADOPTION_IMPLEMENTATION', 'static void drawLoRaFish('):
                 assert pet_only not in generic, (platform, sound, pet_only)
