@@ -4498,6 +4498,8 @@ public:
 #endif
   }};
 
+// LoRaFish UI replaces the message preview with pet reactions (handleLoRaFishMessage).
+#ifndef LORAFISH_UI
 #ifndef UI_MSG_PREVIEW_SIZE
   #define UI_MSG_PREVIEW_SIZE 78
 #endif
@@ -4592,6 +4594,7 @@ public:
     return false;
   }
 };
+#endif // !LORAFISH_UI
 
 void UITask::begin(DisplayDriver* display, SensorManager* sensors, NodePrefs* node_prefs) {
 
@@ -4665,7 +4668,11 @@ void UITask::begin(DisplayDriver* display, SensorManager* sensors, NodePrefs* no
 
   splash = new SplashScreen(this);
   home = new HomeScreen(this, &rtc_clock, sensors, node_prefs);
+#ifndef LORAFISH_UI
   msg_preview = new MsgPreviewScreen(this, &rtc_clock);
+#else
+  msg_preview = NULL;
+#endif
   setCurrScreen(splash);
 }
 
