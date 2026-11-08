@@ -27,7 +27,7 @@ int main() {
  for(unsigned id=0;id<65536;++id) {
   assert(LoRaFishSpecies::waterKnown(id)==(id<15));
   assert(LoRaFishSpecies::airKnown(id)==(id>=256 && id<=273));
-  assert(LoRaFishSpecies::known(id)==(id<15 || (id>=256 && id<=273)));
+  assert(LoRaFishSpecies::known(id)==(id<15 || (id>=256 && id<=273) || (id>=512 && id<=550)));
  }
  for(unsigned i=0;i<18;++i) {
   assert(LoRaFishSpecies::selectionId(i)==256+i);
