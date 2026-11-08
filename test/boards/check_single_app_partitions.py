@@ -46,7 +46,7 @@ def check_config(config):
         assert actual_board['upload']['flash_size'] == '16MB'
         assert actual_board['upload']['maximum_size'] == 16777216
         expected.add('env:' + name)
-        for edition in ('water', 'air'):
+        for edition in ('water', 'air', 'land'):
             alias = 'env:' + edition + '_' + suffix
             if edition == 'air' and not (ROOT / 'variants/loragotchi_air/platformio.ini').exists():
                 continue
