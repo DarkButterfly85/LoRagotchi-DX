@@ -25,10 +25,10 @@ int main() {
    m.receive(owner,"LFG1|REQ|77|2|2|Water");char p[160];snprintf(p,sizeof(p),"LFG1|COMMIT|77|2|C|0|4|6|944|S1|%s",tail);
    auto sent=m.sent.size();m.receive(owner,p);assert(!loragotchiDXGuest.present && loragotchiDXGuest.reserved && m.sent.size()==sent);
  }
- m.receive(owner,"LFG1|COMMIT|77|2|C|0|4|6|944|S1|65535");assert(loragotchiDXGuest.species==65535);
+ m.receive(owner,"LFG1|COMMIT|77|2|C|0|4|6|944|S1|65535");assert(loragotchiDXGuest.species==0);
  loragotchiDXGuest={};loragotchiDXReservation={};loragotchiDXGuestReturn={};
  m.receive(owner,"LFG1|REQ|78|2|2|Legacy");m.receive(owner,"LFG1|COMMIT|78|2|M|6|6|6|65535");assert(loragotchiDXGuest.species==0);
- puts("PASS malformed/overflow metadata rejected without consuming reservation; unknown retained; legacy defaults fish");
+ puts("PASS malformed/overflow metadata rejected without consuming reservation; unknown wire ID stored as fish; legacy defaults fish");
  loragotchiDXHome={};loragotchiDXHome.pending=true;loragotchiDXHome.destinationKnown=true;
  memcpy(loragotchiDXHome.destinationKey,owner.id.pub_key,32);loragotchiDXHome.txid=7;loragotchiDXHome.fishid=8;
  loragotchiDXLocalSpecies=273;loragotchiDXVisit={};now=100;m.estimate=30000;
