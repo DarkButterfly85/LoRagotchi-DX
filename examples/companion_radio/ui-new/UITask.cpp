@@ -3311,9 +3311,13 @@ static void drawLoRaFishRFMonitor(DisplayDriver& display, UITask* task) {
   display.print(line);
 #if !defined(LORAFISH_WATCH_TOUCH)
   if (loRaFishColorDisplay) {  // colour screens only: monochrome and e-ink pages are unchanged
-    display.setColor(UIColor::secondary_txt);
-    display.drawTextRightAlign(w-2,20,"L:RANGE CHECK");
-    display.setColor(UIColor::primary_txt);
+    // Only when it fits beside the RSSI/SNR text (a narrow screen keeps just the classic line).
+    const int hintW=display.getTextWidth("L:RANGE CHECK");
+    if (w-2-hintW > 3+display.getTextWidth(line)+4) {
+      display.setColor(UIColor::secondary_txt);
+      display.drawTextRightAlign(w-2,20,"L:RANGE CHECK");
+      display.setColor(UIColor::primary_txt);
+    }
   }
 #endif
 

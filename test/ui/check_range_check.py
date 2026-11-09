@@ -155,7 +155,7 @@ native_mock_old = 'struct {uint32_t pin=0;uint32_t getBLEPin(){return pin;}}the_
 assert native_mock_old in prelude
 base = prelude.replace(native_mock_old, '')       # replaced by MockMesh above
 real_fns = '\n'.join(block(m) for m in [
-    'static void drawLoRaFishHeader(', 'static void drawLoRaFishRFMonitor(',
+    'static void drawLoRaFishHeader(', 'static void drawLoRaFishRfTypes(', 'static void drawLoRaFishRFMonitor(',
 ])
 range_fns = '\n'.join([
     'static LoRaFishRangeCheck::Session loRaFishRange;',
