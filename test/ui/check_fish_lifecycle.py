@@ -42,6 +42,7 @@ static uint8_t loRaFishOrientation = 0;
 #include <string>
 #include <vector>
 #include "examples/companion_radio/ui-new/LoRaFishHappiness.h"
+#include "examples/companion_radio/ui-new/LoRaFishSafeSave.h"
 using std::min;
 #define LORAFISH_UI 1
 #define FILE_READ 0
@@ -85,6 +86,10 @@ struct MemoryFS {
   }
   bool exists(const char* path) { return files.count(path); }
   bool remove(const char* path) { return files.erase(path); }
+  bool rename(const char* from, const char* to) {
+    if (!files.count(from)) return false;
+    auto data = files[from]; files.erase(from); files[to] = data; return true;
+  }
 } SPIFFS, InternalFS;
 struct {
   template<typename... Args> void printf(const char*, Args...) {}
@@ -138,6 +143,8 @@ markers = [
     'static void encodeLoRaFishSettings(',
     'static const char* loRaFishRecordKey(',
     'static bool writeLoRaFishRecord(',
+    'struct LoRaFishPetStore {',
+    'static bool loRaFishPetRecordValid(',
     'static void saveLoRaFishSettings() {',
     'static void loadLoRaFishSettings() {',
     'static void serviceLoRaFishSettingsMenu(',
@@ -151,7 +158,7 @@ if 'static void ensureLoRaFishOffspring(' in SOURCE:
     markers.append('static void ensureLoRaFishOffspring(')
 markers.append('static uint32_t loRaFishLifeArtKey(')
 markers += ['static void hatchLoRaFishOffspring(', 'static void advanceLoRaFishHappiness(uint32_t until) {', 'static void checkpointLoRaFish(', 'static void flushLoRaFish(', 'static void tickLoRaFish() {']
-parts += [block(marker) for marker in markers]
+parts += [block(marker) + (';\nstatic LoRaFishPetStore loRaFishPetStore;' if marker.startswith('struct LoRaFishPetStore') else '') for marker in markers]
 parts.append(r'''
 static void resetAt(uint32_t age, bool egg=false) {
   files.clear(); loRaFishMysterySelected=false; loRaFishMemorialCaptured=false; loRaFishMemorialKey=0; loRaFishNeedsPetSetup=false; loRaFishMysterySeed=0;

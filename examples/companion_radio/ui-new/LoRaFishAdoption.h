@@ -35,6 +35,13 @@ static bool readLoRaFishRecord(const char* path,uint8_t* data,size_t size,bool* 
   bool ok=f.size()==size && f.read(data,size)==size;f.close();return ok;
 #endif
 }
+// The pet file carries a checksum trailer and a backup copy (LoRaFishSafeSave).
+static bool readLoRaFishPet(LoRaFishState* pet) {
+  uint8_t rec[LoRaFishSafeSave::kMaxRecord];size_t len=0;
+  if(LoRaFishSafeSave::load(loRaFishPetStore,loRaFishPetRecordValid,rec,&len)==LoRaFishSafeSave::None ||
+     len!=sizeof(*pet)) return false;
+  memcpy(pet,rec,sizeof(*pet));return true;
+}
 static const char* loRaFishEggPath(int bank) { return bank ? "/lfegg1.dat" : "/lfegg0.dat"; }
 static bool writeLoRaFishEggReceipt(LoRaFishEggReceipt next) {
   const int bank=loRaFishEggBank==0?1:0;
@@ -124,7 +131,7 @@ static void serviceLoRaFishAdoption(bool visible) {
     encodeLoRaFishSettings(cfg);
     if (loRaFishSettingsSaveFailed || loRaFishSaveFailed ||
         !readLoRaFishRecord("/lorafish.cfg",stored,sizeof(stored)) || memcmp(cfg,stored,sizeof(cfg)) ||
-        !readLoRaFishRecord("/lorafish.dat",(uint8_t*)&pet,sizeof(pet)) || memcmp(&pet,&fish,sizeof(pet))) return;
+        !readLoRaFishPet(&pet) || memcmp(&pet,&fish,sizeof(pet))) return;
     LoRaFishEggReceipt completed;completed.capture(accepted,loRaFishEggReceipt.sequence()+1,true);
     if (!writeLoRaFishEggReceipt(completed)) return;
     loRaFishEggApplying=false;closeLoRaFishAdoption();

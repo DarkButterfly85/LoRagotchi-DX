@@ -113,6 +113,7 @@ static void tdeckTouchPoll() {
 #include "LoRaFishHappiness.h"
 #include "LoRaFishText.h"
 #include "../LoRaFishColour.h"
+#include "LoRaFishSafeSave.h"
 #include "../LoRaFishSpecies.h"
 #include "LoRaFishLifeArt.h"
 #if LORAGOTCHI_SPECIES_EDITION
@@ -1144,6 +1145,7 @@ static const char* loRaFishRecordKey(const char* path) {
   if (!strcmp(path,"/lorafish.cfg")) return "cfg";
   if (!strcmp(path,"/lfegg0.dat")) return "egg0";
   if (!strcmp(path,"/lfegg1.dat")) return "egg1";
+  if (!strcmp(path,LoRaFishSafeSave::kBak)) return "statebak";
   return "state";
 }
 
@@ -1169,6 +1171,85 @@ static bool writeLoRaFishRecord(const char* path, const uint8_t* data, size_t si
 #endif
   return complete;
 #endif
+}
+
+// Pet-save storage for LoRaFishSafeSave. Whole-file replace goes through
+// writeLoRaFishRecord (which already removes the old file first on the
+// append-mode Adafruit file systems).
+struct LoRaFishPetStore {
+  bool hasRename() const {
+#if defined(LORAFISH_TDECK_NVS) && defined(ESP32)
+    return false;  // NVS: each key write is all-or-nothing, no tmp file
+#else
+    return true;
+#endif
+  }
+  bool write(const char* path, const uint8_t* data, size_t len) {
+    return writeLoRaFishRecord(path, data, len);
+  }
+  int read(const char* path, uint8_t* buf, size_t cap) {
+#if defined(LORAFISH_TDECK_NVS) && defined(ESP32)
+    LoRaFishNVSFile f(loRaFishRecordKey(path), false);
+#elif defined(ESP32)
+    File f = SPIFFS.open(path, FILE_READ);
+#elif defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
+    File f = InternalFS.open(path, FILE_O_READ);
+#else
+    return -1;
+#endif
+#if defined(ESP32) || defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
+    if (!f) return -1;
+    const size_t n = f.size();
+    int got = -2;
+    if (n <= cap) got = (n == 0 || (size_t)f.read(buf, n) == n) ? (int)n : -2;
+    f.close();
+    return got;
+#endif
+  }
+  bool exists(const char* path) {
+    uint8_t one[LoRaFishSafeSave::kMaxBlob];
+    return read(path, one, sizeof(one)) != -1;
+  }
+  bool remove(const char* path) {
+#if defined(LORAFISH_TDECK_NVS) && defined(ESP32)
+    Preferences prefs;
+    if (!prefs.begin("lfgfish", false)) return false;
+    const bool ok = prefs.remove(loRaFishRecordKey(path));
+    prefs.end();
+    return ok;
+#elif defined(ESP32)
+    return SPIFFS.remove(path);
+#elif defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
+    return InternalFS.remove(path);
+#else
+    return false;
+#endif
+  }
+  bool rename(const char* from, const char* to) {
+#if defined(LORAFISH_TDECK_NVS) && defined(ESP32)
+    (void)from; (void)to;
+    return false;  // never called: hasRename() is false
+#elif defined(ESP32)
+    // SPIFFS refuses to rename onto an existing name, so the old one goes first.
+    // Not atomic: if power fails in between, the complete tmp copy is used on boot.
+    if (SPIFFS.exists(to) && !SPIFFS.remove(to)) return false;
+    return SPIFFS.rename(from, to);
+#elif defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
+    return InternalFS.rename(from, to);  // littlefs: atomic, replaces the target
+#else
+    (void)from; (void)to;
+    return false;
+#endif
+  }
+};
+static LoRaFishPetStore loRaFishPetStore;
+
+static bool loRaFishPetRecordValid(const uint8_t* rec, size_t len) {
+  uint32_t magic = 0;
+  if (len < sizeof(magic)) return false;
+  memcpy(&magic, rec, sizeof(magic));
+  return (len == sizeof(LoRaFishStateV1) && magic == LORAFISH_MAGIC_V1) ||
+         (len == sizeof(LoRaFishState) && magic == LORAFISH_MAGIC);
 }
 
 static void saveLoRaFishSettings() {
@@ -1406,7 +1487,7 @@ static void saveLoRaFish() {
     return;
   }
   loRaFishLastAttempt = now;
-  if (!writeLoRaFishRecord("/lorafish.dat", (const uint8_t*)&fish, sizeof(fish))) {
+  if (!LoRaFishSafeSave::commit(loRaFishPetStore, (const uint8_t*)&fish, sizeof(fish))) {
     loRaFishSaveFailed = true;
     return;
   }
@@ -1420,38 +1501,33 @@ static void loadLoRaFish() {
   haveLastWrittenLoRaFish = false;
   loRaFishSaveFailed = false;
   bool restored=false;
-#if defined(LORAFISH_TDECK_NVS) && defined(ESP32)
-  LoRaFishNVSFile f("state", false);
-#elif defined(ESP32)
-  File f = SPIFFS.open("/lorafish.dat", FILE_READ);
-#elif defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
-  File f = InternalFS.open("/lorafish.dat", FILE_O_READ);
-#else
-  File f;
-#endif
-#if defined(ESP32) || defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
-  if (f && f.size() == sizeof(LoRaFishStateV1)) {
+  uint8_t rec[LoRaFishSafeSave::kMaxRecord];
+  size_t recLen = 0;
+  const LoRaFishSafeSave::Source source =
+      LoRaFishSafeSave::load(loRaFishPetStore, loRaFishPetRecordValid, rec, &recLen);
+  if (source != LoRaFishSafeSave::None && recLen == sizeof(LoRaFishStateV1)) {
     LoRaFishStateV1 old;
-    if (f.read((uint8_t*)&old, sizeof(old)) == sizeof(old) &&
-        old.magic == LORAFISH_MAGIC_V1) {
-      fish = {LORAFISH_MAGIC, old.ageMinutes, old.rfEvents, old.messages,
-              old.txAcks, old.happiness, old.evolution, 0, 0};
-      restored=true;
-      Serial.println("[LFG2] migrated LFM1 fish record");
-    }
-    f.close();
-  } else if (f && f.size() == sizeof(fish)) {
+    memcpy(&old, rec, sizeof(old));
+    fish = {LORAFISH_MAGIC, old.ageMinutes, old.rfEvents, old.messages,
+            old.txAcks, old.happiness, old.evolution, 0, 0};
+    restored=true;
+    Serial.println("[LFG2] migrated LFM1 fish record");
+  } else if (source != LoRaFishSafeSave::None && recLen == sizeof(fish)) {
     LoRaFishState tmp;
-    if (f.read((uint8_t*)&tmp, sizeof(tmp)) == sizeof(tmp) &&
-        tmp.magic == LORAFISH_MAGIC) {
-      fish = tmp;
+    memcpy(&tmp, rec, sizeof(tmp));
+    fish = tmp;
+    restored=true;
+    // Only a verified main copy counts as "already on flash". A recovered,
+    // unsealed or older-firmware copy is rewritten at the next save.
+    if (source == LoRaFishSafeSave::Main) {
       lastWrittenLoRaFish = tmp;
       haveLastWrittenLoRaFish = true;
-      restored=true;
+    } else {
+      Serial.printf("[LFG2] pet save recovered from %s\n",
+                    source == LoRaFishSafeSave::Tmp ? "tmp" :
+                    source == LoRaFishSafeSave::Bak ? "backup" : "older format");
     }
-    f.close();
   }
-#endif
   loRaFishNeedsPetSetup=(LORAGOTCHI_SPECIES_EDITION!=0) && !restored; loRaFishPetSetupField=0;
   loRaFishAdoptionEligible=!restored;
   loRaFishNeedsAppearanceSetup=!restored && loRaFishColorDisplay;
