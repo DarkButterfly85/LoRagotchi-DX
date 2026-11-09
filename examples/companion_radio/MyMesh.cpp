@@ -118,6 +118,7 @@ float lorafish_last_rssi = -127.0f;
 float lorafish_last_snr = 0.0f;
 unsigned long lorafish_last_rf_ms = 0;
 uint32_t lorafish_rf_sample_seq = 0;
+LoRaFishRfStats::Window lorafish_rf_stats;
 
 #include <Arduino.h> // needed for PlatformIO
 #ifdef ENABLE_WIFI_INTERFACE
@@ -412,6 +413,7 @@ void MyMesh::logRxRaw(float snr, float rssi, const uint8_t raw[], int len) {
   lorafish_last_snr = snr;
   lorafish_last_rf_ms = millis();
   lorafish_rf_sample_seq++;
+  lorafish_rf_stats.record(millis(), raw, len);   // only reads the frame header; reception is untouched
   if (_serial->isConnected() && len + 3 <= MAX_FRAME_SIZE) {
     int i = 0;
     out_frame[i++] = PUSH_CODE_LOG_RX_DATA;

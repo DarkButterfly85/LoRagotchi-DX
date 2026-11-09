@@ -42,6 +42,8 @@ static bool loRaFishClock(char*t,size_t tn,char*d,size_t dn){snprintf(t,tn,"23:5
 static uint32_t lorafish_rf_sample_seq=0,loRaFishRfSeenSeq=0,lorafish_last_rf_ms=0;
 static float lorafish_last_rssi=-127,lorafish_last_snr=-20;
 static int8_t loRaFishRfHistory[48]={};static uint8_t loRaFishRfHistoryCount=0;
+#include "examples/companion_radio/LoRaFishRfStats.h"
+static LoRaFishRfStats::Window lorafish_rf_stats;
 struct LocationProvider{
  bool valid=false;bool isValid(){return valid;}long satellitesCount(){return 99;}
  long getLatitude(){return -90000000;}long getLongitude(){return -180000000;}
@@ -70,7 +72,7 @@ public:
 };
 '''
 code+=block('static int loRaFishBatteryPercent(')+chr(10)+'static LoRaFishBattery::Tracker loRaFishBatteryTracker;'+chr(10)+block('static void drawLoRaFishBatteryLeft(')+chr(10)
-for name in ['drawLoRaFishHeader','drawLoRaFishStats','drawLoRaFishClockPage','drawLoRaFishPairing','drawLoRaFishRFMonitor','drawLoRaFishGNSS','drawLoRaFishChannelNotice','drawLoRaFishNameNotice','drawLoRaFishMonoDisplayNotice']:
+for name in ['drawLoRaFishHeader','drawLoRaFishStats','drawLoRaFishClockPage','drawLoRaFishPairing','drawLoRaFishRfTypes','drawLoRaFishRFMonitor','drawLoRaFishGNSS','drawLoRaFishChannelNotice','drawLoRaFishNameNotice','drawLoRaFishMonoDisplayNotice']:
  code+=block('static void '+name+'(')+chr(10)
 code+=r'''
 int main(){

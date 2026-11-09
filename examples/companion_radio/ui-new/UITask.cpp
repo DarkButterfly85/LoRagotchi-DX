@@ -3259,6 +3259,28 @@ static void drawLoRaFishDX(DisplayDriver& display) {
   display.drawTextCentered(w/2,h-9,hint);
 }
 
+// RF Monitor+ (colour screens only): what the pet heard in the last few minutes, by
+// kind, with how far it travelled (average hops of flood-routed packets).
+// Counts come from the radio's existing receive hook; see LoRaFishRfStats.h.
+static void drawLoRaFishRfTypes(DisplayDriver& display) {
+  const int w=display.width();
+  const int cell=display.getTextWidth("CHAN 999+ h9.9");
+  const int x0=58, gap=6;
+  if (w-3-x0 < 2*cell+gap) return;   // too narrow for the table: the classic page stays as it was
+  const uint32_t now=(uint32_t)millis();
+  display.setColor(UIColor::primary_txt);
+  for (uint8_t g=0; g<LoRaFishRfStats::GroupCount; ++g) {
+    char count[12], hops[16], line[48];
+    const uint32_t n=lorafish_rf_stats.count(now,g);
+    if (n>999) snprintf(count,sizeof(count),"999+"); else snprintf(count,sizeof(count),"%lu",(unsigned long)n);
+    const int tenths=lorafish_rf_stats.averageHopsTenths(now,g);
+    if (tenths<0) snprintf(hops,sizeof(hops),"h--"); else snprintf(hops,sizeof(hops),"h%d.%d",tenths/10,tenths%10);
+    snprintf(line,sizeof(line),"%s %s %s",LoRaFishRfStats::label(g),count,hops);
+    display.setCursor(x0+(g/3)*(cell+gap),29+(g%3)*9);
+    display.print(line);
+  }
+}
+
 static void drawLoRaFishRFMonitor(DisplayDriver& display, UITask* task) {
   const int w=display.width(), h=display.height();
 
@@ -3280,7 +3302,7 @@ static void drawLoRaFishRFMonitor(DisplayDriver& display, UITask* task) {
   uint16_t mv=loRaFishDisplayBattery(task);
   const int batt=loRaFishBatteryPercent(mv);
   snprintf(right,sizeof(right),"BAT %d%%",batt);
-  drawLoRaFishHeader(display,"RF MONITOR",right);
+  drawLoRaFishHeader(display,loRaFishColorDisplay ? (w>=160 ? "RF MONITOR+ 5m" : "RF MONITOR+") : "RF MONITOR",right);
 
   display.setColor(UIColor::primary_txt);
   char line[32];
@@ -3327,6 +3349,7 @@ static void drawLoRaFishRFMonitor(DisplayDriver& display, UITask* task) {
   int fill=(batt*(bw-4))/100;
   if(fill>0) display.fillRect(bx+2,by+2,fill,bh-4);
   if (loRaFishColorDisplay) drawLoRaFishBatteryLeft(display,bx+bw+8,55,rxLeft);
+  if (loRaFishColorDisplay) drawLoRaFishRfTypes(display);   // colour screens only; monochrome/e-ink unchanged
 }
 
 

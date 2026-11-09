@@ -4,12 +4,14 @@
 #include "LoRaFishGuestReturn.h"
 #include "LoRaFishVisit.h"
 #include "LoRaFishSpecies.h"
+#include "LoRaFishRfStats.h"
 
 
 extern float lorafish_last_rssi;
 extern float lorafish_last_snr;
 extern unsigned long lorafish_last_rf_ms;
 extern uint32_t lorafish_rf_sample_seq;
+extern LoRaFishRfStats::Window lorafish_rf_stats;   // RF Monitor+: kinds of packets heard (RAM only)
 
 
 #ifdef LORAFISH_UI
