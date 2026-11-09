@@ -120,6 +120,9 @@ static void tdeckTouchPoll() {
 #if LORAGOTCHI_AIR_EDITION
 #include "LoRaFishAirSprite.h"
 #endif
+#if LORAGOTCHI_LAND_EDITION
+#include "LoRaFishLandSprite.h"
+#endif
 #endif
 #include "../MyMesh.h"
 #include "../LoRagotchiChannelStatus.h"
@@ -2112,8 +2115,12 @@ static void drawFishSpriteForStage(DisplayDriver& d,int x,int y,bool right,uint8
                                   const LoRaFishAppearance& appearance,uint16_t species=0) {
 #if LORAGOTCHI_SPECIES_EDITION
   species=LoRaFishSpecies::renderId(species);
-#if !LORAGOTCHI_AIR_EDITION
+#if LORAGOTCHI_LAND_EDITION
+  if (!LoRaFishSpecies::landKnown(species) && !LoRaFishSpecies::waterKnown(species)) species=0;
+#elif !LORAGOTCHI_AIR_EDITION
   if (!LoRaFishSpecies::waterKnown(species)) species=0;
+#else
+  if (LoRaFishSpecies::landKnown(species)) species=0; // Land IDs are never drawn by Air builds
 #endif
   if (species) {
     ColorVal body=loRaFishColorValue(appearance.body), fins=loRaFishColorValue(appearance.scales);
@@ -2127,7 +2134,12 @@ static void drawFishSpriteForStage(DisplayDriver& d,int x,int y,bool right,uint8
       const unsigned light=((body>>11)&31)*299*2+((body>>5)&63)*587+(body&31)*114*2;
       eyes=loRaFishColorDisplay ? (light>=31500 ? 0x2104 : 0xDEFB) : UIColor::window_bkg;
     }
-#if LORAGOTCHI_AIR_EDITION
+#if LORAGOTCHI_LAND_EDITION
+    if (LoRaFishSpecies::landKnown(species))
+      LoRaFishLandSprite::draw(d,x,y,right,species,stage,(uint32_t)millis(),
+          body,fins,eyes,UIColor::window_bkg);
+    else
+#elif LORAGOTCHI_AIR_EDITION
     if (LoRaFishSpecies::airKnown(species))
       LoRaFishAirSprite::draw(d,x,y,right,species,stage,(uint32_t)millis(),
           body,fins,eyes,UIColor::window_bkg);
@@ -2795,7 +2807,7 @@ static void drawLoRaFishDisplayMenu(DisplayDriver& display) {
 
 
 static void drawLoRaFishPetSetup(DisplayDriver& display) {
-  drawLoRaFishHeader(display,LORAGOTCHI_AIR_EDITION ? "CHOOSE AIR PET" : "CHOOSE WATER PET","");
+  drawLoRaFishHeader(display,LORAGOTCHI_LAND_EDITION ? "CHOOSE LAND PET" : LORAGOTCHI_AIR_EDITION ? "CHOOSE AIR PET" : "CHOOSE WATER PET","");
   const char* rows[]={LoRaFishSpecies::label(loRaFishSpecies),"Mystery colours",
       loRaFishColorDisplay ? "Choose colours" : "Keep colours","Start pet"};
   display.setColor(UIColor::primary_txt);
@@ -3012,7 +3024,7 @@ static void drawLoRaFishDX(DisplayDriver& display) {
     } else {
       display.drawTextCentered(w/2,27,"NO HABITATS");
       display.setColor(UIColor::secondary_txt);
-      display.drawTextCentered(w/2,39,LORAGOTCHI_AIR_EDITION ? "Animal-marked peers" : "Water-marked friends");
+      display.drawTextCentered(w/2,39,LORAGOTCHI_LAND_EDITION ? "Land-marked peers" : LORAGOTCHI_AIR_EDITION ? "Animal-marked peers" : "Water-marked friends");
     }
   }
   display.setColor(UIColor::secondary_txt);
@@ -3324,12 +3336,39 @@ static void drawLoRaFishAirHabitat(DisplayDriver& display) {
 }
 #endif
 
+#if LORAGOTCHI_LAND_EDITION
+// Plain meadow: sun, low hills and grass tufts. Keeps header/footer clear.
+static void drawLoRaFishLandHabitat(DisplayDriver& display) {
+  const int w=display.width(), h=display.height();
+  const int top=28, bottom=h-18;
+  if (w<64 || bottom<=top+12) return;
+  display.setColor(UIColor::secondary_txt);
+  const int sx=w-28,sy=top+9;
+  display.drawRect(sx-5,sy-5,11,11);
+  display.fillRect(sx-2,sy-7,5,1);
+  display.fillRect(sx-2,sy+7,5,1);
+  display.fillRect(sx-8,sy,2,1);
+  display.fillRect(sx+7,sy,2,1);
+  const int ridge=bottom-10;
+  for(int x=0;x<w;x+=16) {
+    const int rise=((x/16)%4==0)?7:((x/16)%4==1?4:2);
+    display.fillRect(x,ridge+8-rise,16,1);
+  }
+  for(int x=6;x<w-6;x+=19) {
+    display.fillRect(x,bottom-3,1,3);
+    display.fillRect(x+2,bottom-4,1,4);
+    display.fillRect(x+4,bottom-2,1,2);
+  }
+  display.fillRect(2,bottom,w-4,1);
+}
+#endif
+
 static void drawLoRaFishNativeScenery(DisplayDriver& d) {
 #ifdef LORAGOTCHI_NATIVE_UI
   if(d.height()<=64) return;
   const int w=d.width(),floor=d.height()-16;
   d.setColor(UIColor::secondary_txt);
-#if LORAGOTCHI_AIR_EDITION
+#if LORAGOTCHI_ANIMAL_EDITION
   for(int side=0;side<2;++side) {
     const int x=side ? w-22 : 10;
     d.fillRect(x,floor-19,2,19);
@@ -3348,12 +3387,52 @@ static void drawLoRaFishNativeScenery(DisplayDriver& d) {
 #endif
 }
 
+#if LORAGOTCHI_WATER_EDITION
+// Bands need room for two adult sprites plus a gap. Fixed-row paths (64 px OLED/LCD, Cardputer,
+// T-Deck, T-Watch) draw every sprite inside rows of the 64 px reference frame whatever the canvas
+// height, so that frame is their tank; only native panels taller than 64 px stretch the sprite
+// rows over the real height (LoRaFishLayout::habitatY). Tank = header rule (row 15) to floor rule.
+static bool loRaFishWaterBands(int h) {
+  int frame=64;
+#ifdef LORAGOTCHI_NATIVE_UI
+  if(h>64)frame=h;
+#else
+  (void)h;
+#endif
+  return LoRaFishSpecies::waterBandsEnabled(16,frame-15,LoRaFishWaterSprite::adultRows);
+}
+
+// Water tank only (Air and Land builds keep their own habitat rows): keep each species inside
+// its surface or underwater band. Same sprite, speed and bob; only the vertical envelope moves.
+// Tanks too small for two bands return y untouched: the shared tank, exactly as before the bands.
+static int loRaFishBandY(uint16_t species,int y,int h) {
+  using namespace LoRaFishSpecies;
+  if(!loRaFishWaterBands(h))return y;
+  const bool floorWalker=waterMotion(species) && species!=Jellyfish; // crab, snail: pinned to the floor
+  if(floorWalker)return y;
+#ifdef LORAGOTCHI_NATIVE_UI
+  if(h>64)return bandFit(species,BandTall,y,19,41); // 30+11*sin, fish and jellyfish alike
+#else
+  (void)h;
+#endif
+#if defined(LORAFISH_FISH_WANDER) && defined(LORAFISH_TALL_TANK)
+  return waterMotion(species) ? bandFit(species,BandWander,y,30,36)   // jellyfish bell stroke
+                              : bandFit(species,BandWander,y,29,49);  // wander rows 30-48 plus bob
+#else
+  return waterMotion(species) ? bandFit(species,BandCompact,y,30,36)
+                              : bandFit(species,BandCompact,y,36,40); // 38 plus-or-minus 2 bob
+#endif
+}
+#endif
+
 static void drawLoRaFishAquarium(DisplayDriver& display, UITask* task) {
   const int w=display.width(), h=display.height();
   char tb[8], db[24];
   loRaFishClock(tb,sizeof(tb),db,sizeof(db));
 #if LORAGOTCHI_AIR_EDITION
   drawLoRaFishAirHabitat(display);
+#elif LORAGOTCHI_LAND_EDITION
+  drawLoRaFishLandHabitat(display);
 #elif defined(LORAFISH_CARDPUTER_25D)
   drawCardputerTankDepth(LORAFISH_SCENERY_CANVAS(display));
 #elif defined(LORAFISH_TDECK_PIXEL_ART)
@@ -3365,7 +3444,7 @@ static void drawLoRaFishAquarium(DisplayDriver& display, UITask* task) {
 
   display.setColor(UIColor::secondary_txt);
   display.fillRect(2,h-15,w-4,1);
-#if !LORAGOTCHI_AIR_EDITION
+#if !LORAGOTCHI_ANIMAL_EDITION
   drawLoRaFishBubbles(display);
 #endif
   //display.drawRect(15,21,2,2);
@@ -3377,7 +3456,7 @@ static void drawLoRaFishAquarium(DisplayDriver& display, UITask* task) {
   int x=0, y=0;
   bool right=true;
   loRaFishNaturalPosition(w,x,y,right);
-  if (LORAGOTCHI_AIR_EDITION || LoRaFishSpecies::waterMotion(loRaFishSpecies))
+  if (LORAGOTCHI_ANIMAL_EDITION || LoRaFishSpecies::waterMotion(loRaFishSpecies))
     LoRaFishSpecies::habitatPosition(loRaFishSpecies,fish.evolution,w,(uint32_t)millis(),0,x,y,right);
 
   const int bodyOffset=LoRaFishLayout::bodyOffset(h);
@@ -3385,9 +3464,12 @@ static void drawLoRaFishAquarium(DisplayDriver& display, UITask* task) {
   if (h>64 && (!LoRaFishSpecies::waterMotion(loRaFishSpecies) || loRaFishSpecies==LoRaFishSpecies::Jellyfish))
     y=30+(int)(11*sinf(millis()/5100.0f));
 #endif
+#if LORAGOTCHI_WATER_EDITION
+  y=loRaFishBandY(loRaFishSpecies,y,h);
+#endif
   y=LoRaFishLayout::habitatY(y,h,
       (LoRaFishSpecies::waterMotion(loRaFishSpecies) && loRaFishSpecies!=LoRaFishSpecies::Jellyfish) ||
-      (LORAGOTCHI_AIR_EDITION && (LoRaFishSpecies::movement(loRaFishSpecies)==LoRaFishSpecies::Walk || LoRaFishSpecies::movement(loRaFishSpecies)==LoRaFishSpecies::Crawl)));
+      (LORAGOTCHI_ANIMAL_EDITION && (LoRaFishSpecies::movement(loRaFishSpecies)==LoRaFishSpecies::Walk || LoRaFishSpecies::movement(loRaFishSpecies)==LoRaFishSpecies::Crawl)));
   if (loRaFishFeeding) {
     const unsigned long elapsed=millis()-loRaFishFeedStarted;
     const int foodX=w/2+18;
@@ -3492,15 +3574,18 @@ static void drawLoRaFishAquarium(DisplayDriver& display, UITask* task) {
   loRaFishNaturalPositionForStage(w,guestStage,guestPeriod/2,gx,gy,gright);
   const uint16_t guestMotionSpecies=guestPresent ? loragotchiDXGuest.species :
       loRaFishGuestTravelAnimation.species;
-  if (LORAGOTCHI_AIR_EDITION || LoRaFishSpecies::waterMotion(guestMotionSpecies))
+  if (LORAGOTCHI_ANIMAL_EDITION || LoRaFishSpecies::waterMotion(guestMotionSpecies))
     LoRaFishSpecies::habitatPosition(guestMotionSpecies,guestStage,w,(uint32_t)millis(),2700,gx,gy,gright);
 #ifdef LORAGOTCHI_NATIVE_UI
   if (h>64 && (!LoRaFishSpecies::waterMotion(guestMotionSpecies) || guestMotionSpecies==LoRaFishSpecies::Jellyfish))
     gy=30+(int)(11*sinf((millis()+4300)/5700.0f));
 #endif
+#if LORAGOTCHI_WATER_EDITION
+  gy=loRaFishBandY(guestMotionSpecies,gy,h);
+#endif
   gy=LoRaFishLayout::habitatY(gy,h,
       (LoRaFishSpecies::waterMotion(guestMotionSpecies) && guestMotionSpecies!=LoRaFishSpecies::Jellyfish) ||
-      (LORAGOTCHI_AIR_EDITION && (LoRaFishSpecies::movement(guestMotionSpecies)==LoRaFishSpecies::Walk || LoRaFishSpecies::movement(guestMotionSpecies)==LoRaFishSpecies::Crawl)));
+      (LORAGOTCHI_ANIMAL_EDITION && (LoRaFishSpecies::movement(guestMotionSpecies)==LoRaFishSpecies::Walk || LoRaFishSpecies::movement(guestMotionSpecies)==LoRaFishSpecies::Crawl)));
   loRaFishBeginTravelAnimation(loRaFishGuestTravelAnimation,w,gx,gy);
   if (guestPresent) {
     // Same movement model as a lone fish, phase shifted by half a cycle.
@@ -3620,6 +3705,8 @@ static void drawLoRaFishSleeping(DisplayDriver& display, UITask* task) {
   loRaFishClock(tb,sizeof(tb),db,sizeof(db));
 #if LORAGOTCHI_AIR_EDITION
   drawLoRaFishAirHabitat(display);
+#elif LORAGOTCHI_LAND_EDITION
+  drawLoRaFishLandHabitat(display);
 #elif defined(LORAFISH_CARDPUTER_25D)
   drawCardputerTankDepth(LORAFISH_SCENERY_CANVAS(display));
   drawLoRaFishBubbles(display);
@@ -3671,7 +3758,7 @@ static void drawLoRaFishNameNotice(DisplayDriver& display) {
   drawLoRaFishHeader(display, "GET FOUND BY FRIENDS", "");
   display.setColor(UIColor::primary_txt);
   display.drawTextCentered(x, 18, LORAGOTCHI_SPECIES_EDITION ?
-      (LORAGOTCHI_AIR_EDITION ? "Add an Air emoji to" : "Add a Water emoji to") : "Add a fish emoji to");
+      (LORAGOTCHI_LAND_EDITION ? "Add a Land emoji to" : LORAGOTCHI_AIR_EDITION ? "Add an Air emoji to" : "Add a Water emoji to") : "Add a fish emoji to");
   display.drawTextCentered(x, 27, "your MeshCore name");
   display.drawTextCentered(x, 36, "to appear as a");
   display.drawTextCentered(x, 45, "LoRagotchi-DX tank.");

@@ -68,3 +68,15 @@ for alias,parent in air.items():
  assert a['build_flags']==p['build_flags']+['-D LORAGOTCHI_AIR_EDITION=1'],alias
 assert {s[4:] for s in config if s.startswith('env:air_')}==set(air)
 print('PASS 16 Air aliases; original DX/Water hardware, radio, memory and dependencies unchanged')
+
+land={name.replace('water_','land_'):parent for name,parent in water.items()}
+for alias,parent in land.items():
+ assert 'env:'+alias in picker,alias # must be in platformio.ini (picker), not only platformio-meshcore.ini
+ a=config['env:'+alias];p=config['env:'+parent]
+ for key,value in p.items():
+  if key not in {'extends','build_flags'}:assert a[key]==value,(alias,key)
+ assert a['build_flags']==p['build_flags']+['-D LORAGOTCHI_LAND_EDITION=1'],alias
+ assert 'LORAGOTCHI_LAND_EDITION' not in ' '.join(p['build_flags']),parent
+assert {s[4:] for s in config if s.startswith('env:land_')}==set(land)
+assert not any('LAND' in ' '.join(config[s]['build_flags']) for s in config if not s.startswith('env:land_') and 'build_flags' in config[s])
+print('PASS 16 Land aliases; original DX/Water/Air hardware, radio, memory and dependencies unchanged')

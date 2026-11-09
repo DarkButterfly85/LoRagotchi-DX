@@ -49,6 +49,24 @@ inline bool isAirMarker(uint32_t code) {
   (void)code;return false;
 #endif
 }
+// Land build discovery hints: the emoji for the Land species (Phoenix has no
+// single-codepoint emoji and is intentionally not a marker). Never proof of habitat.
+inline bool isLandMarker(uint32_t code) {
+#if LORAGOTCHI_LAND_EDITION
+  switch(code) {
+    case 0x1F415: case 0x1F408: case 0x1F40E: case 0x1F404: case 0x1F418: case 0x1F416:
+    case 0x1F40F: case 0x1F411: case 0x1F410: case 0x1F992: case 0x1F998: case 0x1F999:
+    case 0x1F98C: case 0x1F401: case 0x1F439: case 0x1F407: case 0x1F994: case 0x1F428:
+    case 0x1F43C: case 0x1F9A5: case 0x1F9A6: case 0x1F9A8: case 0x1F9A1: case 0x1F99B:
+    case 0x1F98F: case 0x1F42A: case 0x1F42B: case 0x1F9AC: case 0x1F438: case 0x1F40A:
+    case 0x1F98E: case 0x1F422: case 0x1F40D: case 0x1F984: case 0x1F409: case 0x1F432:
+    case 0x1F995: case 0x1F996:return true;
+    default:return false;
+  }
+#else
+  (void)code;return false;
+#endif
+}
 inline bool isWaterMarker(uint32_t code) {
   if (isFish(code)) return true;
 #if LORAGOTCHI_SPECIES_EDITION
@@ -75,7 +93,7 @@ inline bool hasDiscoveryMarker(const char* text, size_t capacity) {
   if (!text) return false;
   for (size_t pos = 0; pos < capacity && text[pos]; ) {
     const uint32_t code=next(text,capacity,pos);
-    if (isWaterMarker(code) || isAirMarker(code)) return true;
+    if (isWaterMarker(code) || isAirMarker(code) || isLandMarker(code)) return true;
   }
   return false;
 }
@@ -93,9 +111,9 @@ inline void display(char* dest, size_t size, const char* text, size_t capacity) 
     // Presentation selectors, joiners and emoji modifiers have no separate glyph.
     if (code == 0x200D || code == 0xFE0E || code == 0xFE0F ||
         (code >= 0x1F3FB && code <= 0x1F3FF) || (code >= 0xE0020 && code <= 0xE007F)) continue;
-    if (isWaterMarker(code) || isAirMarker(code)) {
+    if (isWaterMarker(code) || isAirMarker(code) || isLandMarker(code)) {
       if (out + 3 >= size) break;
-      memcpy(dest + out, isFish(code) ? "><>" : isAirMarker(code) ? "[A]" : "[W]", 3);
+      memcpy(dest + out, isFish(code) ? "><>" : isAirMarker(code) ? "[A]" : isLandMarker(code) ? "[L]" : "[W]", 3);
       out += 3;
     } else {
       if (out + 1 >= size) break;
