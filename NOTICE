@@ -12,3 +12,6 @@ integration on top of the MeshCore transport.
 
 Third-party components retain their respective copyright and license notices
 in their source files and bundled library metadata.
+
+LODESTAR ORION and LODESTAR NOVA (Aries Thorne, Todd Steinhauer, FEAR REACTIVE)
+are used with the authors' permission. See docs/CREDITS.md for details.
