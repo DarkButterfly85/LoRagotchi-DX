@@ -111,6 +111,7 @@ static void tdeckTouchPoll() {
 #include "LoRaFishMenu.h"
 #include "LoRaFishLayout.h"
 #include "LoRaFishHappiness.h"
+#include "LoRaFishBedtime.h"
 #include "LoRaFishText.h"
 #include "../LoRaFishColour.h"
 #include "../LoRaFishSpecies.h"
@@ -5194,7 +5195,10 @@ void UITask::onMessageRecv(mesh::Packet *pkt, const ContactInfo &from, uint8_t t
   if (!(txt_type == TXT_TYPE_PLAIN || txt_type == TXT_TYPE_SIGNED_PLAIN)) return;
 
 #ifdef LORAFISH_UI
-  handleLoRaFishMessage();
+  // Bedtime quiet: asleep pets only let favourites through (sound, buzz, screen).
+  const bool bedtimeQuiet = LoRaFishBedtime::quiet(loRaFishIsSleeping(), from.isFav());
+  if (bedtimeQuiet) handleLoRaFishQuietMessage();
+  else handleLoRaFishMessage();
 #else
   uint8_t path_len = pkt->isRouteFlood() ? pkt->path_len : 0xFF;
   ((MsgPreviewScreen *) msg_preview)->addPreview(path_len, from.name, text);
@@ -5208,12 +5212,18 @@ void UITask::onMessageRecv(mesh::Packet *pkt, const ContactInfo &from, uint8_t t
   }
 #endif
 
+#ifdef LORAFISH_UI
+  if (bedtimeQuiet) return;
+#endif
   if (!hasConnection()) notify(UIEventType::contactMessage);
 }
 
 void UITask::onChannelMessageRecv(mesh::Packet *pkt, ChannelDetails& channel_details, const char* text) {
 #ifdef LORAFISH_UI
-  handleLoRaFishMessage();
+  // Channels have no favourites: asleep means quiet.
+  const bool bedtimeQuiet = LoRaFishBedtime::quiet(loRaFishIsSleeping(), false);
+  if (bedtimeQuiet) handleLoRaFishQuietMessage();
+  else handleLoRaFishMessage();
 #else
   uint8_t path_len = pkt->isRouteFlood() ? pkt->path_len : 0xFF;
   ((MsgPreviewScreen *) msg_preview)->addPreview(path_len, channel_details.name, text);
@@ -5227,6 +5237,9 @@ void UITask::onChannelMessageRecv(mesh::Packet *pkt, ChannelDetails& channel_det
   }
 #endif
 
+#ifdef LORAFISH_UI
+  if (bedtimeQuiet) return;
+#endif
   if (!hasConnection()) notify(UIEventType::channelMessage);
 }
 
@@ -5242,6 +5255,14 @@ void UITask::handleLoRaFishMessage() {
     _auto_off = loRaFishScreenTimeoutMs() ? millis() + loRaFishScreenTimeoutMs() : 0xFFFFFFFFUL;
     _next_refresh = 0;
   }
+}
+
+// Bedtime quiet: the pet still counts and reacts to the message, but it does not
+// extend the screen timeout or dimming, so a lit screen times out as usual.
+void UITask::handleLoRaFishQuietMessage() {
+  fish.messages++;
+  reactLoRaFish(1);
+  gotoHomeScreen();
 }
 #endif
 
