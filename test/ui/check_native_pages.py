@@ -35,6 +35,8 @@ struct {uint32_t pin=0;uint32_t getBLEPin(){return pin;}}the_mesh;
 struct {uint32_t ageMinutes=0xffffffff,rfEvents=0xffffffff,messages=0xffffffff,txAcks=0xffffffff;uint8_t happiness=100;}fish;
 static uint16_t loRaFishGeneration=65535;
 static uint16_t battery=4200;static uint16_t loRaFishDisplayBattery(UITask*){return battery;}
+#include "examples/companion_radio/ui-new/LoRaFishBattery.h"
+static bool loRaFishColorDisplay=false;
 static bool clockValid=true;
 static bool loRaFishClock(char*t,size_t tn,char*d,size_t dn){snprintf(t,tn,"23:59");snprintf(d,dn,"2026-11-07");return clockValid;}
 static uint32_t lorafish_rf_sample_seq=0,loRaFishRfSeenSeq=0,lorafish_last_rf_ms=0;
@@ -67,12 +69,14 @@ public:
  bool has(const char*s){return std::find(printed.begin(),printed.end(),s)!=printed.end();}
 };
 '''
+code+=block('static int loRaFishBatteryPercent(')+chr(10)+'static LoRaFishBattery::Tracker loRaFishBatteryTracker;'+chr(10)+block('static void drawLoRaFishBatteryLeft(')+chr(10)
 for name in ['drawLoRaFishHeader','drawLoRaFishStats','drawLoRaFishClockPage','drawLoRaFishPairing','drawLoRaFishRFMonitor','drawLoRaFishGNSS','drawLoRaFishChannelNotice','drawLoRaFishNameNotice','drawLoRaFishMonoDisplayNotice']:
  code+=block('static void '+name+'(')+chr(10)
 code+=r'''
 int main(){
  UITask task;
- for(auto dims:{std::pair<int,int>{320,170},{320,240},{240,135}}){
+ for(bool colour:{false,true})for(auto dims:{std::pair<int,int>{320,170},{320,240},{240,135}}){
+  loRaFishColorDisplay=colour;
   auto render=[&](auto draw){Recorder out(dims.first,dims.second);LoRaFishLayout::Page card(out);draw(card);return out;};
   for(uint32_t pin:{0u,123456u}){
    the_mesh.pin=pin;auto out=render([&](DisplayDriver&d){drawLoRaFishPairing(d);});

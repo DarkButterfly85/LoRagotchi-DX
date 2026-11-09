@@ -115,6 +115,7 @@ static void tdeckTouchPoll() {
 #include "../LoRaFishColour.h"
 #include "../LoRaFishSpecies.h"
 #include "LoRaFishLifeArt.h"
+#include "LoRaFishBattery.h"
 #if LORAGOTCHI_SPECIES_EDITION
 #include "LoRaFishWaterSprite.h"
 #if LORAGOTCHI_HAS_AIR
@@ -2358,6 +2359,43 @@ static uint16_t loRaFishDisplayBattery(UITask* task) {
   return loRaFishBatteryMilliVolts;
 }
 
+// Colour screens follow a Li-ion discharge curve and show a time-left estimate.
+// Monochrome and e-ink keep the original straight 3.3-4.2 V line, unchanged.
+static int loRaFishBatteryPercent(uint16_t mv) {
+  if (loRaFishColorDisplay) return LoRaFishBattery::percent(mv);
+  return constrain(((int)mv - 3300) * 100 / 900, 0, 100);
+}
+
+static LoRaFishBattery::Tracker loRaFishBatteryTracker;
+
+// Called from the main loop on colour screens only; reads the battery once
+// every five minutes (charger checked every 10 s), so the screen can be off
+// and the estimate still builds.
+static void loRaFishTrackBattery(UITask* task) {
+  static uint32_t lastPoll = 0;
+  static bool polled = false;
+  const uint32_t now = millis();
+  if (polled && now - lastPoll < 10000UL) return;  // cheap: at most every 10 s
+  polled = true;
+  lastPoll = now;
+  const bool charging = board.isExternalPowered();
+  if (charging) loRaFishBatteryTracker.sample(now, 0, true);  // forget the discharge history
+  else if (loRaFishBatteryTracker.due(now))
+    loRaFishBatteryTracker.sample(now, task->getBattMilliVolts(), false);
+  else loRaFishBatteryTracker.charging = false;
+}
+
+// Colour only: "~5.5h" style estimate, drawn in the gap between the gauge and
+// the RX text. Skipped when it would not fit.
+static void drawLoRaFishBatteryLeft(DisplayDriver& display, int x, int y, int rightLimit) {
+  char text[12];
+  LoRaFishBattery::formatLeft(loRaFishBatteryTracker, text, sizeof(text));
+  if (x + display.getTextWidth(text) + 3 > rightLimit) return;
+  display.setColor(UIColor::secondary_txt);
+  display.setCursor(x, y);
+  display.print(text);
+}
+
 // Compact battery icon immediately to the left of the aquarium clock.
 // Uses the same 3.3-4.2 V percentage mapping as the RF monitor.
 static void drawLoRaFishTankBattery(DisplayDriver& display, UITask* task,
@@ -2372,7 +2410,7 @@ static void drawLoRaFishTankBattery(DisplayDriver& display, UITask* task,
 #endif
   if (x < 0) return;
   const uint16_t mv = loRaFishDisplayBattery(task);
-  const int pct = constrain(((int)mv - 3300) * 100 / 900, 0, 100);
+  const int pct = loRaFishBatteryPercent(mv);
   display.setColor(UIColor::primary_txt);
 #if defined(LILYGO_TDECK)
   // T-Deck: battery is 12x7, close to the 8px header glyph height.
@@ -3160,8 +3198,7 @@ static void drawLoRaFishRFMonitor(DisplayDriver& display, UITask* task) {
 
   char right[16];
   uint16_t mv=loRaFishDisplayBattery(task);
-  int batt=(int)((mv-3300L)*100L/(4200L-3300L));
-  batt=constrain(batt,0,100);
+  const int batt=loRaFishBatteryPercent(mv);
   snprintf(right,sizeof(right),"BAT %d%%",batt);
   drawLoRaFishHeader(display,"RF MONITOR",right);
 
@@ -3185,12 +3222,15 @@ static void drawLoRaFishRFMonitor(DisplayDriver& display, UITask* task) {
   }
 
   display.setColor(UIColor::secondary_txt);
+  int rxLeft=w-2;  // left edge of the RX text (colour battery estimate stays clear of it)
   if (lorafish_last_rf_ms==0) {
     display.drawTextRightAlign(w-2,55,"RX --");
+    if (loRaFishColorDisplay) rxLeft=w-2-display.getTextWidth("RX --");
   } else {
     unsigned long age=(millis()-lorafish_last_rf_ms)/1000UL;
     snprintf(line,sizeof(line),"RX %lus",age);
     display.drawTextRightAlign(w-2,55,line);
+    if (loRaFishColorDisplay) rxLeft=w-2-display.getTextWidth(line);
   }
 
   // Graphical battery gauge.
@@ -3199,6 +3239,7 @@ static void drawLoRaFishRFMonitor(DisplayDriver& display, UITask* task) {
   display.fillRect(bx+bw,by+2,2,3);
   int fill=(batt*(bw-4))/100;
   if(fill>0) display.fillRect(bx+2,by+2,fill,bh-4);
+  if (loRaFishColorDisplay) drawLoRaFishBatteryLeft(display,bx+bw+8,55,rxLeft);
 }
 
 static void drawLoRaFishGNSS(DisplayDriver& display, UITask* task) {
@@ -5766,6 +5807,10 @@ void UITask::loop() {
 
 #ifdef PIN_VIBRATION
   vibration.loop();
+#endif
+
+#ifdef LORAFISH_UI
+  if (loRaFishColorDisplay) loRaFishTrackBattery(this);  // colour only; mono never reads the ADC extra
 #endif
 
 #ifdef AUTO_SHUTDOWN_MILLIVOLTS
