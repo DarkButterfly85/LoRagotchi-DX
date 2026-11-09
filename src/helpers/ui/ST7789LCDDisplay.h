@@ -7,6 +7,9 @@
 #include <Adafruit_ST7789.h>
 #include <helpers/RefCountedDigitalPin.h>
 
+// 16-bit RGB565 colour panel: lets the pet UI compile its colour tank scenery (see UITask.cpp).
+#define LORAGOTCHI_RGB565_PANEL 1
+
 #if defined(LORAGOTCHI_T190_COLOR) && (!defined(HELTEC_VISION_MASTER_T190) || !defined(LORAFISH_TDECK_FRAMEBUFFER))
 #error "T190 colour requires the T190 board and full-frame RGB565 canvas"
 #endif

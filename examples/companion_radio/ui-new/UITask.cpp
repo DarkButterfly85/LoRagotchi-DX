@@ -2064,6 +2064,14 @@ static void drawElderFishSprite(DisplayDriver& d, int x, int y, bool right,
   }
 }
 
+// Colour tank scenery for the other colour panels (T190, T114, V4 TFT, ST7735 ...). The colour
+// drivers announce themselves with LORAGOTCHI_RGB565_PANEL; the T-Deck and Cardputer/T-Watch keep
+// their own scenery macros and are not touched. 1-bit and e-ink drivers never define it, so
+// those builds compile none of the colour tank code.
+#if defined(LORAGOTCHI_RGB565_PANEL) && !defined(LORAFISH_CARDPUTER_25D) && !defined(LORAFISH_TDECK_PIXEL_ART)
+#define LORAFISH_COLOUR_TANK 1
+#endif
+
 // Cardputer-only lightweight 2.5D effects. Other boards compile none of this.
 #if defined(LORAFISH_CARDPUTER_25D)
 #if defined(LORAFISH_TALL_TANK)
@@ -2093,6 +2101,9 @@ static void drawCardputerFishDepth(DisplayDriver& d,int x,int y,bool right,uint8
   d.fillRect(x+(right ? -radius-5 : radius+3),y-2+sway,2,3);
 }
 
+#endif
+// Native-size colour tank: Cardputer 240x135 as designed, repeated across wider panels.
+#if defined(LORAFISH_CARDPUTER_25D) || defined(LORAFISH_COLOUR_TANK)
 static void drawCardputerTankDepth(DisplayDriver& d) {
   const int w=d.width(),h=d.height();
   // Horizontal bands are deliberately cheap on the ESP32-S3's display driver.
@@ -2104,14 +2115,14 @@ static void drawCardputerTankDepth(DisplayDriver& d) {
   }
   // Surface shafts of light, offset in successive bands for depth.
   d.setColor(0x2B75);
-  for(int i=0;i<5;i++) {
+  for(int i=0;i<5 || 18+i*48-13<w;i++) {  // extra shafts only on panels wider than 240 px
     int x=18+i*48;
     fishLine(d,x,18,x-13,39);
     fishLine(d,x+3,18,x-10,39);
   }
   // Far-off reef silhouettes.
   d.setColor(0x0147);
-  for(int i=0;i<7;i++) {
+  for(int i=0;i<7 || i*43-12<w;i++) {
     int x=i*43-12, y=h-31+(i%3)*3;
     d.fillRect(x,y,30,h-18-y);
     d.fillRect(x+8,y-5,12,6);
@@ -2121,7 +2132,7 @@ static void drawCardputerTankDepth(DisplayDriver& d) {
   d.setColor(0x9C4B); d.fillRect(0,h-18,w,3);
   d.setColor(0xDDAF); d.fillRect(0,h-15,w,1);
   // Parallax seaweed: stems sway gently with millis(), no buffers/allocations.
-  for(int i=0;i<7;i++) {
+  for(int i=0;i<7 || 8+i*37<w;i++) {
     int x=8+i*37, base=h-24, tall=13+(i%3)*5;
     int sway=(int)((millis()/480UL+i*3)%5)-2;
     d.setColor((i%2)?0x03C8:0x05A8);
@@ -2130,7 +2141,7 @@ static void drawCardputerTankDepth(DisplayDriver& d) {
   }
   // Tiny rising particles add depth without expensive alpha blending.
   d.setColor(0x6DBB);
-  for(int i=0;i<8;i++) {
+  for(int i=0;i<8 || 9+i*29<w;i++) {
     int x=9+i*29, y=20+((i*17+millis()/190UL)%(unsigned)(span>1?span:1));
     d.fillRect(x,y,1,1);
   }
@@ -3217,7 +3228,7 @@ static void drawLoRaFishGNSS(DisplayDriver& display, UITask* task) {
 
 // T-Deck 16-bit aquarium scenery. All shapes are integer pixel primitives;
 // no spritesheets, dynamic allocation, or additional flash partitions.
-#if defined(LORAFISH_TDECK_PIXEL_ART)
+#if defined(LORAFISH_TDECK_PIXEL_ART) || defined(LORAFISH_COLOUR_TANK)
 static void drawTDeckPixelAquarium(DisplayDriver& d) {
   const int w=d.width(), h=d.height();
   const int top=17, bottom=h-17, span=bottom-top;
@@ -3443,6 +3454,25 @@ static bool loRaFishAnimalHome() {
 #endif
 }
 
+#if defined(LORAFISH_COLOUR_TANK)
+// Colour panels without a scenery macro of their own. Tall (native, h>64) panels use the Cardputer
+// layout, 64-row logical panels (ST7735) use the T-Deck layout; both are RGB565 and the panels'
+// 16-bit depth shows every colour, so no palette substitution is needed.
+static void drawLoRaFishColourTank(DisplayDriver& d) {
+  if(d.height()>64) drawCardputerTankDepth(d);
+  else drawTDeckPixelAquarium(d);
+}
+#endif
+// True when the colour tank replaces the grey perimeter reeds and rocks. Always false on mono panels
+// and on builds that compile no colour tank, so those keep drawing exactly what they drew before.
+static bool loRaFishColourTank() {
+#if defined(LORAFISH_COLOUR_TANK)
+  return loRaFishColorDisplay && !loRaFishAnimalHome();
+#else
+  return false;
+#endif
+}
+
 static void drawLoRaFishNativeScenery(DisplayDriver& d) {
 #ifdef LORAGOTCHI_NATIVE_UI
   if(d.height()<=64) return;
@@ -3546,6 +3576,8 @@ static void drawLoRaFishAquarium(DisplayDriver& display, UITask* task) {
     drawCardputerTankDepth(LORAFISH_SCENERY_CANVAS(display));
 #elif defined(LORAFISH_TDECK_PIXEL_ART)
     drawTDeckPixelAquarium(display);
+#elif defined(LORAFISH_COLOUR_TANK)
+    if (loRaFishColorDisplay) drawLoRaFishColourTank(display);
 #endif
   }
 #elif LORAGOTCHI_AIR_EDITION
@@ -3556,11 +3588,13 @@ static void drawLoRaFishAquarium(DisplayDriver& display, UITask* task) {
   drawCardputerTankDepth(LORAFISH_SCENERY_CANVAS(display));
 #elif defined(LORAFISH_TDECK_PIXEL_ART)
   drawTDeckPixelAquarium(display);
+#elif defined(LORAFISH_COLOUR_TANK)
+  if (loRaFishColorDisplay) drawLoRaFishColourTank(display);
 #endif
 #if LORAGOTCHI_DXPRO
-  drawLoRaFishHomeScenery(display);
+  if (!loRaFishColourTank()) drawLoRaFishHomeScenery(display);
 #else
-  drawLoRaFishNativeScenery(display);
+  if (!loRaFishColourTank()) drawLoRaFishNativeScenery(display);
 #endif
   drawLoRaFishHeader(display,loRaFishDisplayName(),tb);
   drawLoRaFishTankBattery(display,task,tb);
@@ -3835,6 +3869,8 @@ static void drawLoRaFishSleeping(DisplayDriver& display, UITask* task) {
 #elif defined(LORAFISH_TDECK_PIXEL_ART)
     drawTDeckPixelAquarium(display);
     drawLoRaFishBubbles(display);
+#elif defined(LORAFISH_COLOUR_TANK)
+    if (loRaFishColorDisplay) { drawLoRaFishColourTank(display); drawLoRaFishBubbles(display); }
 #endif
   }
 #elif LORAGOTCHI_AIR_EDITION
@@ -3848,11 +3884,13 @@ static void drawLoRaFishSleeping(DisplayDriver& display, UITask* task) {
   // Sleeping fish stays inside the same aquarium as the awake fish.
   drawTDeckPixelAquarium(display);
   drawLoRaFishBubbles(display);
+#elif defined(LORAFISH_COLOUR_TANK)
+  if (loRaFishColorDisplay) { drawLoRaFishColourTank(display); drawLoRaFishBubbles(display); }
 #endif
 #if LORAGOTCHI_DXPRO
-  drawLoRaFishHomeScenery(display);
+  if (!loRaFishColourTank()) drawLoRaFishHomeScenery(display);
 #else
-  drawLoRaFishNativeScenery(display);
+  if (!loRaFishColourTank()) drawLoRaFishNativeScenery(display);
 #endif
   drawLoRaFishHeader(display,loRaFishDisplayName(),tb);
   drawLoRaFishTankBattery(display,task,tb);
