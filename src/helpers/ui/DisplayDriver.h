@@ -27,6 +27,10 @@ public:
   virtual bool supportsPartialUpdates() const { return false; }
   virtual void setPartialUpdates(bool partial) { (void)partial; }
   virtual bool supportsColor() const { return false; }
+  // Row pitch for stacked menu text, in this driver's own coordinate units: size-1 font height plus one
+  // pixel. 9 is the 8 px font of the 128x64 reference. Drivers that draw smaller or larger glyphs than
+  // that in their coordinate units override it, so menus pack tight instead of using a fixed gap.
+  virtual int menuRowPitch() const { return 9; }
 
   virtual bool isOn() = 0;
   virtual bool isEink() { return false; } // default to non-eink, override in eink drivers

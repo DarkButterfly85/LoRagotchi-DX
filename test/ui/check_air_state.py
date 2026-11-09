@@ -42,16 +42,17 @@ int main() {
     assert(loRaFishEggSpecies==id);saveLoRaFish();reboot();assert(loRaFishEggSpecies==id);
     hatchLoRaFishOffspring();assert(loRaFishSpecies==id && loRaFishGeneration==8);
   }
-  resetAt(5000);loRaFishSpecies=LoRaFishSpecies::Owl;loragotchiDXGuest.present=true;loragotchiDXGuest.species=LoRaFishSpecies::Parrot;
-  randomChoice=0;assert(breedLoRaFishWithGuest());assert(loRaFishEggSpecies==LoRaFishSpecies::Owl);
-  resetAt(5000);loRaFishSpecies=LoRaFishSpecies::Owl;loragotchiDXGuest.present=true;loragotchiDXGuest.species=LoRaFishSpecies::Parrot;
-  randomChoice=1;assert(breedLoRaFishWithGuest());assert(loRaFishEggSpecies==LoRaFishSpecies::Parrot);
-  // Unknown or other-edition guest IDs never reach the egg; the local species is used.
-  for(unsigned bad:{12U,0U,15U,255U,274U,65535U}) {
-    resetAt(5000);loRaFishSpecies=LoRaFishSpecies::Owl;loragotchiDXGuest.present=true;loragotchiDXGuest.species=bad;
-    randomChoice=1;assert(breedLoRaFishWithGuest());assert(loRaFishEggSpecies==LoRaFishSpecies::Owl);
+  // Breeding is same-species only: an Owl and an Owl breed, and the egg is an Owl.
+  for(long choice:{0L,1L}) {
+    resetAt(5000);loRaFishSpecies=LoRaFishSpecies::Owl;loragotchiDXGuest.present=true;loragotchiDXGuest.species=LoRaFishSpecies::Owl;
+    randomChoice=choice;assert(breedLoRaFishWithGuest());assert(loRaFishEggSpecies==LoRaFishSpecies::Owl);
   }
-  pass("solo inheritance and both parent species paths use stable saved egg identity");
+  // A different Air species, a Water ID, a reserved ID and unknown IDs are all refused.
+  for(unsigned bad:{(unsigned)LoRaFishSpecies::Parrot,12U,0U,15U,255U,274U,65535U}) {
+    resetAt(5000);loRaFishSpecies=LoRaFishSpecies::Owl;loragotchiDXGuest.present=true;loragotchiDXGuest.species=bad;
+    randomChoice=1;assert(!breedLoRaFishWithGuest());assert(!loRaFishPendingEgg && settingsWrites==0);
+  }
+  pass("solo inheritance and same-species breeding use stable saved egg identity; other guests are refused");
   resetAt(0);resetLoRaFishPet();assert(loRaFishNeedsPetSetup && !loRaFishMysterySeed && loRaFishSpecies==256);
   randomChoice=123;chooseLoRaFishMysteryColours();
   uint32_t seed=loRaFishMysterySeed;auto appearance=loRaFishLocalAppearance();

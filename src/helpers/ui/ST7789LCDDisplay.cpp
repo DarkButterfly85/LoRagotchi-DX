@@ -289,6 +289,16 @@ uint16_t ST7789LCDDisplay::getTextWidth(const char* str) {
   return w / DISPLAY_SCALE_X;
 }
 
+// Size-1 text is 8 physical pixels tall times the integer text scale (setTextSize truncates the float
+// scale). A menu row needs that plus one clear pixel, expressed in UI rows (rounded up so lines never
+// touch). Native panels are 1:1, so this is the usual 9. The scaled T-Deck grid (2.5x, 3.75x) draws 16 px
+// glyphs, so it needs 5 grid rows (18.75 px) per line instead of the 9 (33.75 px) the 8 px reference uses.
+int ST7789LCDDisplay::menuRowPitch() const {
+  const int glyphPixels = 8 * static_cast<int>(DISPLAY_SCALE_X);
+  const int pitch = static_cast<int>((glyphPixels + 1) / DISPLAY_SCALE_Y + 0.999f);
+  return pitch < 4 ? 4 : pitch > 9 ? 9 : pitch;
+}
+
 void ST7789LCDDisplay::endFrame() {
 #ifdef LORAFISH_TDECK_FRAMEBUFFER
   if (_frameActive && _frame) {

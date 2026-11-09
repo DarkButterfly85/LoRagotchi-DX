@@ -39,11 +39,17 @@ int main() {
     assert(loRaFishEggSpecies==id);saveLoRaFish();reboot();assert(loRaFishEggSpecies==id);
     hatchLoRaFishOffspring();assert(loRaFishSpecies==id && loRaFishGeneration==8);
   }
-  resetAt(5000);loRaFishSpecies=9;loragotchiDXGuest.present=true;loragotchiDXGuest.species=12;
-  randomChoice=0;assert(breedLoRaFishWithGuest());assert(loRaFishEggSpecies==9);
-  resetAt(5000);loRaFishSpecies=9;loragotchiDXGuest.present=true;loragotchiDXGuest.species=12;
-  randomChoice=1;assert(breedLoRaFishWithGuest());assert(loRaFishEggSpecies==12);
-  pass("solo inheritance and both parent species paths use stable saved egg identity");
+  // Breeding is same-species only: a Crab and a Crab breed, and the egg is a Crab.
+  for(long choice:{0L,1L}) {
+    resetAt(5000);loRaFishSpecies=9;loragotchiDXGuest.present=true;loragotchiDXGuest.species=9;
+    randomChoice=choice;assert(breedLoRaFishWithGuest());assert(loRaFishEggSpecies==9);
+  }
+  // A different Water species, an Air ID, a reserved ID and unknown IDs are all refused.
+  for(unsigned bad:{12U,0U,15U,255U,256U,262U,273U,65535U}) {
+    resetAt(5000);loRaFishSpecies=9;loragotchiDXGuest.present=true;loragotchiDXGuest.species=bad;
+    randomChoice=1;assert(!breedLoRaFishWithGuest());assert(!loRaFishPendingEgg && settingsWrites==0);
+  }
+  pass("solo inheritance and same-species breeding use stable saved egg identity; other guests are refused");
   resetAt(0);resetLoRaFishPet();assert(loRaFishNeedsPetSetup && !loRaFishMysterySeed && !loRaFishSpecies);
   randomChoice=123;chooseLoRaFishMysteryColours();
   uint32_t seed=loRaFishMysterySeed;auto appearance=loRaFishLocalAppearance();

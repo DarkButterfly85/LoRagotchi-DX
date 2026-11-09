@@ -117,8 +117,11 @@ static void tdeckTouchPoll() {
 #include "LoRaFishLifeArt.h"
 #if LORAGOTCHI_SPECIES_EDITION
 #include "LoRaFishWaterSprite.h"
-#if LORAGOTCHI_AIR_EDITION
+#if LORAGOTCHI_HAS_AIR
 #include "LoRaFishAirSprite.h"
+#endif
+#if LORAGOTCHI_HAS_LAND
+#include "LoRaFishLandSprite.h"
 #endif
 #endif
 #include "../MyMesh.h"
@@ -632,15 +635,28 @@ static void cancelLoRaFishValue() {
   // Standalone pickers return to Display; field pickers return to their field list.
   if (loRaFishPage == 8 || loRaFishPage == 13 || loRaFishPage == 15) loRaFishPage = 12;
 }
+#if LORAGOTCHI_DXPRO
+// DX-Pro menu is two steps: SpeciesSet (Water/Air/Land) then Species inside that set. Only the species
+// ID is stored, so the chosen set lives in RAM for the duration of the menu.
+static uint8_t loRaFishProSet = 0;
+#endif
 static void openLoRaFishValue(LoRaFishSetting setting) {
   uint8_t value = 0, count = 0;
   switch (setting) {
     case LoRaFishSetting::Species:
-#if LORAGOTCHI_SPECIES_EDITION
+#if LORAGOTCHI_DXPRO
+      // Asking for the species opens step one; step two is opened by selecting a set.
+      loRaFishProSet = LoRaFishSpecies::setOf(loRaFishSpecies);
+      value = loRaFishProSet; count = LoRaFishSpecies::setCount;
+      loRaFishValuePicker.open(LoRaFishSetting::SpeciesSet, value, count);
+      return;
+#elif LORAGOTCHI_SPECIES_EDITION
       value = LoRaFishSpecies::selectionIndex(loRaFishSpecies);
       count = LoRaFishSpecies::selectableCount + (loRaFishNeedsPetSetup ? 1 : 0);
 #endif
       break;
+    case LoRaFishSetting::SpeciesSet:
+      break; // opened through Species in DX-Pro; never reachable in the other builds
     case LoRaFishSetting::Theme: value = loRaFishTheme; count = loRaFishThemeCount(); break;
     case LoRaFishSetting::DisplayUpdate: value = loRaFishPartial; count = loRaFishPartialSupported ? 2 : 0; break;
     case LoRaFishSetting::Orientation: value = loRaFishOrientation; count = loRaFishOrientationSupported ? 2 : 0; break;
@@ -681,8 +697,21 @@ static void selectLoRaFishValue() {
   if (!loRaFishValuePicker.select(value)) return;
   tickLoRaFish();
   switch (loRaFishValuePicker.key()) {
+    case LoRaFishSetting::SpeciesSet:
+#if LORAGOTCHI_DXPRO
+      // Step one done: remember the set and open step two on it (current species if it lives there).
+      loRaFishProSet=value<LoRaFishSpecies::setCount ? value : 0;
+      loRaFishValuePicker.open(LoRaFishSetting::Species,
+          LoRaFishSpecies::setOf(loRaFishSpecies)==loRaFishProSet ? LoRaFishSpecies::setSelectionIndex(loRaFishSpecies) : 0,
+          LoRaFishSpecies::setSize(loRaFishProSet) + (loRaFishNeedsPetSetup ? 1 : 0));
+#endif
+      return; // nothing to persist yet; the species picker is now active
     case LoRaFishSetting::Species:
-#if LORAGOTCHI_SPECIES_EDITION
+#if LORAGOTCHI_DXPRO
+      loRaFishMysterySelected=(value==LoRaFishSpecies::setSize(loRaFishProSet));
+      if (loRaFishMysterySelected) { ensureLoRaFishMysterySeed(); loRaFishSpecies=LoRaFishSpecies::setMystery(loRaFishMysterySeed,loRaFishProSet); }
+      else loRaFishSpecies=LoRaFishSpecies::setSelectionId(loRaFishProSet,value);
+#elif LORAGOTCHI_SPECIES_EDITION
       loRaFishMysterySelected=(value==LoRaFishSpecies::selectableCount);
       if (value==LoRaFishSpecies::selectableCount) { ensureLoRaFishMysterySeed(); loRaFishSpecies=LoRaFishSpecies::mystery(loRaFishMysterySeed); }
       else loRaFishSpecies=LoRaFishSpecies::selectionId(value);
@@ -978,18 +1007,23 @@ static uint8_t inheritLoRaFishColor(uint8_t localColor,uint8_t visitorColor) {
   return LoRaFishColour::inherit(localColor, visitorColor, (unsigned)random(0,241));
 }
 
+// Breeding is same-species only. The guest species arrives from the wire, so it
+// must be known to this edition AND equal the local species; a guest with an
+// unknown or other-habitat ID can never match and is refused.
+static bool loRaFishGuestSameSpecies() {
+  return LoRaFishSpecies::editionKnown(loragotchiDXGuest.species) &&
+      loragotchiDXGuest.species==loRaFishSpecies;
+}
+
 static bool breedLoRaFishWithGuest() {
-  if (!loRaFishCanBreed()) return false;
+  if (!loRaFishCanBreed() || !loRaFishGuestSameSpecies()) return false;
   const LoRaFishAppearance local=loRaFishLocalAppearance();
   const LoRaFishAppearance visitor=loRaFishGuestAppearance();
   loRaFishEggAppearance.scales=inheritLoRaFishColor(local.scales,visitor.scales);
   loRaFishEggAppearance.body=inheritLoRaFishColor(local.body,visitor.body);
   loRaFishEggAppearance.eyes=inheritLoRaFishColor(local.eyes,visitor.eyes);
-  // Guest species arrives from the wire: only accept IDs known to this edition,
-  // otherwise breed from the local species.
-  const uint16_t guestSpecies=LoRaFishSpecies::editionKnown(loragotchiDXGuest.species)
-      ? loragotchiDXGuest.species : loRaFishSpecies;
-  loRaFishEggSpecies=random(0,2) ? guestSpecies : loRaFishSpecies;
+  // Both parents are the same species (gated above), so the egg is that species.
+  loRaFishEggSpecies=loRaFishSpecies;
   loRaFishPendingEgg=true;
   loRaFishMemorialEggSide=0;
   saveLoRaFishSettings();
@@ -2030,6 +2064,20 @@ static void drawElderFishSprite(DisplayDriver& d, int x, int y, bool right,
   }
 }
 
+// Colour tank scenery for the other colour panels (T190, T114, V4 TFT, ST7735 ...). The colour
+// drivers announce themselves with LORAGOTCHI_RGB565_PANEL; the T-Deck and Cardputer/T-Watch keep
+// their own scenery macros and are not touched. 1-bit and e-ink drivers never define it, so
+// those builds compile none of the colour tank code.
+#if defined(LORAGOTCHI_RGB565_PANEL) && !defined(LORAFISH_CARDPUTER_25D) && !defined(LORAFISH_TDECK_PIXEL_ART)
+#define LORAFISH_COLOUR_TANK 1
+#endif
+// Colour Air and Land scenes: every colour panel above, and also the T-Deck and the Cardputer, whose
+// Water tanks keep their own scenery. The T-Watch tall canvas is left as it was.
+#if (defined(LORAGOTCHI_RGB565_PANEL) || defined(LORAFISH_CARDPUTER_25D) || defined(LORAFISH_TDECK_PIXEL_ART)) && \
+    !defined(LORAFISH_TALL_TANK)
+#define LORAFISH_COLOUR_SCENES 1
+#endif
+
 // Cardputer-only lightweight 2.5D effects. Other boards compile none of this.
 #if defined(LORAFISH_CARDPUTER_25D)
 #if defined(LORAFISH_TALL_TANK)
@@ -2059,6 +2107,9 @@ static void drawCardputerFishDepth(DisplayDriver& d,int x,int y,bool right,uint8
   d.fillRect(x+(right ? -radius-5 : radius+3),y-2+sway,2,3);
 }
 
+#endif
+// Native-size colour tank: Cardputer 240x135 as designed, repeated across wider panels.
+#if defined(LORAFISH_CARDPUTER_25D) || defined(LORAFISH_COLOUR_TANK)
 static void drawCardputerTankDepth(DisplayDriver& d) {
   const int w=d.width(),h=d.height();
   // Horizontal bands are deliberately cheap on the ESP32-S3's display driver.
@@ -2070,14 +2121,14 @@ static void drawCardputerTankDepth(DisplayDriver& d) {
   }
   // Surface shafts of light, offset in successive bands for depth.
   d.setColor(0x2B75);
-  for(int i=0;i<5;i++) {
+  for(int i=0;i<5 || 18+i*48-13<w;i++) {  // extra shafts only on panels wider than 240 px
     int x=18+i*48;
     fishLine(d,x,18,x-13,39);
     fishLine(d,x+3,18,x-10,39);
   }
   // Far-off reef silhouettes.
   d.setColor(0x0147);
-  for(int i=0;i<7;i++) {
+  for(int i=0;i<7 || i*43-12<w;i++) {
     int x=i*43-12, y=h-31+(i%3)*3;
     d.fillRect(x,y,30,h-18-y);
     d.fillRect(x+8,y-5,12,6);
@@ -2087,7 +2138,7 @@ static void drawCardputerTankDepth(DisplayDriver& d) {
   d.setColor(0x9C4B); d.fillRect(0,h-18,w,3);
   d.setColor(0xDDAF); d.fillRect(0,h-15,w,1);
   // Parallax seaweed: stems sway gently with millis(), no buffers/allocations.
-  for(int i=0;i<7;i++) {
+  for(int i=0;i<7 || 8+i*37<w;i++) {
     int x=8+i*37, base=h-24, tall=13+(i%3)*5;
     int sway=(int)((millis()/480UL+i*3)%5)-2;
     d.setColor((i%2)?0x03C8:0x05A8);
@@ -2096,7 +2147,7 @@ static void drawCardputerTankDepth(DisplayDriver& d) {
   }
   // Tiny rising particles add depth without expensive alpha blending.
   d.setColor(0x6DBB);
-  for(int i=0;i<8;i++) {
+  for(int i=0;i<8 || 9+i*29<w;i++) {
     int x=9+i*29, y=20+((i*17+millis()/190UL)%(unsigned)(span>1?span:1));
     d.fillRect(x,y,1,1);
   }
@@ -2107,8 +2158,14 @@ static void drawFishSpriteForStage(DisplayDriver& d,int x,int y,bool right,uint8
                                   const LoRaFishAppearance& appearance,uint16_t species=0) {
 #if LORAGOTCHI_SPECIES_EDITION
   species=LoRaFishSpecies::renderId(species);
-#if !LORAGOTCHI_AIR_EDITION
+#if LORAGOTCHI_DXPRO
+  // DX-Pro draws every registry: anything known is drawn by its own set's sprite, the rest as the fish.
+#elif LORAGOTCHI_LAND_EDITION
+  if (!LoRaFishSpecies::landKnown(species) && !LoRaFishSpecies::waterKnown(species)) species=0;
+#elif !LORAGOTCHI_AIR_EDITION
   if (!LoRaFishSpecies::waterKnown(species)) species=0;
+#else
+  if (LoRaFishSpecies::landKnown(species)) species=0; // Land IDs are never drawn by Air builds
 #endif
   if (species) {
     ColorVal body=loRaFishColorValue(appearance.body), fins=loRaFishColorValue(appearance.scales);
@@ -2122,7 +2179,20 @@ static void drawFishSpriteForStage(DisplayDriver& d,int x,int y,bool right,uint8
       const unsigned light=((body>>11)&31)*299*2+((body>>5)&63)*587+(body&31)*114*2;
       eyes=loRaFishColorDisplay ? (light>=31500 ? 0x2104 : 0xDEFB) : UIColor::window_bkg;
     }
-#if LORAGOTCHI_AIR_EDITION
+#if LORAGOTCHI_DXPRO
+    if (LoRaFishSpecies::landKnown(species))
+      LoRaFishLandSprite::draw(d,x,y,right,species,stage,(uint32_t)millis(),
+          body,fins,eyes,UIColor::window_bkg);
+    else if (LoRaFishSpecies::airKnown(species))
+      LoRaFishAirSprite::draw(d,x,y,right,species,stage,(uint32_t)millis(),
+          body,fins,eyes,UIColor::window_bkg);
+    else
+#elif LORAGOTCHI_LAND_EDITION
+    if (LoRaFishSpecies::landKnown(species))
+      LoRaFishLandSprite::draw(d,x,y,right,species,stage,(uint32_t)millis(),
+          body,fins,eyes,UIColor::window_bkg);
+    else
+#elif LORAGOTCHI_AIR_EDITION
     if (LoRaFishSpecies::airKnown(species))
       LoRaFishAirSprite::draw(d,x,y,right,species,stage,(uint32_t)millis(),
           body,fins,eyes,UIColor::window_bkg);
@@ -2453,15 +2523,18 @@ static const char* loRaFishOptionLabel(LoRaFishOption option) {
   return labels[static_cast<uint8_t>(option)];
 }
 
-static void drawLoRaFishMenuHint(DisplayDriver& display) {
+// List menus pass flow=true: they are laid out in real panel rows (LoRaFishMenuLayout), so the hint sits on
+// the panel's bottom edge. Pages still drawn in the stretched 64 px frame keep their historic row 56.
+static void drawLoRaFishMenuHint(DisplayDriver& display, bool flow=false) {
   display.setColor(UIColor::secondary_txt);
+  const int y = flow ? LoRaFishMenuLayout::hintY(display.height()) : 56;
 #if defined(LORAFISH_WATCH_TOUCH)
   // LilyGo T-Watch S3: the footer already shows the taps; only hold needs a hint.
-  display.drawTextCentered(display.width()/2, 56, "LONG HOLD:SELECT");
+  display.drawTextCentered(display.width()/2, y, "LONG HOLD:SELECT");
 #elif defined(WIO_TRACKER_L1)
-  display.drawTextCentered(display.width()/2, 56, "CENTER:OK MENU:BACK");
+  display.drawTextCentered(display.width()/2, y, "CENTER:OK MENU:BACK");
 #else
-  display.drawTextCentered(display.width()/2, 56, "1:NEXT 2:BACK L:OK");
+  display.drawTextCentered(display.width()/2, y, "1:NEXT 2:BACK L:OK");
 #endif
 }
 
@@ -2472,11 +2545,40 @@ static void drawLoRaFishValuePicker(DisplayDriver& display) {
   static const char* titles[] = {"FIRMWARE THEME", "BRIGHTNESS", "GAME RENDERING",
       "SCALES", "BODY / BORDER", "EYES", "SLEEP HOUR", "WAKE HOUR", "UTC OFFSET",
       "AWAKE TIMEOUT", "ASLEEP TIMEOUT", "DIM AFTER", "VOLUME", "WAKE ALARM",
-      "SLEEP CUE", "MESSAGE TONE", "SCREEN COLOUR", "SPECIES", "ORIENTATION", "DISPLAY UPDATE"};
+      "SLEEP CUE", "MESSAGE TONE", "SCREEN COLOUR", "SPECIES", "ORIENTATION", "DISPLAY UPDATE", "ANIMAL SET"};
+#if LORAGOTCHI_DXPRO
+  if (setting == LoRaFishSetting::SpeciesSet || setting == LoRaFishSetting::Species) {
+    // Both DX-Pro steps are lists (3 sets, then up to 39 animals). They use the same compact rows as every
+    // other menu, with the draft candidate marked. Browsing, Select and Back behave exactly as before.
+    const int count = loRaFishValuePicker.count();
+    const int visible = LoRaFishMenuLayout::rowsFor(display);
+    const int first = LoRaFishMenuLayout::first(value, count, visible);
+    drawLoRaFishHeader(display, titles[static_cast<uint8_t>(setting)], "");
+    display.setColor(UIColor::primary_txt);
+    for (int row = 0; row < visible && first + row < count; ++row) {
+      const uint8_t item = first + row;
+      const char* name = setting == LoRaFishSetting::SpeciesSet ? LoRaFishSpecies::setLabel(item)
+          : item >= LoRaFishSpecies::setSize(loRaFishProSet) ? "Mystery egg"
+          : LoRaFishSpecies::label(LoRaFishSpecies::setSelectionId(loRaFishProSet, item));
+      char line[32];
+      snprintf(line, sizeof(line), "%c %s", item == value ? '>' : ' ', name);
+      display.setCursor(3, LoRaFishMenuLayout::rowYFor(display, row));
+      display.print(line);
+    }
+    drawLoRaFishMenuHint(display, true);
+    return;
+  }
+#endif
   char valueText[24];
   const char* text = valueText;
   switch (setting) {
+#if LORAGOTCHI_DXPRO
+    case LoRaFishSetting::SpeciesSet: text = LoRaFishSpecies::setLabel(value); break;
+    case LoRaFishSetting::Species: text = value>=LoRaFishSpecies::setSize(loRaFishProSet) ? "Mystery egg" : LoRaFishSpecies::label(LoRaFishSpecies::setSelectionId(loRaFishProSet,value)); break;
+#else
+    case LoRaFishSetting::SpeciesSet: text = ""; break; // DX-Pro only
     case LoRaFishSetting::Species: text = value==LoRaFishSpecies::selectableCount ? "Mystery egg" : LoRaFishSpecies::label(LoRaFishSpecies::selectionId(value)); break;
+#endif
     case LoRaFishSetting::Theme: text = loRaFishThemes[value].name; break;
     case LoRaFishSetting::Brightness: text = loRaFishBrightnessNames[value]; break;
     case LoRaFishSetting::DisplayUpdate: text = value ? "Partial" : "Full"; break;
@@ -2565,21 +2667,22 @@ static void drawLoRaFishWatchOptions(DisplayDriver& display) {
     if (option == loRaFishOption) selected = count;
     rows[count++] = option;
   }
-  const uint8_t first = selected > 3 ? selected - 3 : 0;
+  const int visible = LoRaFishMenuLayout::rowsFor(display);
+  const int first = LoRaFishMenuLayout::first(selected, count, visible);
   drawLoRaFishHeader(display, "OPTIONS", "");
   display.setColor(UIColor::primary_txt);
-  for (uint8_t row = 0; row < 4 && first + row < count; ++row) {
+  for (int row = 0; row < visible && first + row < count; ++row) {
     const auto option = rows[first + row];
     char line[24];
     snprintf(line, sizeof(line), "%c %s", option == loRaFishOption ? '>' : ' ', loRaFishOptionLabel(option));
-    display.setCursor(3, 18 + row*9);
+    display.setCursor(3, LoRaFishMenuLayout::rowYFor(display, row));
     display.print(line);
   }
 #if defined(LORAFISH_WATCH_TOUCH)
   display.setColor(UIColor::secondary_txt);
-  display.drawTextCentered(display.width()/2, 56, "LONG HOLD:OPEN");
+  display.drawTextCentered(display.width()/2, LoRaFishMenuLayout::hintY(display.height()), "LONG HOLD:OPEN");
 #else
-  drawLoRaFishMenuHint(display);
+  drawLoRaFishMenuHint(display, true);
 #endif
 }
 #endif
@@ -2595,32 +2698,32 @@ static void drawLoRaFishOptions(DisplayDriver& display, UITask* task) {
   const uint8_t selected = LoRaFishOptions::index(loRaFishOption, loRaFishHasSound, breed, loragotchiDXGuest.present);
   const uint8_t count = loRaFishOptionCount();
   #if defined(LORAFISH_CARDPUTER_25D)
-  const uint8_t first = selected > 5 ? selected - 5 : 0;
+  // Size-2 text is 16 px; 17 px rows from y=22 fill the 135 px panel to the bottom edge (6 rows).
+  const int visible = LoRaFishMenuLayout::rows(display.height(), 17, 22, false);
 #else
-  const uint8_t first = selected > 3 ? selected - 3 : 0;
+  const int visible = LoRaFishMenuLayout::rowsFor(display);
 #endif
+  const int first = LoRaFishMenuLayout::first(selected, count, visible);
   drawLoRaFishHeader(display, "OPTIONS", "");
   display.setColor(UIColor::primary_txt);
   #if defined(LORAFISH_CARDPUTER_25D)
   display.setTextSize(2);
-  for (uint8_t row = 0; row < 6 && first + row < count; ++row) {
-#else
-  for (uint8_t row = 0; row < 4 && first + row < count; ++row) {
 #endif
+  for (int row = 0; row < visible && first + row < count; ++row) {
     const auto option = LoRaFishOptions::at(first + row, loRaFishHasSound, breed, loragotchiDXGuest.present);
     char line[24];
     snprintf(line, sizeof(line), "%c %s", option == loRaFishOption ? '>' : ' ', loRaFishOptionLabel(option));
     #if defined(LORAFISH_CARDPUTER_25D)
     display.setCursor(6, 22 + row*17);
 #else
-    display.setCursor(3, 18 + row*9);
+    display.setCursor(3, LoRaFishMenuLayout::rowYFor(display, row));
 #endif
     display.print(line);
   }
 #if defined(LORAFISH_CARDPUTER_25D)
   display.setTextSize(1);
 #else
-  drawLoRaFishMenuHint(display);
+  drawLoRaFishMenuHint(display, true);
 #endif
 #endif
 }
@@ -2639,11 +2742,11 @@ static void drawLoRaFishAdvertMenu(DisplayDriver& display) {
     char line[24];
     snprintf(line, sizeof(line), "%c %s",
              row == static_cast<uint8_t>(loRaFishAdvertMenu.selected()) ? '>' : ' ', labels[row]);
-    display.setCursor(3, 18 + row * 11);
+    display.setCursor(3, LoRaFishMenuLayout::rowYFor(display, row, LoRaFishMenuLayout::kTop, 11));
     display.print(line);
   }
   display.setColor(UIColor::secondary_txt);
-  drawLoRaFishMenuHint(display);
+  drawLoRaFishMenuHint(display, true);
 }
 
 static void cancelLoRaFishReset() {
@@ -2772,17 +2875,18 @@ static void drawLoRaFishDisplayMenu(DisplayDriver& display) {
   static const char* monoLabels[] = {"Screen timeout", "Brightness", "Firmware theme", "Screen colour", "Game rendering", "Pet species"};
   static const char* colorLabels[] = {"Screen timeout", "Brightness", "Firmware theme", "Pet colours", "Game rendering", "Pet species"};
   const uint8_t count = loRaFishDisplayOptionCount();
-  const uint8_t first = loRaFishDisplayOption > 3 ? loRaFishDisplayOption - 3 : 0;
+  const int visible = LoRaFishMenuLayout::rowsFor(display);
+  const int first = LoRaFishMenuLayout::first(loRaFishDisplayOption, count, visible);
   drawLoRaFishHeader(display, "DISPLAY", "");
   display.setColor(UIColor::primary_txt);
-  for (uint8_t row = 0; row < 4 && first + row < count; ++row) {
+  for (int row = 0; row < visible && first + row < count; ++row) {
     const uint8_t option = first + row;
-    drawLoRaFishMenuLabel(display, 18 + row*9, option == loRaFishDisplayOption,
+    drawLoRaFishMenuLabel(display, LoRaFishMenuLayout::rowYFor(display, row), option == loRaFishDisplayOption,
         (loRaFishPartialSupported && option == 5 + (LORAGOTCHI_SPECIES_EDITION ? 1 : 0) + loRaFishOrientationSupported) ? "Display update" :
         (loRaFishOrientationSupported && option == 5 + (LORAGOTCHI_SPECIES_EDITION ? 1 : 0)) ? "Orientation" :
         (loRaFishColorDisplay ? colorLabels[option] : monoLabels[option]));
   }
-  drawLoRaFishMenuHint(display);
+  drawLoRaFishMenuHint(display, true);
 }
 
 
@@ -2790,13 +2894,13 @@ static void drawLoRaFishDisplayMenu(DisplayDriver& display) {
 
 
 static void drawLoRaFishPetSetup(DisplayDriver& display) {
-  drawLoRaFishHeader(display,LORAGOTCHI_AIR_EDITION ? "CHOOSE AIR PET" : "CHOOSE WATER PET","");
+  drawLoRaFishHeader(display,LORAGOTCHI_DXPRO ? "CHOOSE PET" : LORAGOTCHI_LAND_EDITION ? "CHOOSE LAND PET" : LORAGOTCHI_AIR_EDITION ? "CHOOSE AIR PET" : "CHOOSE WATER PET","");
   const char* rows[]={LoRaFishSpecies::label(loRaFishSpecies),"Mystery colours",
       loRaFishColorDisplay ? "Choose colours" : "Keep colours","Start pet"};
   display.setColor(UIColor::primary_txt);
   for (uint8_t i=0;i<4;++i)
-    drawLoRaFishMenuLabel(display,18+i*9,i==loRaFishPetSetupField,rows[i]);
-  drawLoRaFishMenuHint(display);
+    drawLoRaFishMenuLabel(display,LoRaFishMenuLayout::rowYFor(display,i),i==loRaFishPetSetupField,rows[i]);
+  drawLoRaFishMenuHint(display, true);
 }
 static void drawLoRaFishColorMenu(DisplayDriver& display) {
   static const char* parts[] = {"Scales", "Body", "Eyes", "Start pet"};
@@ -2804,12 +2908,12 @@ static void drawLoRaFishColorMenu(DisplayDriver& display) {
   drawLoRaFishHeader(display, loRaFishNeedsPetSetup ? "PET COLOURS" : (loRaFishNeedsAppearanceSetup ? "NEW PET" : "PET COLOURS"), "");
   display.setColor(UIColor::primary_txt);
   for (uint8_t row = 0; row < ((loRaFishNeedsAppearanceSetup || loRaFishNeedsPetSetup) ? 4 : 3); ++row) {
-    drawLoRaFishMenuLabel(display,18+row*9,row==loRaFishColorField,
+    drawLoRaFishMenuLabel(display,LoRaFishMenuLayout::rowYFor(display,row),row==loRaFishColorField,
         row==3 && loRaFishNeedsPetSetup ? "Done colours" : parts[row]);
-    if (row < 3) display.drawTextRightAlign(display.width()-3, 18 + row*9,
+    if (row < 3) display.drawTextRightAlign(display.width()-3, LoRaFishMenuLayout::rowYFor(display,row),
         colors[row] > 6 ? "Inherited" : loRaFishColorNames[colors[row]]);
   }
-  drawLoRaFishMenuHint(display);
+  drawLoRaFishMenuHint(display, true);
 }
 
 static void drawLoRaFishTimeMenu(DisplayDriver& display) {
@@ -2823,11 +2927,11 @@ static void drawLoRaFishTimeMenu(DisplayDriver& display) {
   for (uint8_t row=0; row<3; row++) {
     if (row<2) snprintf(value,sizeof(value),"%02d:00",hours[row]);
     else loRaFishFormatUtcOffset(value,sizeof(value),false);
-    drawLoRaFishMenuLabel(display,22+row*11,row==loRaFishTimeField,row==2 ? "Offset" : labels[row]);
-    display.drawTextRightAlign(w-3,22+row*11,value);
+    drawLoRaFishMenuLabel(display,LoRaFishMenuLayout::rowYFor(display,row,22,11),row==loRaFishTimeField,row==2 ? "Offset" : labels[row]);
+    display.drawTextRightAlign(w-3,LoRaFishMenuLayout::rowYFor(display,row,22,11),value);
   }
   display.setColor(UIColor::secondary_txt);
-  drawLoRaFishMenuHint(display);
+  drawLoRaFishMenuHint(display, true);
 }
 
 static void drawLoRaFishTimeoutMenu(DisplayDriver& display) {
@@ -2841,11 +2945,11 @@ static void drawLoRaFishTimeoutMenu(DisplayDriver& display) {
     const char* label=row==0 ? "Awake" : row==1 ? "Asleep" : "Dim after";
     const char* value=row<2 ? loRaFishTimeoutShortNames[min((uint8_t)5,setting)]
                 : loRaFishAlwaysOnDimNames[min((uint8_t)2,loRaFishAlwaysOnDimSetting)];
-    drawLoRaFishMenuLabel(display,22+row*12,row==loRaFishTimeoutField,label);
-    display.drawTextRightAlign(w-3,22+row*12,value);
+    drawLoRaFishMenuLabel(display,LoRaFishMenuLayout::rowYFor(display,row,22,12),row==loRaFishTimeoutField,label);
+    display.drawTextRightAlign(w-3,LoRaFishMenuLayout::rowYFor(display,row,22,12),value);
   }
   display.setColor(UIColor::secondary_txt);
-  drawLoRaFishMenuHint(display);
+  drawLoRaFishMenuHint(display, true);
 }
 
 
@@ -2863,11 +2967,11 @@ static void drawLoRaFishSoundMenu(DisplayDriver& display) {
   drawLoRaFishHeader(display,"SOUND","");
   display.setColor(UIColor::primary_txt);
   for (uint8_t row=0; row<4; row++) {
-    drawLoRaFishMenuLabel(display,18+row*9,row==loRaFishSoundField,labels[row]);
-    display.drawTextRightAlign(w-3,18+row*9,values[row]);
+    drawLoRaFishMenuLabel(display,LoRaFishMenuLayout::rowYFor(display,row),row==loRaFishSoundField,labels[row]);
+    display.drawTextRightAlign(w-3,LoRaFishMenuLayout::rowYFor(display,row),values[row]);
   }
   display.setColor(UIColor::secondary_txt);
-  drawLoRaFishMenuHint(display);
+  drawLoRaFishMenuHint(display, true);
 }
 #endif
 
@@ -3007,7 +3111,7 @@ static void drawLoRaFishDX(DisplayDriver& display) {
     } else {
       display.drawTextCentered(w/2,27,"NO HABITATS");
       display.setColor(UIColor::secondary_txt);
-      display.drawTextCentered(w/2,39,LORAGOTCHI_AIR_EDITION ? "Animal-marked peers" : "Water-marked friends");
+      display.drawTextCentered(w/2,39,LORAGOTCHI_LAND_EDITION ? "Land-marked peers" : (LORAGOTCHI_AIR_EDITION || LORAGOTCHI_DXPRO) ? "Animal-marked peers" : "Water-marked friends");
     }
   }
   display.setColor(UIColor::secondary_txt);
@@ -3130,7 +3234,7 @@ static void drawLoRaFishGNSS(DisplayDriver& display, UITask* task) {
 
 // T-Deck 16-bit aquarium scenery. All shapes are integer pixel primitives;
 // no spritesheets, dynamic allocation, or additional flash partitions.
-#if defined(LORAFISH_TDECK_PIXEL_ART)
+#if defined(LORAFISH_TDECK_PIXEL_ART) || defined(LORAFISH_COLOUR_TANK)
 static void drawTDeckPixelAquarium(DisplayDriver& d) {
   const int w=d.width(), h=d.height();
   const int top=17, bottom=h-17, span=bottom-top;
@@ -3283,12 +3387,95 @@ static void drawLoRaFishHygiene(DisplayDriver& display) {
   }
 }
 
-#if LORAGOTCHI_AIR_EDITION
+#if defined(LORAFISH_COLOUR_SCENES) && (LORAGOTCHI_HAS_AIR || LORAGOTCHI_HAS_LAND)
+// Colour Air and Land scenes for the colour panels (T-Deck and Cardputer included).
+// Same objects at the same positions as the 1-bit habitats below (sun, clouds, ridge, grass tufts,
+// the two trees on tall panels), drawn with rectangles in RGB565 and sized from the panel's own
+// width and height like the 1-bit habitats are, so every panel size gets the same layout. The sky
+// is painted from just under the header rule to the floor rule, so no row is left on the window colour.
+static void fillLoRaFishColourSky(DisplayDriver& d,const ColorVal* bands,int count) {
+  const int top=17,bottom=d.height()-15,span=bottom-top;
+  for(int i=0;i<count;i++) {
+    const int y0=top+(span*i)/count, y1=top+(span*(i+1))/count;
+    d.setColor(bands[i]); d.fillRect(0,y0,d.width(),y1-y0);
+  }
+}
+// The 1-bit sun (outline square with four short rays), filled and tinted.
+static void drawLoRaFishColourSun(DisplayDriver& d,int top) {
+  const int sx=d.width()-28,sy=top+9;
+  d.setColor(0xFEA8); d.fillRect(sx-5,sy-5,11,11);
+  d.setColor(0xECA4); d.drawRect(sx-5,sy-5,11,11);
+  d.setColor(0xFF71);
+  d.fillRect(sx-2,sy-7,5,1);
+  d.fillRect(sx-2,sy+7,5,1);
+  d.fillRect(sx-8,sy,2,1);
+  d.fillRect(sx+7,sy,2,1);
+}
+#ifdef LORAGOTCHI_NATIVE_UI
+// The two trees the 1-bit build draws beside the habitat on panels taller than 64 rows.
+static void drawLoRaFishColourTrees(DisplayDriver& d) {
+  if(d.height()<=64) return;
+  const int w=d.width(),floor=d.height()-16;
+  for(int side=0;side<2;++side) {
+    const int x=side ? w-22 : 10;
+    d.setColor(0x6A66); d.fillRect(x,floor-19,2,19);
+    d.setColor(0x2C28); d.fillRect(x-5,floor-15,12,2);
+    d.setColor(0x556A); d.fillRect(x-3,floor-22,8,2);
+  }
+}
+#endif
+#endif
+
+#if defined(LORAFISH_COLOUR_SCENES) && LORAGOTCHI_HAS_AIR
+// Air: a sky that deepens upward, a sun, three drifting clouds, hazy hills and a bank of mist at the floor.
+static void drawLoRaFishAirColour(DisplayDriver& display) {
+  const int w=display.width(), h=display.height();
+  const int top=28, bottom=h-18;
+  static const ColorVal sky[]={0x118F,0x2231,0x32D3,0x4375,0x5416,0x64D8,0x757A,0x8E1C};
+  fillLoRaFishColourSky(display,sky,8);
+  drawLoRaFishColourSun(display,top);
+  const int drift=(millis()/900U)%((unsigned)(w+48));
+  const int cloudX[3]={w/7, w/2, (w*5)/6};
+  const int cloudY[3]={top+5,top+17,top+8};
+  for (int i=0;i<3;i++) {
+    const int x=(cloudX[i]+w+48-(drift/(i+2)))%(w+48)-24;
+    const int y=cloudY[i];
+    // The 1-bit clouds may dip below the floor rule on a 64-row panel; the colour ones stop at the rule.
+    auto puff=[&](int px,int py,int pw,int ph) {
+      if (py+ph>h-15) ph=h-15-py;
+      if (ph>0) display.fillRect(px,py,pw,ph);
+    };
+    display.setColor(0xF7DF);
+    puff(x+5,y,15,3);
+    puff(x+1,y+3,24,3);
+    puff(x-3,y+6,31,3);
+    display.setColor(0xBE7D);
+    puff(x+2,y+9,22,1);
+  }
+  const int ridge=bottom-10;
+  for(int x=0;x<w;x+=16) {
+    const int rise=((x/16)%4==0)?7:((x/16)%4==1?4:2);
+    const int y=ridge+8-rise;
+    display.setColor(0x963A); display.fillRect(x,y,16,1);
+    display.setColor(0x4C14); display.fillRect(x,y+1,16,bottom-y-1);
+  }
+  display.setColor(0xEFBF); display.fillRect(0,bottom,w,1);
+  display.setColor(0xCF1E); display.fillRect(0,bottom+1,w,h-15-(bottom+1));
+#ifdef LORAGOTCHI_NATIVE_UI
+  drawLoRaFishColourTrees(display);
+#endif
+}
+#endif
+
+#if LORAGOTCHI_HAS_AIR
 static void drawLoRaFishAirHabitat(DisplayDriver& display) {
   const int w=display.width(), h=display.height();
   // Keep the header (top 18 px) and footer (bottom 15 px) unobstructed.
   const int top=28, bottom=h-18;
   if (w<64 || bottom<=top+12) return;
+#if defined(LORAFISH_COLOUR_SCENES)
+  if (loRaFishColorDisplay) { drawLoRaFishAirColour(display); return; }
+#endif
   const int drift=(millis()/900U)%((unsigned)(w+48));
   const int cloudX[3]={w/7, w/2, (w*5)/6};
   const int cloudY[3]={top+5,top+17,top+8};
@@ -3319,12 +3506,105 @@ static void drawLoRaFishAirHabitat(DisplayDriver& display) {
 }
 #endif
 
+#if defined(LORAFISH_COLOUR_SCENES) && LORAGOTCHI_HAS_LAND
+// Land: a daytime sky, a sun, green hills, grass tufts and a strip of turf over earth at the floor.
+static void drawLoRaFishLandColour(DisplayDriver& display) {
+  const int w=display.width(), h=display.height();
+  const int top=28, bottom=h-18;
+  static const ColorVal sky[]={0x2317,0x3397,0x4C18,0x5CB9,0x753A,0x85BB,0x965C,0xAEDD};
+  fillLoRaFishColourSky(display,sky,8);
+  drawLoRaFishColourSun(display,top);
+  const int ridge=bottom-10;
+  for(int x=0;x<w;x+=16) {
+    const int rise=((x/16)%4==0)?7:((x/16)%4==1?4:2);
+    const int y=ridge+8-rise;
+    display.setColor(0x7E0C); display.fillRect(x,y,16,1);
+    display.setColor(0x44AA); display.fillRect(x,y+1,16,bottom-y-1);
+  }
+  for(int x=6;x<w-6;x+=19) {
+    display.setColor(0x1AE5);
+    display.fillRect(x,bottom-3,1,3);
+    display.fillRect(x+4,bottom-2,1,2);
+    display.setColor(0x9E8B);
+    display.fillRect(x+2,bottom-4,1,4);
+  }
+  display.setColor(0x2B67); display.fillRect(0,bottom,w,1);
+  display.setColor(0x7AA6); display.fillRect(0,bottom+1,w,1);
+  display.setColor(0x59E5); display.fillRect(0,bottom+2,w,h-15-(bottom+2));
+#ifdef LORAGOTCHI_NATIVE_UI
+  drawLoRaFishColourTrees(display);
+#endif
+}
+#endif
+
+#if LORAGOTCHI_HAS_LAND
+// Plain meadow: sun, low hills and grass tufts. Keeps header/footer clear.
+static void drawLoRaFishLandHabitat(DisplayDriver& display) {
+  const int w=display.width(), h=display.height();
+  const int top=28, bottom=h-18;
+  if (w<64 || bottom<=top+12) return;
+#if defined(LORAFISH_COLOUR_SCENES)
+  if (loRaFishColorDisplay) { drawLoRaFishLandColour(display); return; }
+#endif
+  display.setColor(UIColor::secondary_txt);
+  const int sx=w-28,sy=top+9;
+  display.drawRect(sx-5,sy-5,11,11);
+  display.fillRect(sx-2,sy-7,5,1);
+  display.fillRect(sx-2,sy+7,5,1);
+  display.fillRect(sx-8,sy,2,1);
+  display.fillRect(sx+7,sy,2,1);
+  const int ridge=bottom-10;
+  for(int x=0;x<w;x+=16) {
+    const int rise=((x/16)%4==0)?7:((x/16)%4==1?4:2);
+    display.fillRect(x,ridge+8-rise,16,1);
+  }
+  for(int x=6;x<w-6;x+=19) {
+    display.fillRect(x,bottom-3,1,3);
+    display.fillRect(x+2,bottom-4,1,4);
+    display.fillRect(x+4,bottom-2,1,2);
+  }
+  display.fillRect(2,bottom,w-4,1);
+}
+#endif
+
+// True when the home scene is the sky/meadow (Air and Land) rather than the tank. Constant in the
+// single-edition builds; in DX-Pro it follows the owner's pet, so it changes with the chosen set.
+static bool loRaFishAnimalHome() {
+#if LORAGOTCHI_DXPRO
+  return !LoRaFishSpecies::waterKnown(loRaFishSpecies);
+#else
+  return LORAGOTCHI_ANIMAL_EDITION != 0;
+#endif
+}
+
+#if defined(LORAFISH_COLOUR_TANK)
+// Colour panels without a scenery macro of their own. Tall (native, h>64) panels use the Cardputer
+// layout, 64-row logical panels (ST7735) use the T-Deck layout; both are RGB565 and the panels'
+// 16-bit depth shows every colour, so no palette substitution is needed.
+static void drawLoRaFishColourTank(DisplayDriver& d) {
+  if(d.height()>64) drawCardputerTankDepth(d);
+  else drawTDeckPixelAquarium(d);
+}
+#endif
+// True when the colour scene replaces the grey perimeter scenery (tank reeds and rocks, or the Air and
+// Land trees): the colour tank, sky and meadow draw their own (on the T-Deck and Cardputer, the sky and meadow only). Always false on mono panels and on
+// builds that compile no colour scenery, so those keep drawing exactly what they drew before.
+static bool loRaFishColourTank() {
+#if defined(LORAFISH_COLOUR_TANK)
+  return loRaFishColorDisplay;
+#elif defined(LORAFISH_COLOUR_SCENES)
+  return loRaFishColorDisplay && loRaFishAnimalHome();   // T-Deck / Cardputer: their Water tank keeps its scenery
+#else
+  return false;
+#endif
+}
+
 static void drawLoRaFishNativeScenery(DisplayDriver& d) {
 #ifdef LORAGOTCHI_NATIVE_UI
   if(d.height()<=64) return;
   const int w=d.width(),floor=d.height()-16;
   d.setColor(UIColor::secondary_txt);
-#if LORAGOTCHI_AIR_EDITION
+#if LORAGOTCHI_ANIMAL_EDITION
   for(int side=0;side<2;++side) {
     const int x=side ? w-22 : 10;
     d.fillRect(x,floor-19,2,19);
@@ -3343,26 +3623,112 @@ static void drawLoRaFishNativeScenery(DisplayDriver& d) {
 #endif
 }
 
+#if LORAGOTCHI_DXPRO
+// DX-Pro only: the shared function above draws the tree scenery here (ANIMAL_EDITION is on), so Water pets
+// get their own reed-and-weed copy and the caller picks by the pet's set. Air and Land keep the original.
+static void drawLoRaFishWaterNativeScenery(DisplayDriver& d) {
+#ifdef LORAGOTCHI_NATIVE_UI
+  if(d.height()<=64) return;
+  const int w=d.width(),floor=d.height()-16;
+  d.setColor(UIColor::secondary_txt);
+  for(int side=0;side<2;++side) {
+    const int x=side ? w-12 : 10;
+    for(int j=0;j<4;++j) {
+      d.fillRect(x+(j%2),floor-5-j*5,2,6);
+      d.fillRect(x-3,floor-7-j*5,4,1);
+    }
+    d.drawRect(side ? w-34 : 23,floor-4,9,4);
+  }
+#else
+  (void)d;
+#endif
+}
+static void drawLoRaFishHomeScenery(DisplayDriver& d) {
+  if(loRaFishAnimalHome()) drawLoRaFishNativeScenery(d);
+  else drawLoRaFishWaterNativeScenery(d);
+}
+#endif
+
+#if LORAGOTCHI_WATER_EDITION || LORAGOTCHI_DXPRO
+// Bands need room for two adult sprites plus a gap. Fixed-row paths (64 px OLED/LCD, Cardputer,
+// T-Deck, T-Watch) draw every sprite inside rows of the 64 px reference frame whatever the canvas
+// height, so that frame is their tank; only native panels taller than 64 px stretch the sprite
+// rows over the real height (LoRaFishLayout::habitatY). Tank = header rule (row 15) to floor rule.
+static bool loRaFishWaterBands(int h) {
+  int frame=64;
+#ifdef LORAGOTCHI_NATIVE_UI
+  if(h>64)frame=h;
+#else
+  (void)h;
+#endif
+  return LoRaFishSpecies::waterBandsEnabled(16,frame-15,LoRaFishWaterSprite::adultRows);
+}
+
+// Water tank only (Air and Land builds keep their own habitat rows): keep each species inside
+// its surface or underwater band. Same sprite, speed and bob; only the vertical envelope moves.
+// Tanks too small for two bands return y untouched: the shared tank, exactly as before the bands.
+static int loRaFishBandY(uint16_t species,int y,int h) {
+  using namespace LoRaFishSpecies;
+  if(!loRaFishWaterBands(h))return y;
+#if LORAGOTCHI_DXPRO
+  if(!waterKnown(species))return y; // Air and Land animals keep their own habitat rows
+#endif
+  const bool floorWalker=waterMotion(species) && species!=Jellyfish; // crab, snail: pinned to the floor
+  if(floorWalker)return y;
+#ifdef LORAGOTCHI_NATIVE_UI
+  if(h>64)return bandFit(species,BandTall,y,19,41); // 30+11*sin, fish and jellyfish alike
+#else
+  (void)h;
+#endif
+#if defined(LORAFISH_FISH_WANDER) && defined(LORAFISH_TALL_TANK)
+  return waterMotion(species) ? bandFit(species,BandWander,y,30,36)   // jellyfish bell stroke
+                              : bandFit(species,BandWander,y,29,49);  // wander rows 30-48 plus bob
+#else
+  return waterMotion(species) ? bandFit(species,BandCompact,y,30,36)
+                              : bandFit(species,BandCompact,y,36,40); // 38 plus-or-minus 2 bob
+#endif
+}
+#endif
+
 static void drawLoRaFishAquarium(DisplayDriver& display, UITask* task) {
   const int w=display.width(), h=display.height();
   char tb[8], db[24];
   loRaFishClock(tb,sizeof(tb),db,sizeof(db));
-#if LORAGOTCHI_AIR_EDITION
+#if LORAGOTCHI_DXPRO
+  if (LoRaFishSpecies::airKnown(loRaFishSpecies)) drawLoRaFishAirHabitat(display);
+  else if (LoRaFishSpecies::landKnown(loRaFishSpecies)) drawLoRaFishLandHabitat(display);
+  else {
+#if defined(LORAFISH_CARDPUTER_25D)
+    drawCardputerTankDepth(LORAFISH_SCENERY_CANVAS(display));
+#elif defined(LORAFISH_TDECK_PIXEL_ART)
+    drawTDeckPixelAquarium(display);
+#elif defined(LORAFISH_COLOUR_TANK)
+    if (loRaFishColorDisplay) drawLoRaFishColourTank(display);
+#endif
+  }
+#elif LORAGOTCHI_AIR_EDITION
   drawLoRaFishAirHabitat(display);
+#elif LORAGOTCHI_LAND_EDITION
+  drawLoRaFishLandHabitat(display);
 #elif defined(LORAFISH_CARDPUTER_25D)
   drawCardputerTankDepth(LORAFISH_SCENERY_CANVAS(display));
 #elif defined(LORAFISH_TDECK_PIXEL_ART)
   drawTDeckPixelAquarium(display);
+#elif defined(LORAFISH_COLOUR_TANK)
+  if (loRaFishColorDisplay) drawLoRaFishColourTank(display);
 #endif
-  drawLoRaFishNativeScenery(display);
+#if LORAGOTCHI_DXPRO
+  if (!loRaFishColourTank()) drawLoRaFishHomeScenery(display);
+#else
+  if (!loRaFishColourTank()) drawLoRaFishNativeScenery(display);
+#endif
   drawLoRaFishHeader(display,loRaFishDisplayName(),tb);
   drawLoRaFishTankBattery(display,task,tb);
 
   display.setColor(UIColor::secondary_txt);
   display.fillRect(2,h-15,w-4,1);
-#if !LORAGOTCHI_AIR_EDITION
-  drawLoRaFishBubbles(display);
-#endif
+  if (!loRaFishAnimalHome())
+    drawLoRaFishBubbles(display);
   //display.drawRect(15,21,2,2);
   //display.drawRect(24,31,3,3);
   //display.drawRect(w-18,20,2,2);
@@ -3372,7 +3738,7 @@ static void drawLoRaFishAquarium(DisplayDriver& display, UITask* task) {
   int x=0, y=0;
   bool right=true;
   loRaFishNaturalPosition(w,x,y,right);
-  if (LORAGOTCHI_AIR_EDITION || LoRaFishSpecies::waterMotion(loRaFishSpecies))
+  if (LORAGOTCHI_ANIMAL_EDITION || LoRaFishSpecies::waterMotion(loRaFishSpecies))
     LoRaFishSpecies::habitatPosition(loRaFishSpecies,fish.evolution,w,(uint32_t)millis(),0,x,y,right);
 
   const int bodyOffset=LoRaFishLayout::bodyOffset(h);
@@ -3380,9 +3746,12 @@ static void drawLoRaFishAquarium(DisplayDriver& display, UITask* task) {
   if (h>64 && (!LoRaFishSpecies::waterMotion(loRaFishSpecies) || loRaFishSpecies==LoRaFishSpecies::Jellyfish))
     y=30+(int)(11*sinf(millis()/5100.0f));
 #endif
+#if LORAGOTCHI_WATER_EDITION || LORAGOTCHI_DXPRO
+  y=loRaFishBandY(loRaFishSpecies,y,h);
+#endif
   y=LoRaFishLayout::habitatY(y,h,
       (LoRaFishSpecies::waterMotion(loRaFishSpecies) && loRaFishSpecies!=LoRaFishSpecies::Jellyfish) ||
-      (LORAGOTCHI_AIR_EDITION && (LoRaFishSpecies::movement(loRaFishSpecies)==LoRaFishSpecies::Walk || LoRaFishSpecies::movement(loRaFishSpecies)==LoRaFishSpecies::Crawl)));
+      (LORAGOTCHI_ANIMAL_EDITION && (LoRaFishSpecies::movement(loRaFishSpecies)==LoRaFishSpecies::Walk || LoRaFishSpecies::movement(loRaFishSpecies)==LoRaFishSpecies::Crawl)));
   if (loRaFishFeeding) {
     const unsigned long elapsed=millis()-loRaFishFeedStarted;
     const int foodX=w/2+18;
@@ -3487,15 +3856,18 @@ static void drawLoRaFishAquarium(DisplayDriver& display, UITask* task) {
   loRaFishNaturalPositionForStage(w,guestStage,guestPeriod/2,gx,gy,gright);
   const uint16_t guestMotionSpecies=guestPresent ? loragotchiDXGuest.species :
       loRaFishGuestTravelAnimation.species;
-  if (LORAGOTCHI_AIR_EDITION || LoRaFishSpecies::waterMotion(guestMotionSpecies))
+  if (LORAGOTCHI_ANIMAL_EDITION || LoRaFishSpecies::waterMotion(guestMotionSpecies))
     LoRaFishSpecies::habitatPosition(guestMotionSpecies,guestStage,w,(uint32_t)millis(),2700,gx,gy,gright);
 #ifdef LORAGOTCHI_NATIVE_UI
   if (h>64 && (!LoRaFishSpecies::waterMotion(guestMotionSpecies) || guestMotionSpecies==LoRaFishSpecies::Jellyfish))
     gy=30+(int)(11*sinf((millis()+4300)/5700.0f));
 #endif
+#if LORAGOTCHI_WATER_EDITION || LORAGOTCHI_DXPRO
+  gy=loRaFishBandY(guestMotionSpecies,gy,h);
+#endif
   gy=LoRaFishLayout::habitatY(gy,h,
       (LoRaFishSpecies::waterMotion(guestMotionSpecies) && guestMotionSpecies!=LoRaFishSpecies::Jellyfish) ||
-      (LORAGOTCHI_AIR_EDITION && (LoRaFishSpecies::movement(guestMotionSpecies)==LoRaFishSpecies::Walk || LoRaFishSpecies::movement(guestMotionSpecies)==LoRaFishSpecies::Crawl)));
+      (LORAGOTCHI_ANIMAL_EDITION && (LoRaFishSpecies::movement(guestMotionSpecies)==LoRaFishSpecies::Walk || LoRaFishSpecies::movement(guestMotionSpecies)==LoRaFishSpecies::Crawl)));
   loRaFishBeginTravelAnimation(loRaFishGuestTravelAnimation,w,gx,gy);
   if (guestPresent) {
     // Same movement model as a lone fish, phase shifted by half a cycle.
@@ -3613,8 +3985,24 @@ static void drawLoRaFishSleeping(DisplayDriver& display, UITask* task) {
   const int w=display.width(), h=display.height();
   char tb[8], db[24];
   loRaFishClock(tb,sizeof(tb),db,sizeof(db));
-#if LORAGOTCHI_AIR_EDITION
+#if LORAGOTCHI_DXPRO
+  if (LoRaFishSpecies::airKnown(loRaFishSpecies)) drawLoRaFishAirHabitat(display);
+  else if (LoRaFishSpecies::landKnown(loRaFishSpecies)) drawLoRaFishLandHabitat(display);
+  else {
+#if defined(LORAFISH_CARDPUTER_25D)
+    drawCardputerTankDepth(LORAFISH_SCENERY_CANVAS(display));
+    drawLoRaFishBubbles(display);
+#elif defined(LORAFISH_TDECK_PIXEL_ART)
+    drawTDeckPixelAquarium(display);
+    drawLoRaFishBubbles(display);
+#elif defined(LORAFISH_COLOUR_TANK)
+    if (loRaFishColorDisplay) { drawLoRaFishColourTank(display); drawLoRaFishBubbles(display); }
+#endif
+  }
+#elif LORAGOTCHI_AIR_EDITION
   drawLoRaFishAirHabitat(display);
+#elif LORAGOTCHI_LAND_EDITION
+  drawLoRaFishLandHabitat(display);
 #elif defined(LORAFISH_CARDPUTER_25D)
   drawCardputerTankDepth(LORAFISH_SCENERY_CANVAS(display));
   drawLoRaFishBubbles(display);
@@ -3622,8 +4010,14 @@ static void drawLoRaFishSleeping(DisplayDriver& display, UITask* task) {
   // Sleeping fish stays inside the same aquarium as the awake fish.
   drawTDeckPixelAquarium(display);
   drawLoRaFishBubbles(display);
+#elif defined(LORAFISH_COLOUR_TANK)
+  if (loRaFishColorDisplay) { drawLoRaFishColourTank(display); drawLoRaFishBubbles(display); }
 #endif
-  drawLoRaFishNativeScenery(display);
+#if LORAGOTCHI_DXPRO
+  if (!loRaFishColourTank()) drawLoRaFishHomeScenery(display);
+#else
+  if (!loRaFishColourTank()) drawLoRaFishNativeScenery(display);
+#endif
   drawLoRaFishHeader(display,loRaFishDisplayName(),tb);
   drawLoRaFishTankBattery(display,task,tb);
 
@@ -3665,8 +4059,12 @@ static void drawLoRaFishNameNotice(DisplayDriver& display) {
   const int x = display.width() / 2;
   drawLoRaFishHeader(display, "GET FOUND BY FRIENDS", "");
   display.setColor(UIColor::primary_txt);
+#if LORAGOTCHI_DXPRO
+  display.drawTextCentered(x, 18, "Add animal emoji to");
+#else
   display.drawTextCentered(x, 18, LORAGOTCHI_SPECIES_EDITION ?
-      (LORAGOTCHI_AIR_EDITION ? "Add an Air emoji to" : "Add a Water emoji to") : "Add a fish emoji to");
+      (LORAGOTCHI_LAND_EDITION ? "Add a Land emoji to" : LORAGOTCHI_AIR_EDITION ? "Add an Air emoji to" : "Add a Water emoji to") : "Add a fish emoji to");
+#endif
   display.drawTextCentered(x, 27, "your MeshCore name");
   display.drawTextCentered(x, 36, "to appear as a");
   display.drawTextCentered(x, 45, "LoRagotchi-DX tank.");
@@ -3768,6 +4166,32 @@ static void drawLoRaFish(DisplayDriver& display, UITask* task) {
 #ifdef LORAGOTCHI_NATIVE_UI
 // Full-width habitat below a quiet two-line status ribbon. No side rail,
 // framebuffer magnification or bordered 64px card on larger native panels.
+// True when the page about to be drawn is a list menu. Those are laid out in real panel rows at the
+// driver's tight pitch (LoRaFishMenuLayout) instead of being stretched with the 64 px page frame.
+// Mirrors the precedence inside drawLoRaFish(): notices and adoption first, then the picker, then the page.
+static bool loRaFishListPage() {
+  if (loRaFishChannelNotice || loRaFishNameNotice || loRaFishMonoDisplayNotice || loRaFishAdoptionEligible)
+    return false;
+  if (loRaFishValuePicker.active()) {
+#if LORAGOTCHI_DXPRO
+    return loRaFishValuePicker.key() == LoRaFishSetting::Species ||
+        loRaFishValuePicker.key() == LoRaFishSetting::SpeciesSet;
+#else
+    return false;
+#endif
+  }
+  const uint8_t page = (loRaFishNeedsPetSetup && loRaFishPage != 9) ? LORAFISH_PET_SETUP_PAGE : loRaFishPage;
+  switch (page) {
+    case LORAFISH_PET_SETUP_PAGE: case LORAFISH_ADVERT_PAGE:
+    case 5: case 8: case 9: case 10: case 11: case 12: case 13: case 15:
+      return true;
+#ifdef PIN_BUZZER
+    case 14: return true;
+#endif
+    default: return false;
+  }
+}
+
 static void drawLoRaFishNative(DisplayDriver& display, UITask* task) {
   const int w=display.width(),h=display.height();
   const bool notice=loRaFishChannelNotice || loRaFishNameNotice ||
@@ -3788,6 +4212,9 @@ static void drawLoRaFishNative(DisplayDriver& display, UITask* task) {
     }
     LoRaFishLayout::Region habitat(display,0,ribbon,w,h-ribbon);
     drawLoRaFish(habitat,task);
+  } else if(loRaFishListPage()) {
+    LoRaFishLayout::Region flow(display,0,0,w,h); // identity mapping: rows are real panel rows
+    drawLoRaFish(flow,task);
   } else {
     LoRaFishLayout::Page page(display);
     drawLoRaFish(page,task);
@@ -5650,6 +6077,8 @@ char UITask::handleLongPress(char c, bool isHold) {
         if (breedLoRaFishWithGuest()) {
           loRaFishOption = LoRaFishOption::Guess;
           showAlert("Egg saved", 1100);
+        } else {
+          showAlert("Same species only", 1100);
         }
         break;
       default: break;

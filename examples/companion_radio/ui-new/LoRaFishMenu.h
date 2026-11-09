@@ -33,7 +33,8 @@ public:
 
 enum class LoRaFishSetting : uint8_t {
   Theme, Brightness, Rendering, Scales, Body, Eyes, SleepHour, WakeHour, UtcOffset,
-  TimeoutAwake, TimeoutAsleep, DimAfter, Volume, WakeSound, SleepSound, MessageSound, MonoDisplayColour, Species, Orientation, DisplayUpdate
+  TimeoutAwake, TimeoutAsleep, DimAfter, Volume, WakeSound, SleepSound, MessageSound, MonoDisplayColour, Species, Orientation, DisplayUpdate,
+  SpeciesSet // DX-Pro only: step one of the set-then-species menu (appended so existing values keep their numbers)
 };
 
 // Browsing is a draft: only Select produces a value to persist. Back cancels it.
@@ -73,3 +74,47 @@ public:
     return true;
   }
 };
+
+
+// Menu row layout, shared by every menu drawer. Pure integer maths (no driver, no Arduino) so the host
+// tests exercise the exact production rules. Units are the driver's own coordinate units: real pixels on
+// the native panels and the Cardputer, the 128x64 grid on the OLEDs and the scaled T-Deck.
+//
+// The pitch comes from the driver (DisplayDriver::menuRowPitch(): font height plus one pixel), never from
+// a fixed number, and the visible row count is whatever fits between the header rule and the hint line.
+namespace LoRaFishMenuLayout {
+constexpr int kTop = 18;        // first row: just below the 16 px header rule
+constexpr int kHintGap = 8;     // hint line height on panels taller than the 64 px reference
+constexpr int kLegacyPitch = 9; // the pitch the 64 px reference menus have always used (8 px font + 1)
+
+// Hint line baseline. The 64 px reference keeps its historic row (56); taller panels anchor it to the bottom edge.
+constexpr int hintY(int height) { return height <= 64 ? 56 : height - kHintGap; }
+
+// Rows that fit between `top` and the hint line (or the panel bottom when the page has no hint). Never 0.
+constexpr int rows(int height, int pitch, int top = kTop, bool hint = true) {
+  return pitch < 1 ? 1
+       : ((hint ? hintY(height) : height) - top) / pitch < 1 ? 1
+       : ((hint ? hintY(height) : height) - top) / pitch;
+}
+
+// First visible item for a list of `count` items showing `visible` rows. The selection rides the last row until
+// the list ends, which is the scrolling rule the menus always had; it is always inside [first, first+visible).
+constexpr int first(int selected, int count, int visible) {
+  return count <= visible ? 0
+       : (selected + 1 > visible ? selected + 1 - visible : 0) > count - visible
+           ? count - visible
+           : (selected + 1 > visible ? selected + 1 - visible : 0);
+}
+
+// Y of row `row`. The 64 px reference with the standard pitch keeps each menu's historic rows exactly;
+// everything else (taller panels, the scaled T-Deck) packs rows at the driver's own pitch from kTop.
+constexpr int rowY(int height, int pitch, int row, int legacyTop = kTop, int legacyPitch = kLegacyPitch) {
+  return (height <= 64 && pitch >= kLegacyPitch) ? legacyTop + row * legacyPitch : kTop + row * pitch;
+}
+
+// Convenience forms that read the pitch and height from the driver being drawn on.
+template <class Display> inline int rowsFor(Display& d) { return rows(d.height(), d.menuRowPitch()); }
+template <class Display> inline int rowYFor(Display& d, int row, int legacyTop = kTop, int legacyPitch = kLegacyPitch) {
+  return rowY(d.height(), d.menuRowPitch(), row, legacyTop, legacyPitch);
+}
+} // namespace LoRaFishMenuLayout

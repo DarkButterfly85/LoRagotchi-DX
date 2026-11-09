@@ -132,6 +132,7 @@ markers = [
     'static LoRaFishAppearance loRaFishGuestAppearance(',
     'static bool loRaFishCanBreed(',
     'static uint8_t inheritLoRaFishColor(',
+    'static bool loRaFishGuestSameSpecies(',
     'static bool breedLoRaFishWithGuest(',
     'static uint8_t fishEvolutionForAge(',
     'static void encodeLoRaFishSettings(',

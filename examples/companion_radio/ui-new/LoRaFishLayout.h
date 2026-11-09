@@ -41,6 +41,7 @@ public:
   Region(DisplayDriver& target,int x,int y,int w,int h):DisplayDriver(w,h),out(target),ox(x),oy(y) {}
   bool isOn() override { return out.isOn(); }
   bool supportsColor() const override { return out.supportsColor(); }
+  int menuRowPitch() const override { return out.menuRowPitch(); }
   void turnOn() override {} void turnOff() override {} void clear() override {}
   void startFrame(ColorVal) override {} void endFrame() override {}
   void setTextSize(int s) override { textSize=std::max(1,s);out.setTextSize(s); }

@@ -7,6 +7,10 @@ s=(ROOT/'examples/companion_radio/ui-new/UITask.cpp').read_text()
 start=s.index('static void drawLoRaFishNative(');op=s.index('{',start);end=op+1;depth=1
 while depth:
  depth+=(s[end]=='{')-(s[end]=='}');end+=1
+ls=s.index('static bool loRaFishListPage(');lop=s.index('{',ls);lend=lop+1;ldepth=1
+while ldepth:
+ ldepth+=(s[lend]=='{')-(s[lend]=='}');lend+=1
+listpage=s[ls:lend]
 code=r'''
 #include <cassert>
 #include <cstdio>
@@ -17,7 +21,9 @@ struct UITask { bool hasConnection(){return true;} };
 static bool loRaFishChannelNotice=false,loRaFishNameNotice=false,loRaFishMonoDisplayNotice=false,
  loRaFishAdoptionEligible=false,loRaFishNeedsPetSetup=false;
 static int loRaFishPage=0,loRaFishGeneration=65535;
-struct {bool active(){return false;}} loRaFishValuePicker;
+enum class LoRaFishSetting{Species,SpeciesSet,Theme};
+static constexpr uint8_t LORAFISH_PET_SETUP_PAGE=20,LORAFISH_ADVERT_PAGE=18;
+struct {bool active(){return false;} LoRaFishSetting key(){return LoRaFishSetting::Theme;}} loRaFishValuePicker;
 struct {uint32_t ageMinutes=0xffffffff,rfEvents=0xffffffff,messages=0xffffffff,txAcks=0xffffffff;int happiness=100;} fish;
 static int sceneW,sceneH;
 static void drawLoRaFish(DisplayDriver& d,UITask*){sceneW=d.width();sceneH=d.height();}
@@ -40,7 +46,7 @@ public:
  void fillRect(int x,int y,int w,int h)override{assert(x>=0&&y>=0&&x+w<=width()&&y+h<=height());}
  void drawRect(int,int,int,int)override{}void drawXbm(int,int,const uint8_t*,int,int)override{}
 };
-'''+s[start:end]+r'''
+'''+listpage+chr(10)+s[start:end]+r'''
 int main(){
  UITask task;
  for(auto dims:{std::pair<int,int>{320,170},{320,240},{240,135}}){

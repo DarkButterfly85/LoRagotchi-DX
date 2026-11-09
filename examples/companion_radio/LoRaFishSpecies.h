@@ -4,33 +4,64 @@
 #include <string.h>
 #include "LoRaGotchiVersion.h"
 
-// Shared registry: Water 0..14, Air 256..273; 15..255 reserved. IDs are permanent protocol identities, not menu positions.
+// Shared registry: Water 0..14, Air 256..273, Land 512..550; 15..255, 274..511 and 551+ reserved.
+// IDs are permanent protocol identities, not menu positions.
 namespace LoRaFishSpecies {
 enum : uint16_t {
   TropicalFish=0, Blowfish=1, Shark=2, Dolphin=3, Whale=4, Seal=5, Shrimp=6,
   Squid=7, Lobster=8, Crab=9, Octopus=10, Jellyfish=11, ShellDweller=12, SeaStar=13, Anglerfish=14,
   Eagle=256, Bird=257, Owl=258, Duck=259, Swan=260, Penguin=261, Parrot=262,
   Flamingo=263, Peacock=264, Turkey=265, Rooster=266, Dove=267, Bat=268,
-  Honeybee=269, Butterfly=270, Fly=271, Worm=272, Bug=273
+  Honeybee=269, Butterfly=270, Fly=271, Worm=272, Bug=273,
+  // Land: ground mammals 512..539, amphibious/reptiles 540..544, mythic 545..550.
+  Dog=512, Cat=513, Horse=514, Cow=515, Elephant=516, Pig=517, Ram=518, Sheep=519, Goat=520,
+  Giraffe=521, Kangaroo=522, Llama=523, Deer=524, Mouse=525, Hamster=526, Rabbit=527,
+  Hedgehog=528, Koala=529, Panda=530, Sloth=531, Otter=532, Skunk=533, Badger=534, Hippo=535,
+  Rhino=536, Camel=537, BactrianCamel=538, Bison=539,
+  Frog=540, Crocodile=541, Lizard=542, Turtle=543, Snake=544,
+  Unicorn=545, Dragon=546, DragonFace=547, Phoenix=548, Sauropod=549, TRex=550
 };
 static constexpr uint8_t count=15;
 static constexpr uint8_t airCount=18;
+static constexpr uint8_t landCount=39;
 inline bool waterKnown(uint16_t id) { return id<count; }
 inline bool airKnown(uint16_t id) { return id>=Eagle && id<=Bug; }
-inline bool known(uint16_t id) { return waterKnown(id) || airKnown(id); }
-// Known AND belongs to this build's habitat (Air build: Air IDs; otherwise Water IDs).
-inline bool editionKnown(uint16_t id) { return LORAGOTCHI_AIR_EDITION ? airKnown(id) : waterKnown(id); }
+inline bool landKnown(uint16_t id) { return id>=Dog && id<=TRex; }
+inline bool known(uint16_t id) { return waterKnown(id) || airKnown(id) || landKnown(id); }
+// Known AND belongs to this build's habitat (Land build: Land IDs; Air build: Air IDs; otherwise Water IDs).
+inline bool editionKnown(uint16_t id) {
+  // DX-Pro owns every set, so any known ID belongs to it.
+  return LORAGOTCHI_DXPRO ? known(id)
+       : LORAGOTCHI_LAND_EDITION ? landKnown(id) : LORAGOTCHI_AIR_EDITION ? airKnown(id) : waterKnown(id);
+}
+// Set-then-species menu (DX-Pro). Sets are the three ID ranges; only the species ID is persisted, so the
+// set is always derived from the ID and no save or wire field is added. Pure helpers, any build may call them.
+static constexpr uint8_t setCount=3; // 0 Water, 1 Air, 2 Land
+inline uint8_t setOf(uint16_t id) { return landKnown(id) ? 2 : airKnown(id) ? 1 : 0; }
+inline uint8_t setSize(uint8_t set) { return set==2 ? landCount : set==1 ? airCount : count; }
+inline uint16_t setBase(uint8_t set) { return set==2 ? (uint16_t)Dog : set==1 ? (uint16_t)Eagle : (uint16_t)TropicalFish; }
+inline const char* setLabel(uint8_t set) { return set==2 ? "Land" : set==1 ? "Air" : "Water"; }
+inline uint16_t setSelectionId(uint8_t set,uint8_t index) {
+  return setBase(set)+(index<setSize(set) ? index : 0);
+}
+inline uint8_t setSelectionIndex(uint16_t id) { return known(id) ? (uint8_t)(id-setBase(setOf(id))) : 0; }
 // Menu offsets are never persisted or sent. Legacy saves remain fish.
-static constexpr uint8_t selectableCount=LORAGOTCHI_AIR_EDITION ? airCount : count;
-static constexpr uint16_t freshSpecies=LORAGOTCHI_AIR_EDITION ? Eagle : TropicalFish;
+static constexpr uint8_t selectableCount=LORAGOTCHI_LAND_EDITION ? landCount : LORAGOTCHI_AIR_EDITION ? airCount : count;
+static constexpr uint16_t freshSpecies=LORAGOTCHI_LAND_EDITION ? Dog : LORAGOTCHI_AIR_EDITION ? Eagle : TropicalFish;
 inline uint16_t selectionId(uint8_t index) {
-  return index<selectableCount ? (LORAGOTCHI_AIR_EDITION ? Eagle+index : index) : freshSpecies;
+  return index<selectableCount ? (LORAGOTCHI_LAND_EDITION ? Dog+index : LORAGOTCHI_AIR_EDITION ? Eagle+index : index) : freshSpecies;
 }
 inline uint8_t selectionIndex(uint16_t id) {
-  return LORAGOTCHI_AIR_EDITION ? (airKnown(id) ? id-Eagle : 0) : (waterKnown(id) ? id : 0);
+  return LORAGOTCHI_LAND_EDITION ? (landKnown(id) ? id-Dog : 0)
+       : LORAGOTCHI_AIR_EDITION ? (airKnown(id) ? id-Eagle : 0) : (waterKnown(id) ? id : 0);
 }
 enum Movement : uint8_t { Swim, FlyMotion, Flutter, Walk, Crawl };
 inline Movement movement(uint16_t id) {
+  if(landKnown(id)) {
+    if(id==Frog || id==Crocodile || id==Lizard || id==Turtle || id==Snake)return Crawl;
+    if(id==Dragon || id==DragonFace || id==Phoenix)return FlyMotion;
+    return Walk;
+  }
   if(!airKnown(id))return Swim;
   if(id==Worm || id==Bug)return Crawl;
   if(id==Penguin || id==Flamingo || id==Peacock || id==Turkey || id==Rooster)return Walk;
@@ -81,7 +112,7 @@ inline void waterPosition(uint16_t id,uint8_t stage,int width,uint32_t now,
 inline void habitatPosition(uint16_t id,uint8_t stage,int width,uint32_t now,
                             uint32_t offset,int& x,int& y,bool& right) {
   if(waterMotion(id)) {waterPosition(id,stage,width,now,offset,x,y,right);return;}
-  if(!airKnown(id))return;
+  if(!airKnown(id) && !landKnown(id))return;
   const Movement kind=movement(id);
   uint32_t period=kind==Crawl ? 16000U : kind==Walk ? 10000U : kind==Flutter ? 4200U : 8000U;
   if(stage==0)period=period*3U/4U;
@@ -92,6 +123,56 @@ inline void habitatPosition(uint16_t id,uint8_t stage,int width,uint32_t now,
   x=20+(int)((uint32_t)span*(right?t:period-t)/half);
   y=habitatY(id,y,now+offset);
 }
+// Water tank bands (Water build only; habitatPosition above and the Air/Land builds are untouched).
+// The tank is split by a fixed row: swimmers that live at the top of the water (air-breathers and
+// drifters) sit in the SURFACE band, everything else in the UNDERWATER band. The band is a data
+// field of the species (table below), never derived from a name or from the movement kind.
+// Rows are sprite-centre rows in the 64 px reference frame that LoRaFishLayout::habitatY() consumes.
+enum Band : uint8_t { Surface, Underwater };
+struct BandEntry { uint16_t id; Band band; };
+static constexpr BandEntry bandTable[]={
+  {TropicalFish,Underwater},{Blowfish,Underwater},{Shark,Underwater},{Dolphin,Surface},{Whale,Surface},
+  {Seal,Surface},{Shrimp,Underwater},{Squid,Underwater},{Lobster,Underwater},{Crab,Underwater},
+  {Octopus,Underwater},{Jellyfish,Surface},{ShellDweller,Underwater},{SeaStar,Underwater},{Anglerfish,Underwater},
+  // Air-set swimmers: not drawn by a Water build today, listed so a future visit rule can place them.
+  {Duck,Surface},{Swan,Surface},{Penguin,Underwater}
+};
+// Unlisted and future IDs use the fish row (Underwater), exactly where the DX fish has always swum.
+inline Band band(uint16_t id) {
+  for(size_t i=0;i<sizeof(bandTable)/sizeof(bandTable[0]);++i)
+    if(bandTable[i].id==id)return bandTable[i].band;
+  return Underwater;
+}
+enum BandLayout : uint8_t { BandCompact, BandTall, BandWander };
+struct BandRows { int8_t top, bottom; };
+// BandCompact: 64 px panels and the Cardputer/T-Deck 2D canvas (fish natural rows 36..40).
+// BandTall: native panels taller than 64 px (habitatY input domain 18..42).
+// BandWander: T-Watch S3 tall tank (wander rows 29..49).
+inline BandRows bandRows(Band b,BandLayout l) {
+  static constexpr BandRows rows[3][2]={{{28,32},{36,40}},{{18,29},{30,42}},{{29,38},{39,49}}};
+  return rows[l][b];
+}
+// First row that belongs to the underwater band; rows above it are surface or open water.
+inline int bandBoundary(BandLayout l) { return l==BandCompact ? 34 : l==BandTall ? 30 : 39; }
+// Map the species' own natural row range [natTop,natBottom] linearly onto its band, so the
+// sprite, speed and bob shape are unchanged and only the vertical envelope moves. When the
+// natural range already equals the band (an underwater fish on a 64 px panel) this is the identity.
+inline int bandFit(uint16_t id,BandLayout l,int y,int natTop,int natBottom) {
+  const BandRows r=bandRows(band(id),l);
+  if(y<natTop)y=natTop;
+  if(y>natBottom)y=natBottom;
+  if(natBottom<=natTop)return y<r.top ? r.top : y>r.bottom ? r.bottom : y;
+  return r.top+(y-natTop)*(r.bottom-r.top)/(natBottom-natTop);
+}
+// The bands only exist where the tank can hold two adult sprites one above the other with a gap
+// between them. Smaller tanks keep the single shared tank (a local display decision: it changes no
+// wire field, visit rule, breeding rule or save). tankTopRow is the first row below the header rule,
+// tankBottomRow the floor rule row; maxAdultSpriteRows is the tallest adult sprite drawn.
+static constexpr int bandGapRows=4;
+inline bool waterBandsEnabled(int tankTopRow,int tankBottomRow,int maxAdultSpriteRows) {
+  return maxAdultSpriteRows>0 && tankBottomRow>tankTopRow &&
+         tankBottomRow-tankTopRow>=2*maxAdultSpriteRows+bandGapRows;
+}
 inline uint16_t renderId(uint16_t id) { return known(id) ? id : (uint16_t)TropicalFish; }
 // Species-aware display names; protocol stage values and evolution timing remain unchanged.
 inline const char* lifeStage(uint16_t id, uint8_t stage) {
@@ -100,7 +181,27 @@ inline const char* lifeStage(uint16_t id, uint8_t stage) {
   if (stage == 1) {
     if (id == Butterfly) return "CHRYSALIS";
     if (id == Honeybee || id == Fly) return "PUPA";
+    if (id == Frog) return "FROGLET";
     return "JUVENILE";
+  }
+  if (landKnown(id)) {
+    switch (id) {
+      case Dog: case Otter: case Mouse: case Hamster: return "PUP";
+      case Cat: case Rabbit: case Skunk: return "KIT";
+      case Horse: case Unicorn: return "FOAL";
+      case Pig: return "PIGLET";
+      case Ram: case Sheep: return "LAMB";
+      case Goat: return "KID";
+      case Kangaroo: case Koala: return "JOEY";
+      case Llama: return "CRIA";
+      case Deer: return "FAWN";
+      case Hedgehog: return "HOGLET";
+      case Panda: case Sloth: case Badger: return "CUB";
+      case Frog: return "TADPOLE";
+      case Crocodile: case Lizard: case Turtle: case Snake:
+      case Dragon: case DragonFace: case Phoenix: case Sauropod: case TRex: return "HATCHLING";
+      default: return "CALF"; // Cow, Elephant, Giraffe, Hippo, Rhino, camels, Bison
+    }
   }
   if (!airKnown(id)) return "FRY";
   switch (id) {
@@ -123,7 +224,13 @@ inline const char* label(uint16_t id) {
   static const char* const airNames[]={"Eagle","Bird","Owl","Duck","Swan","Penguin",
     "Parrot","Flamingo","Peacock","Turkey","Rooster","Dove","Bat",
     "Honeybee","Butterfly","Fly","Worm","Bug"};
-  return waterKnown(id) ? names[id] : airKnown(id) ? airNames[id-Eagle] : "Unknown (fish)";
+  static const char* const landNames[]={"Dog","Cat","Horse","Cow","Elephant","Pig","Ram","Sheep",
+    "Goat","Giraffe","Kangaroo","Llama","Deer","Mouse","Hamster","Rabbit","Hedgehog","Koala",
+    "Panda","Sloth","Otter","Skunk","Badger","Hippo","Rhino","Camel","Bactrian camel","Bison",
+    "Frog","Crocodile","Lizard","Turtle","Snake","Unicorn","Dragon","Dragon face","Phoenix",
+    "Sauropod","T-Rex"};
+  return waterKnown(id) ? names[id] : airKnown(id) ? airNames[id-Eagle] :
+         landKnown(id) ? landNames[id-Dog] : "Unknown (fish)";
 }
 // Capability ACK is exact and transaction-bound by the caller. Legacy ACKs
 // select the original nine-field COMMIT (some older RX parsers require n==9).
@@ -139,16 +246,27 @@ inline bool acknowledged(const char* text) {
     } while(*p>='0' && *p<='9');
     if(*p++!='|')return false;
   }
-  return !strcmp(p,"S1") || !strcmp(p,"S1|A1");
+  return !strcmp(p,"S1") || !strcmp(p,"S1|A1") || !strcmp(p,"S1|L1");
 }
 // A1 is explicit Air capability; S1 alone is not permission for Air IDs.
 inline bool airAcknowledged(const char* text) {
   if(!acknowledged(text))return false;
   const size_t n=strlen(text);return n>=6 && !strcmp(text+n-6,"|S1|A1");
 }
+// L1 is explicit Land capability, advertised only by Land builds.
+inline bool landAcknowledged(const char* text) {
+  if(!acknowledged(text))return false;
+  const size_t n=strlen(text);return n>=6 && !strcmp(text+n-6,"|S1|L1");
+}
 inline uint16_t wireSpecies(uint16_t id,const char* ack) {
+  if(landKnown(id))return landAcknowledged(ack) ? id : (uint16_t)TropicalFish;
   if(!airKnown(id))return id; // retain existing opaque uint16 S1 forwarding
   return airKnown(id) && airAcknowledged(ack) ? id : (uint16_t)TropicalFish;
+}
+// True when this species cannot be sent to the peer that produced 'ack' and
+// would be shown there as the legacy fish.
+inline bool wireFallback(uint16_t id,const char* ack) {
+  return (airKnown(id) && !airAcknowledged(ack)) || (landKnown(id) && !landAcknowledged(ack));
 }
 // Missing means legacy tropical fish. Invalid/duplicate fields reject the COMMIT
 // without changing its reservation. Unknown IDs are retained, not reinterpreted.
@@ -184,6 +302,8 @@ inline uint16_t checksum(const uint8_t* p,size_t n) {
 static constexpr size_t savedSize=18;
 inline uint32_t mix(uint32_t x) { x^=x>>16; x*=0x7feb352dUL; x^=x>>15; x*=0x846ca68bUL; return x^(x>>16); }
 inline uint16_t mystery(uint32_t seed) { return (uint16_t)(selectionId((uint8_t)(mix(seed)%selectableCount))); }
+// Mystery egg inside a chosen set: the same formula a single-set build uses, so one seed gives one animal.
+inline uint16_t setMystery(uint32_t seed,uint8_t set) { return setSelectionId(set,(uint8_t)(mix(seed)%setSize(set))); }
 inline uint8_t mysteryColour(uint32_t seed,unsigned role) { return (uint8_t)(8+mix(seed+0x9e3779b9UL*(role+1))%240); }
 inline void encode(uint8_t* p,uint16_t local,uint16_t egg,uint32_t seed,bool setup) {
   memcpy(p,"SPC1",4); p[4]=local; p[5]=local>>8; p[6]=egg; p[7]=egg>>8;
