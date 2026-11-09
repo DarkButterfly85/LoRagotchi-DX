@@ -9,7 +9,7 @@ from pathlib import Path
 import subprocess, tempfile, re
 ROOT=Path(__file__).resolve().parents[2]
 ui=(ROOT/'examples/companion_radio/ui-new/UITask.cpp').read_text()
-start=ui.index('#if LORAGOTCHI_WATER_EDITION\n// Bands need room')
+start=ui.index('#if LORAGOTCHI_WATER_EDITION || LORAGOTCHI_DXPRO\n// Bands need room')
 helper=ui[start:ui.index('static void drawLoRaFishAquarium(')]
 
 harness=r'''

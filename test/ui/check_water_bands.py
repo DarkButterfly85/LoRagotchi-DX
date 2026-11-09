@@ -109,14 +109,14 @@ with tempfile.TemporaryDirectory(prefix='dx-bands-') as tmp:
 
 # Production hooks (text): Water build only, applied before habitatY for home and visitor.
 ui=(ROOT/'examples/companion_radio/ui-new/UITask.cpp').read_text()
-a=ui.index('#if LORAGOTCHI_WATER_EDITION\n// Bands need room')
+a=ui.index('#if LORAGOTCHI_WATER_EDITION || LORAGOTCHI_DXPRO\n// Bands need room')
 helper=ui[a:ui.index('static void drawLoRaFishAquarium(')]
 assert 'LORAGOTCHI_AIR_EDITION' not in helper and 'LORAGOTCHI_LAND_EDITION' not in helper and 'ANIMAL' not in helper
 assert helper.rstrip().endswith('#endif')
 assert 'species!=Jellyfish' in helper and 'waterMotion(species)' in helper  # same floor-walker rule as habitatY
 assert not re.search(r'Duck|Swan|Penguin|Dolphin|Shark',helper)  # no species names in the hook: the band is data
-home='#if LORAGOTCHI_WATER_EDITION\n  y=loRaFishBandY(loRaFishSpecies,y,h);\n#endif\n  y=LoRaFishLayout::habitatY(y,h,'
-guest='#if LORAGOTCHI_WATER_EDITION\n  gy=loRaFishBandY(guestMotionSpecies,gy,h);\n#endif\n  gy=LoRaFishLayout::habitatY(gy,h,'
+home='#if LORAGOTCHI_WATER_EDITION || LORAGOTCHI_DXPRO\n  y=loRaFishBandY(loRaFishSpecies,y,h);\n#endif\n  y=LoRaFishLayout::habitatY(y,h,'
+guest='#if LORAGOTCHI_WATER_EDITION || LORAGOTCHI_DXPRO\n  gy=loRaFishBandY(guestMotionSpecies,gy,h);\n#endif\n  gy=LoRaFishLayout::habitatY(gy,h,'
 assert ui.count(home)==1 and ui.count(guest)==1
 assert ui.index('habitatPosition(loRaFishSpecies')<ui.index(home)<ui.index('const int foodX=w/2+18;')
 assert ui.index('habitatPosition(guestMotionSpecies')<ui.index(guest)
