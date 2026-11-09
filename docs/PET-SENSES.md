@@ -1,6 +1,6 @@
 # Pet senses: mesh weather
 
-*Colour screens get the full sparkle. Small black-and-white (OLED/LCD) screens get a tiny one. E-ink screens are unchanged.*
+*Colour screens get the full sparkle. Small black-and-white (OLED/LCD) screens get a tiny one. E-ink screens get no animation at all, by design.*
 
 The pet notices when the mesh **suddenly gets much busier than it has been lately**, and
 gives a brief sparkle. It uses the packet counts that [RF Monitor+](RF-MONITOR-PLUS.md) already
@@ -26,7 +26,7 @@ Because it compares the mesh with itself, it behaves the same on a quiet country
 |--------|---------|
 | Colour (T-Deck, Cardputer, Heltec T190 and the other colour displays) | three small yellow twinkles around the pet for about 5 seconds |
 | Small black-and-white OLED/LCD (e.g. 128x64) | one tiny white plus (5 pixels) for about 1 second, then a single dot for a moment, then gone |
-| E-ink | nothing, exactly as before |
+| E-ink | nothing, ever (no animation by design) |
 
 The black-and-white sparkle sits in the **top-left corner of the tank**, just under the header line
 (or the **top-right corner** if the pet happens to be swimming near the left). It stays clear of the pet, the
@@ -34,8 +34,11 @@ title, clock and battery in the header, the centred message rows, the poop spots
 and the status bar at the bottom. If a visiting pet is on the tank, or the pet is near both corners, it is
 simply not drawn. Whenever no sparkle is active, a black-and-white screen draws exactly what it always did.
 
-(E-ink is left out on purpose: a one-second effect would make the panel refresh more often.
-Setting `MONO_ON_EINK` to true in `LoRaFishMeshWeather.h` would allow it.)
+**E-ink gets no animation, by design.** E-ink is for still images, so it never gets a sparkle or any
+other moving effect. This is built in, not a setting: the sparkle code is left out of every e-ink
+build entirely (Heltec Mesh Pocket and the other e-ink boards), and a second check at run time stops
+it too. There is no option or switch to turn it on, and an e-ink page is drawn exactly as it would be
+if the sparkle did not exist.
 
 ## What it does not do
 
