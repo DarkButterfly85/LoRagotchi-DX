@@ -3383,10 +3383,26 @@ static void drawLoRaFishNativeScenery(DisplayDriver& d) {
 }
 
 #if LORAGOTCHI_WATER_EDITION
+// Bands need room for two adult sprites plus a gap. Fixed-row paths (64 px OLED/LCD, Cardputer,
+// T-Deck, T-Watch) draw every sprite inside rows of the 64 px reference frame whatever the canvas
+// height, so that frame is their tank; only native panels taller than 64 px stretch the sprite
+// rows over the real height (LoRaFishLayout::habitatY). Tank = header rule (row 15) to floor rule.
+static bool loRaFishWaterBands(int h) {
+  int frame=64;
+#ifdef LORAGOTCHI_NATIVE_UI
+  if(h>64)frame=h;
+#else
+  (void)h;
+#endif
+  return LoRaFishSpecies::waterBandsEnabled(16,frame-15,LoRaFishWaterSprite::adultRows);
+}
+
 // Water tank only (Air and Land builds keep their own habitat rows): keep each species inside
 // its surface or underwater band. Same sprite, speed and bob; only the vertical envelope moves.
+// Tanks too small for two bands return y untouched: the shared tank, exactly as before the bands.
 static int loRaFishBandY(uint16_t species,int y,int h) {
   using namespace LoRaFishSpecies;
+  if(!loRaFishWaterBands(h))return y;
   const bool floorWalker=waterMotion(species) && species!=Jellyfish; // crab, snail: pinned to the floor
   if(floorWalker)return y;
 #ifdef LORAGOTCHI_NATIVE_UI

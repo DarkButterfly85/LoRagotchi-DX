@@ -151,6 +151,15 @@ inline int bandFit(uint16_t id,BandLayout l,int y,int natTop,int natBottom) {
   if(natBottom<=natTop)return y<r.top ? r.top : y>r.bottom ? r.bottom : y;
   return r.top+(y-natTop)*(r.bottom-r.top)/(natBottom-natTop);
 }
+// The bands only exist where the tank can hold two adult sprites one above the other with a gap
+// between them. Smaller tanks keep the single shared tank (a local display decision: it changes no
+// wire field, visit rule, breeding rule or save). tankTopRow is the first row below the header rule,
+// tankBottomRow the floor rule row; maxAdultSpriteRows is the tallest adult sprite drawn.
+static constexpr int bandGapRows=4;
+inline bool waterBandsEnabled(int tankTopRow,int tankBottomRow,int maxAdultSpriteRows) {
+  return maxAdultSpriteRows>0 && tankBottomRow>tankTopRow &&
+         tankBottomRow-tankTopRow>=2*maxAdultSpriteRows+bandGapRows;
+}
 inline uint16_t renderId(uint16_t id) { return known(id) ? id : (uint16_t)TropicalFish; }
 // Species-aware display names; protocol stage values and evolution timing remain unchanged.
 inline const char* lifeStage(uint16_t id, uint8_t stage) {

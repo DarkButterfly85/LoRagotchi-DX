@@ -109,7 +109,7 @@ with tempfile.TemporaryDirectory(prefix='dx-bands-') as tmp:
 
 # Production hooks (text): Water build only, applied before habitatY for home and visitor.
 ui=(ROOT/'examples/companion_radio/ui-new/UITask.cpp').read_text()
-a=ui.index('#if LORAGOTCHI_WATER_EDITION\n// Water tank only')
+a=ui.index('#if LORAGOTCHI_WATER_EDITION\n// Bands need room')
 helper=ui[a:ui.index('static void drawLoRaFishAquarium(')]
 assert 'LORAGOTCHI_AIR_EDITION' not in helper and 'LORAGOTCHI_LAND_EDITION' not in helper and 'ANIMAL' not in helper
 assert helper.rstrip().endswith('#endif')
