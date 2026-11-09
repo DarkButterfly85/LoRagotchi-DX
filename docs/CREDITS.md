@@ -12,7 +12,13 @@ rippleradios.com, released under the MIT License (see `LICENSE` and
 ## LODESTAR ORION and LODESTAR NOVA
 
 Ideas and code from these projects are used in LoRaGotchi-DX, with the
-permission of their authors:
+permission of their authors. Aries Thorne confirmed in writing on 2026-11-09,
+in the public LoRaGotchi Discord channel:
+
+> "Yes, I am very happy with this and Todd and I would be honored if you used
+> whatever code you need from Nova / Orion."
+
+(Discord message 1569352241851273331 in channel 1510581740974903436.)
 
 - **Aries Thorne** and **Todd Steinhauer**, creators of the LODESTAR ORION
   firmware and the LODESTAR NOVA web dashboard.
