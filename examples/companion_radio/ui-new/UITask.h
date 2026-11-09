@@ -89,6 +89,7 @@ class UITask : public AbstractUITask {
   void setCurrScreen(UIScreen* c);
 #ifdef LORAFISH_UI
   void handleLoRaFishMessage();
+  void handleLoRaFishQuietMessage();
 #endif
 #if defined(LORAFISH_UI) && defined(LORAFISH_WATCH_TOUCH)
   char handleWatchTouch(int gesture);   // LilyGo T-Watch S3 touch navigation
