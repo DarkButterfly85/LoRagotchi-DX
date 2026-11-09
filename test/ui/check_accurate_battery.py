@@ -137,7 +137,7 @@ int main() { UITask task; sweep(task, "TANK"); return 0; }
 '''
 new_prog = prelude + '\n' + block('static int loRaFishBatteryPercent(') + '\nstatic LoRaFishBattery::Tracker loRaFishBatteryTracker;\n' \
     + block('static void drawLoRaFishBatteryLeft(') + '\n' + block('static void drawLoRaFishHeader(') + '\n' \
-    + block('static void drawLoRaFishTankBattery(') + '\n' + block('static void drawLoRaFishRFMonitor(') + '\n' + TRACE + r'''
+    + block('static void drawLoRaFishTankBattery(') + '\n' + block('static void drawLoRaFishRfTypes(') + '\n' + block('static void drawLoRaFishRFMonitor(') + '\n' + TRACE + r'''
 int main() {
   UITask task;
   const char* mode = getenv("BATT_MODE");
