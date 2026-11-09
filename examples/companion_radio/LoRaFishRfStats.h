@@ -19,6 +19,9 @@ namespace LoRaFishRfStats {
 
 static constexpr uint8_t BUCKETS = 5;
 static constexpr uint32_t BUCKET_MS = 60000UL;
+// Also kept: the total packets of each of the last HISTORY finished minutes (small whole
+// numbers, 64 bytes, RAM only). Pet senses compares the newest minute with the ones before it.
+static constexpr uint8_t HISTORY = 32;
 
 // What the screen shows. Payload types are MeshCore's own (Packet.h).
 enum Group : uint8_t { Adv, Dm, Chan, Ack, Req, Other, GroupCount };
@@ -73,6 +76,9 @@ class Window {
   uint8_t head = 0;
   uint32_t headStart = 0;
   bool started = false;
+  uint16_t minutes[HISTORY];   // packets heard in each finished minute, oldest overwritten first
+  uint8_t minutesNext = 0;
+  uint32_t finished = 0;       // how many minutes have been finished since start-up
 
   void clear(uint8_t b) {
     memset(seen[b], 0, sizeof(seen[b]));
@@ -81,8 +87,22 @@ class Window {
   }
   static uint16_t add(uint16_t a, uint16_t b) { return (uint32_t)a + b > 65535u ? 65535u : a + b; }
 
+  uint16_t bucketTotal(uint8_t b) const {
+    uint16_t n = 0;
+    for (uint8_t g = 0; g < GroupCount; ++g) n = add(n, seen[b][g]);
+    return n;
+  }
+  void finishMinute(uint16_t n) {
+    minutes[minutesNext] = n;
+    minutesNext = (minutesNext + 1) % HISTORY;
+    ++finished;
+  }
+
 public:
-  Window() { for (uint8_t b = 0; b < BUCKETS; ++b) clear(b); }
+  Window() {
+    for (uint8_t b = 0; b < BUCKETS; ++b) clear(b);
+    memset(minutes, 0, sizeof(minutes));
+  }
 
   // Rolls the minutes forward to 'now' (millis; wrap-safe). Called before every read or write.
   void advance(uint32_t now) {
@@ -90,11 +110,16 @@ public:
     if ((int32_t)(now - headStart) < 0) return;              // a reader a hair behind the radio: nothing to roll
     uint32_t behind = (uint32_t)(now - headStart);
     if (behind >= (uint32_t)BUCKETS * BUCKET_MS) {          // a long quiet spell: everything expired
+      uint32_t missed = behind / BUCKET_MS - 1;             // whole minutes after the current one: nothing was heard in them
+      finishMinute(bucketTotal(head));
+      if (missed > HISTORY) missed = HISTORY;               // older ones would be pushed out of the history anyway
+      while (missed--) finishMinute(0);
       for (uint8_t b = 0; b < BUCKETS; ++b) clear(b);
       head = 0; headStart = now;
       return;
     }
     while (behind >= BUCKET_MS) {
+      finishMinute(bucketTotal(head));
       head = (head + 1) % BUCKETS; clear(head);
       headStart += BUCKET_MS; behind -= BUCKET_MS;
     }
@@ -103,6 +128,12 @@ public:
   // Start of the minute the window is currently on. It changes exactly when the window rolls,
   // so a reader can tell "same minute as last time" without keeping its own clock.
   uint32_t rollMark(uint32_t now) { advance(now); return headStart; }
+
+  // How many minutes have been finished so far (rolls the window to 'now' first).
+  uint32_t finishedMinutes(uint32_t now) { advance(now); return finished; }
+  // Packets heard in a finished minute: 0 = the newest finished minute, 1 = the one before ...
+  // Only meaningful for ago < min(finishedMinutes, HISTORY).
+  uint16_t minuteAgo(uint8_t ago) const { return minutes[(minutesNext + 2u * HISTORY - 1u - ago) % HISTORY]; }
 
   void record(uint32_t now, const Frame& f) {
     if (!f.ok) return;

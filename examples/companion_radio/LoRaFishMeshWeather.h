@@ -5,77 +5,127 @@
 
 // Pet senses: "mesh weather".
 //
-// The pet notices how busy the mesh has been, using the packet counts RF Monitor+
-// already keeps (LoRaFishRfStats::Window, the last 4 to 5 minutes). That becomes one
-// small level -- quiet / normal / busy -- and a busy mesh gives the pet a brief
-// sparkle. Purely presentational:
+// The pet notices when the mesh suddenly gets much busier than it has been lately, and
+// gives a brief sparkle. "Busier than lately" is RELATIVE, so it works the same on a
+// quiet rural mesh and on a busy city one:
 //
-//   * RAM only: about 16 bytes, never saved, gone after a restart.
+//   the newest finished minute  >=  SPIKE_TENTHS/10 times the average of the minutes before
+//   it (up to BASELINE_MINUTES of them)  AND  at least SPIKE_FLOOR packets.
+//
+// The counts come from RF Monitor+ (LoRaFishRfStats::Window), which keeps the packet total
+// of each of the last 32 finished minutes. Purely presentational:
+//
+//   * RAM only: this class is 12 bytes, the minute totals are 64 bytes; never stored,
+//     gone after a restart.
 //   * It only READS the counts. It does not touch what is received, forwarded or
 //     answered, any radio packet, the save file, food, growth, breeding or visits.
-//   * The level is only worked out again when the count window rolls on to a new
-//     minute, so it cannot flicker with every packet.
-//   * The sparkle is bounded: it lasts SPARKLE_MS, and at most once every
-//     COOLDOWN_MS, however noisy the mesh gets. A mesh that stays busy does not
-//     keep the pet sparkling.
+//   * It is worked out once per finished minute, so it cannot flicker with every packet.
+//   * Nothing sparkles until MIN_BASELINE_MINUTES of earlier minutes exist to compare with.
+//   * A sparkle fires when the mesh JUMPS, not while it stays high, and at most once every
+//     COOLDOWN_MS, however noisy the mesh gets.
+//
+// The constants below are the only thing to tune.
 //
 // Written from scratch for LoRagotchi-DX; no Orion/Nova code is used here.
 namespace LoRaFishMeshWeather {
 
-enum Level : uint8_t { Quiet, Normal, Busy };
+// --- the rule ---------------------------------------------------------------
+static constexpr uint32_t SPIKE_TENTHS         = 25;  // 25 = "2.5 times the usual"
+static constexpr uint32_t SPIKE_FLOOR          = 8;   // ... and at least this many packets in the minute
+static constexpr uint8_t  BASELINE_MINUTES     = 30;  // "usual" = average of up to this many earlier minutes
+static constexpr uint8_t  MIN_BASELINE_MINUTES = 10;  // no sparkle until this many earlier minutes exist
+static_assert(BASELINE_MINUTES < LoRaFishRfStats::HISTORY, "history must hold the baseline plus the newest minute");
+static_assert(MIN_BASELINE_MINUTES <= BASELINE_MINUTES, "cannot need more than the baseline holds");
 
-// Packets heard in the window (about 5 minutes).
-static constexpr uint32_t QUIET_MAX = 4;    // 4 or fewer: less than one a minute
-static constexpr uint32_t BUSY_MIN  = 60;   // 60 or more: about 12 a minute or more
-
-static constexpr uint32_t SPARKLE_MS  = 5000UL;     // how long one sparkle lasts
+// --- how it looks -----------------------------------------------------------
+static constexpr uint32_t SPARKLE_MS  = 5000UL;     // colour screens: how long the three yellow twinkles last
 static constexpr uint32_t COOLDOWN_MS = 180000UL;   // at least this long between sparkles
 
-inline Level levelFor(uint32_t packetsInWindow) {
-  if (packetsInWindow <= QUIET_MAX) return Quiet;
-  if (packetsInWindow >= BUSY_MIN) return Busy;
-  return Normal;
+// Monochrome (1-bit OLED / LCD): one small plus in a corner of the tank, then a single dot, then gone.
+static constexpr uint32_t MONO_PLUS_MS = 1000UL;    // the 3x3 plus (5 pixels)
+static constexpr uint32_t MONO_DOT_MS  = 300UL;     // fade step: just the centre pixel; after this, nothing
+static constexpr bool     MONO_ON_EINK = false;     // e-ink stays unchanged (a 1-second effect would cost extra screen refreshes)
+
+// Where the mono sparkle may go (centre of the plus). Both spots are inside the tank, under the
+// header line (y 15) and above the floor line (y h-15), clear of the centred text rows.
+static constexpr int MONO_EDGE   = 5;    // distance of the centre from the left / right screen edge
+static constexpr int MONO_ROW_Y  = 20;   // distance of the centre from the top
+// A generous box round the pet (its position is the middle of the sprite; sprites stay within ~20 px).
+static constexpr int PET_HALF_W  = 26;
+static constexpr int PET_ABOVE   = 20;
+static constexpr int PET_BELOW   = 18;
+static constexpr int SPOT_MARGIN = 3;    // clear space kept between the plus (3x3) and the pet box
+
+// Picks the corner for the mono sparkle that keeps clear of the pet. Returns false (draw nothing)
+// when the pet is near both corners.
+inline bool monoSpot(int w, int petX, int petY, int& cx, int& cy) {
+  const int xs[2] = {MONO_EDGE, w - 1 - MONO_EDGE};
+  for (uint8_t i = 0; i < 2; ++i) {
+    const int x0 = xs[i] - 1 - SPOT_MARGIN, x1 = xs[i] + 1 + SPOT_MARGIN;           // plus + margin
+    const int y0 = MONO_ROW_Y - 1 - SPOT_MARGIN, y1 = MONO_ROW_Y + 1 + SPOT_MARGIN;
+    const bool hit = x0 <= petX + PET_HALF_W && x1 >= petX - PET_HALF_W &&
+                     y0 <= petY + PET_BELOW && y1 >= petY - PET_ABOVE;
+    if (!hit) { cx = xs[i]; cy = MONO_ROW_Y; return true; }
+  }
+  return false;
 }
 
-inline const char* label(Level l) {
-  return l == Quiet ? "quiet" : l == Busy ? "busy" : "normal";
+// The rule on its own: was the newest minute a jump compared with the 'minutesBefore' minutes before it
+// (whose packets add up to 'sumBefore')?
+inline bool isSpike(uint32_t newest, uint32_t sumBefore, uint32_t minutesBefore) {
+  if (minutesBefore < MIN_BASELINE_MINUTES) return false;       // not enough history yet
+  if (newest < SPIKE_FLOOR) return false;                       // too small to matter, whatever the ratio
+  return newest * minutesBefore * 10UL >= sumBefore * SPIKE_TENTHS;
 }
 
 class Sense {
-  uint32_t mark_ = 0;          // start of the window minute the level was worked out for
+  uint32_t seen_ = 0;           // how many finished minutes have been looked at
   uint32_t sparkleStart_ = 0;
-  uint8_t level_ = Normal;
-  bool marked_ = false;
   bool sparkling_ = false;
   bool everSparkled_ = false;
+  bool wasSpike_ = false;       // the minute before was already a jump
 
   static bool within(uint32_t now, uint32_t since, uint32_t span) {   // wrap-safe
     return (int32_t)(now - since) >= 0 && (uint32_t)(now - since) < span;
   }
 
 public:
-  // Looks at the window; works out the level again only if the window has rolled on.
+  // Looks at the window; works the rule out again only when a new minute has finished.
   void update(uint32_t now, LoRaFishRfStats::Window& window) {
-    const uint32_t mark = window.rollMark(now);
-    if (!marked_ || mark != mark_) {
-      marked_ = true;
-      mark_ = mark;
-      const Level next = levelFor(window.total(now));
+    const uint32_t done = window.finishedMinutes(now);
+    if (done != seen_) {
+      const bool consecutive = (done - seen_) == 1;   // otherwise minutes were skipped
+      seen_ = done;
+      const uint32_t have = done < LoRaFishRfStats::HISTORY ? done : LoRaFishRfStats::HISTORY;
+      uint32_t n = have - 1;                          // minutes before the newest one
+      if (n > BASELINE_MINUTES) n = BASELINE_MINUTES;
+      uint32_t sum = 0;
+      for (uint32_t k = 1; k <= n; ++k) sum += window.minuteAgo((uint8_t)k);
+      const bool spike = isSpike(window.minuteAgo(0), sum, n);
       const bool cooled = !everSparkled_ || !within(now, sparkleStart_, COOLDOWN_MS);
-      if (next == Busy && level_ != Busy && cooled) {
+      if (spike && !(consecutive && wasSpike_) && cooled) {
         sparkling_ = true;
         everSparkled_ = true;
         sparkleStart_ = now;
       }
-      level_ = next;
+      wasSpike_ = spike;
     }
     if (sparkling_ && !within(now, sparkleStart_, SPARKLE_MS)) sparkling_ = false;
   }
 
-  Level level() const { return (Level)level_; }
+  // Colour screens: true for SPARKLE_MS after a jump.
   bool sparkling() const { return sparkling_; }
   // Which of the four twinkle frames to draw (0..3), changing every quarter second.
   uint8_t frame(uint32_t now) const { return (uint8_t)((now / 250UL) & 3); }
+  // Mono screens: 0 = draw nothing, 1 = the 3x3 plus, 2 = just the centre pixel.
+  uint8_t monoStep(uint32_t now) const {
+    if (!sparkling_) return 0;
+    const uint32_t age = now - sparkleStart_;
+    if ((int32_t)age < 0) return 0;
+    if (age < MONO_PLUS_MS) return 1;
+    if (age < MONO_PLUS_MS + MONO_DOT_MS) return 2;
+    return 0;
+  }
 };
 
 }  // namespace LoRaFishMeshWeather

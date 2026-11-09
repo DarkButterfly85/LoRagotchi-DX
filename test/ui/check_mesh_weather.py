@@ -1,22 +1,24 @@
 #!/usr/bin/env python3
-"""Pet senses: "mesh weather" (quiet / normal / busy) and the brief sparkle it gives the pet.
+"""Pet senses: "mesh weather" -- the pet sparkles when the mesh suddenly gets much busier than usual.
 
 python3 test/ui/check_mesh_weather.py (Python 3 and g++). No radio, no screen, no flash.
-Five parts:
-  1. LoRaFishMeshWeather.h on its own, fed by the real RF Monitor+ window:
-     quiet / normal / busy counts map to the right level; the level changes only
-     after the window rolls on to a new minute; the sparkle is short, happens only
-     when the mesh BECOMES busy, and is rate limited however noisy the mesh is.
-  2. Temporary, not saved: a few bytes of RAM, no files / radio / Serial in the
-     header, and not a single mention in the save, restore, radio or packet code.
-  3. Packets untouched: the receive hook (MyMesh::logRxRaw) is exactly as RF Monitor+
-     left it and knows nothing about mesh weather; the RF Monitor+ test (which runs
-     the real hook and checks it still forwards the frame to the phone and counts)
-     is run again.
-  4. Colour: the real drawLoRaFishMeshSparkle draws only while sparkling, stays
-     inside 320x170 / 320x240 / 240x135, and ends after 5 seconds.
-  5. Monochrome / e-ink: the same function draws NOTHING and leaves the state alone,
-     so those screens are pixel-identical to before.
+Parts:
+  1. LoRaFishRfStats.h keeps the packet total of each finished minute (RAM only); and
+     LoRaFishMeshWeather.h on its own, fed by the real RF Monitor+ window: a RELATIVE rule --
+     the newest minute must be at least 2.5x the average of the minutes before it AND above a
+     small floor. Steady mesh: no sparkle. A sudden 3x minute: sparkle. A small jump on a quiet
+     mesh (1 -> 3): none. Nothing in the first 10 minutes. Cooldown holds. A mesh that stays
+     high gives one sparkle. Wrap-safe, tiny, mono corner picker keeps clear of the pet.
+  2. Temporary, not saved: a few bytes of RAM, no files / radio / Serial in the header, and
+     not a single mention in the save, restore, radio or packet code.
+  3. Packets untouched: the receive hook (MyMesh::logRxRaw) is exactly as RF Monitor+ left it
+     and knows nothing about mesh weather; the RF Monitor+ test is run again.
+  4. Colour: the real drawLoRaFishMeshSparkle draws the three yellow twinkles only after a
+     spike, stays inside 320x170 / 320x240 / 240x135, ends after 5 seconds.
+  5. Monochrome: the same function draws NOTHING unless a sparkle is active (proved by
+     comparing a whole page with and without it), then a small plus for 1 s, a dot, and gone,
+     in a tank corner that is clear of the pet, every text row, the header (battery / clock),
+     the bottom status bar, the poop spots and the bubble columns. E-ink: never draws.
 """
 from pathlib import Path
 import re, subprocess, sys, tempfile
@@ -49,130 +51,115 @@ static void hear(Window& w, uint32_t t, int n, uint8_t type = 4) {      // n flo
   for (int i = 0; i < n; ++i) { uint8_t f[6] = {(uint8_t)((type << 2) | 1), 0, 7, 7, 7, 7}; w.record(t, f, 6); }
 }
 
+// One mesh, one pet. minute(n) = n packets in a minute, then the screen looks as the minute rolls over.
+struct Run {
+  Window w; Sense s; uint32_t cur; int idx = 0; int sparkles = 0; bool was = false; std::vector<int> at;
+  explicit Run(uint32_t start = 10 * MIN) : cur(start) { s.update(cur, w); }
+  void look(uint32_t t) { s.update(t, w); if (s.sparkling() && !was) { ++sparkles; at.push_back(idx); } was = s.sparkling(); }
+  void minute(int n, bool peek = true) {
+    ++idx; hear(w, cur + 10000, n); cur += MIN;
+    if (peek) { look(cur + 1); look(cur + SPARKLE_MS + 10); }
+  }
+  void minutes(int count, int n) { for (int i = 0; i < count; ++i) minute(n); }
+};
+
 int main() {
-  // The mapping itself, edges included.
-  assert(levelFor(0) == Quiet && levelFor(1) == Quiet && levelFor(QUIET_MAX) == Quiet);
-  assert(levelFor(QUIET_MAX + 1) == Normal && levelFor(BUSY_MIN - 1) == Normal);
-  assert(levelFor(BUSY_MIN) == Busy && levelFor(100000) == Busy);
-  assert(QUIET_MAX < BUSY_MIN);
-  assert(!strcmp(label(Quiet), "quiet") && !strcmp(label(Normal), "normal") && !strcmp(label(Busy), "busy"));
+  // --- the minute history the rule reads (RAM only, 32 minutes)
+  { Window w; uint32_t t = 10 * MIN; w.advance(t);
+    for (int m = 1; m <= 40; ++m) hear(w, t + (m - 1) * MIN + 5000, m);
+    assert(w.finishedMinutes(t + 40 * MIN + 1) == 40);
+    for (int k = 0; k < LoRaFishRfStats::HISTORY; ++k) assert(w.minuteAgo((uint8_t)k) == 40 - k);   // 40 ... 9
+    assert(w.total(t + 40 * MIN + 1) == 37 + 38 + 39 + 40);   // the 5-minute counts work as before
+  }
+  { Window w; uint32_t t = 10 * MIN; w.advance(t); hear(w, t + 5000, 7);
+    assert(w.finishedMinutes(t + 20 * MIN + 500) == 20);                    // a long silence: the empty minutes are counted
+    for (int k = 0; k < 19; ++k) assert(w.minuteAgo((uint8_t)k) == 0);
+    assert(w.minuteAgo(19) == 7);
+  }
+  { Window w; uint32_t t = 10 * MIN; w.advance(t); hear(w, t + 5000, 5);
+    assert(w.finishedMinutes(t + 100 * MIN) == 1 + LoRaFishRfStats::HISTORY);   // older than the history: just zeros
+    for (int k = 0; k < LoRaFishRfStats::HISTORY; ++k) assert(w.minuteAgo((uint8_t)k) == 0);
+  }
+  assert(sizeof(Window) < 1000);
 
-  // Real window counts -> level, only worked out once the window has rolled.
-  { Window w; Sense s; uint32_t t = 10 * MIN;
-    s.update(t, w); assert(s.level() == Quiet && !s.sparkling());          // nothing heard
-    hear(w, t, 200);                                                        // a flood of packets inside the same minute ...
-    s.update(t + 1000, w); s.update(t + 30000, w);
-    assert(s.level() == Quiet && !s.sparkling());                           // ... changes nothing until the window rolls
-    s.update(t + MIN + 1, w);                                               // window rolled on to the next minute
-    assert(s.level() == Busy && s.sparkling());
-  }
-  { Window w; Sense s; uint32_t t = 10 * MIN;
-    s.update(t, w);
-    hear(w, t, 3); hear(w, t, 1, 2);                                        // 4 packets: quiet
-    s.update(t + MIN + 1, w); assert(s.level() == Quiet && !s.sparkling());
-    hear(w, t + MIN + 5, 20);                                               // 24 heard: normal
-    s.update(t + 2 * MIN + 1, w); assert(s.level() == Normal && !s.sparkling());
-    hear(w, t + 2 * MIN + 5, 36);                                           // 60 heard: busy
-    s.update(t + 3 * MIN + 1, w); assert(s.level() == Busy && s.sparkling());
-  }
-  { Window w; Sense s; uint32_t t = 10 * MIN;                               // 59 is still normal, 60 is busy
-    s.update(t, w); hear(w, t, 59); s.update(t + MIN + 1, w); assert(s.level() == Normal && !s.sparkling());
-    Window w2; Sense s2; s2.update(t, w2); hear(w2, t, 60); s2.update(t + MIN + 1, w2); assert(s2.level() == Busy);
-  }
-  // Every kind of packet counts toward the weather (adverts, messages, acks ...).
-  { Window w; Sense s; uint32_t t = 10 * MIN; s.update(t, w);
-    for (uint8_t type : {4, 2, 5, 3, 0, 9}) hear(w, t, 10, type);
-    s.update(t + MIN + 1, w); assert(s.level() == Busy);
-  }
+  // --- the rule on its own
+  assert(!isSpike(30, 90, 9));                           // fewer than 10 earlier minutes: never
+  assert(isSpike(30, 100, 10));                          // 10 earlier minutes at 10 each: 3x
+  assert(isSpike(25, 100, 10) && !isSpike(24, 100, 10)); // exactly 2.5x counts, a hair under does not
+  assert(!isSpike(3, 10, 10));                           // quiet mesh 1 -> 3: below the floor
+  assert(!isSpike(SPIKE_FLOOR - 1, 0, 30) && isSpike(SPIKE_FLOOR, 0, 30));   // floor edge, silent baseline
+  assert(SPIKE_FLOOR > 3);                               // so 1 -> 3 can never trigger
+  assert(SPIKE_TENTHS == 25 && BASELINE_MINUTES == 30 && MIN_BASELINE_MINUTES == 10 && COOLDOWN_MS == 180000UL);
 
-  // Busy fades back: the level follows the window as old minutes fall off. No sparkle on the way down.
-  { Window w; Sense s; uint32_t t = 10 * MIN; s.update(t, w); hear(w, t, 80);
-    s.update(t + MIN + 1, w); assert(s.level() == Busy);
-    s.update(t + 3 * MIN, w); assert(s.level() == Busy);                    // still inside the window
-    s.update(t + 6 * MIN + 1, w); assert(s.level() == Quiet);
-    assert(!s.sparkling());
+  // --- steady baseline: no sparkle, ever
+  { Run r; r.minutes(60, 10); assert(r.sparkles == 0); }
+  { Run r; for (int i = 0; i < 60; ++i) r.minute(8 + (i % 5)); assert(r.sparkles == 0); }   // ordinary wobble 8..12
+  { Run r; r.minutes(60, 0); assert(r.sparkles == 0); }                                     // dead mesh
+  // --- a sudden 3x minute: a sparkle, right when that minute finishes
+  { Run r; r.minutes(15, 10); r.minute(30); assert(r.sparkles == 1 && r.at[0] == 16); r.minutes(20, 10); assert(r.sparkles == 1); }
+  { Run r; r.minutes(15, 10); r.minute(25); assert(r.sparkles == 1); }                      // exactly 2.5x
+  { Run r; r.minutes(15, 10); r.minute(24); assert(r.sparkles == 0); }                      // just under
+  { Run r; r.minutes(40, 100); r.minute(300); assert(r.sparkles == 1); }                    // works the same on a busy mesh
+  { Run r; r.minutes(40, 100); r.minute(120); assert(r.sparkles == 0); }                    // ... where +20 is nothing
+  { Run r; r.minutes(40, 1); r.minute(8); assert(r.sparkles == 1); }                        // a very quiet mesh wakes up properly
+  // --- a small jump on a quiet mesh: nothing
+  { Run r; r.minutes(20, 1); r.minute(3); assert(r.sparkles == 0); r.minute(1); r.minute(3); r.minute(7); assert(r.sparkles == 0); }
+  { Run r; r.minutes(20, 0); r.minute(3); r.minute(7); assert(r.sparkles == 0); }
+  // --- nothing in the first 10 minutes
+  for (int k = 1; k <= 10; ++k) { Run r; r.minutes(k - 1, 2); r.minute(100); assert(r.sparkles == 0); }   // spike as minute 1..10
+  { Run r; r.minutes(10, 2); r.minute(100); assert(r.sparkles == 1 && r.at[0] == 11); }               // 10 earlier minutes exist: allowed
+  { Run r; r.minutes(5, 2); r.minute(100); r.minutes(4, 2); assert(r.sparkles == 0); }
+  // --- cooldown holds
+  { Run r; r.minutes(15, 10); r.minute(30); assert(r.sparkles == 1);
+    r.minute(10); r.minute(200); assert(r.sparkles == 1);              // a second jump 2 minutes later: held back
+    r.minute(10); r.minute(10); r.minute(400); assert(r.sparkles == 2); // 4 minutes after the first: allowed
   }
-
-  // The sparkle is short ...
-  { Window w; Sense s; uint32_t t = 10 * MIN; s.update(t, w); hear(w, t, 80);
-    uint32_t go = t + MIN + 1; s.update(go, w); assert(s.sparkling());
-    s.update(go + SPARKLE_MS - 1, w); assert(s.sparkling());
-    s.update(go + SPARKLE_MS, w); assert(!s.sparkling());
-    assert(s.level() == Busy);                                              // the mesh is still busy, the pet is not still sparkling
-    for (uint32_t k = 1; k < 20; ++k) { s.update(go + SPARKLE_MS + k * 7000, w); assert(!s.sparkling()); }   // no repeat while it stays busy
+  { Run r; r.minutes(15, 10);                                         // spike, calm, spike ... for an hour
+    for (int i = 0; i < 30; ++i) { r.minute(200); r.minute(10); }
+    assert(r.sparkles >= 1 && r.sparkles <= (int)(60 * MIN / COOLDOWN_MS) + 1);
   }
-  // ... happens only when the mesh BECOMES busy, and is rate limited however the mesh flips about.
-  { Window w; Sense s; uint32_t t = 10 * MIN; s.update(t, w);
-    int sparkles = 0; bool was = false;
-    for (uint32_t m = 1; m <= 60; ++m) {                                    // an hour: noisy minutes and silent ones, over and over
-      uint32_t now = t + m * MIN + 1;
-      if ((m / 7) % 2 == 0) hear(w, now - 100, 120);
-      for (uint32_t sec = 0; sec < 60; sec += 5) {                          // the screen is redrawn all the time
-        s.update(now + sec * 1000UL, w);
-        if (s.sparkling() && !was) ++sparkles;
-        was = s.sparkling();
-      }
-    }
-    assert(sparkles >= 1);
-    assert(sparkles <= (int)(60 * MIN / COOLDOWN_MS) + 1);                  // never more than one per cooldown
+  // --- a mesh that STAYS high gives one sparkle, not a light show
+  { Run r; r.minutes(15, 10); r.minutes(25, 30); assert(r.sparkles == 1); }
+  { Run r; r.minutes(30, 10); r.minutes(10, 100); assert(r.sparkles == 1); }   // a 10x surge that lasts 10 minutes: still just one
+  // --- minutes nobody looked at (the screen was on another page)
+  { Run r; r.minutes(20, 10); for (int i = 0; i < 6; ++i) r.minute(10, false); r.minute(100); assert(r.sparkles == 1); }
+  { Run r; r.minutes(20, 10); r.cur += 40 * MIN; r.minute(30); r.minute(0); assert(r.sparkles == 1); }   // after a long silence it wakes
+  { Run r; r.minutes(5, 10); r.cur += 60 * MIN; r.minute(30); r.minute(0); r.minute(0); assert(r.sparkles == 1); }
+  // --- the sparkle: short, and its mono phases
+  { Run r; r.minutes(15, 10); r.minute(30, false); uint32_t go = r.cur + 1; r.s.update(go, r.w);
+    assert(r.s.sparkling());
+    r.s.update(go + SPARKLE_MS - 1, r.w); assert(r.s.sparkling());
+    r.s.update(go + SPARKLE_MS, r.w); assert(!r.s.sparkling());
   }
-  { // Cooldown really blocks a second sparkle that comes too soon, and allows one after it.
-    Window w; Sense s; uint32_t t = 10 * MIN; s.update(t, w);
-    hear(w, t, 80); s.update(t + MIN + 1, w); assert(s.sparkling());                   // sparkle 1
-    s.update(t + 6 * MIN + 1, w); assert(s.level() == Quiet);                           // window emptied
-    hear(w, t + 6 * MIN + 2, 80);                                                       // busy again 5 minutes after sparkle 1: cooldown (3 min) is over
-    s.update(t + 7 * MIN + 1, w); assert(s.level() == Busy && s.sparkling());          // sparkle 2
-    // Sparkle 3 attempted inside the cooldown of sparkle 2: quiet at +13.5, busy again 1 minute later.
-    s.update(t + 13 * MIN + 1, w); assert(s.level() == Quiet);
-    hear(w, t + 13 * MIN + 2, 80);
-    s.update(t + 14 * MIN + 1, w); assert(s.level() == Busy && s.sparkling());          // 7 minutes after: allowed
+  { Run r; r.minutes(15, 10); r.minute(30, false); uint32_t go = r.cur + 1; r.s.update(go, r.w); assert(r.s.sparkling());
+    assert(r.s.monoStep(go) == 1 && r.s.monoStep(go + MONO_PLUS_MS - 1) == 1);          // the plus, about a second
+    assert(r.s.monoStep(go + MONO_PLUS_MS) == 2 && r.s.monoStep(go + MONO_PLUS_MS + MONO_DOT_MS - 1) == 2);   // then the dot
+    assert(r.s.monoStep(go + MONO_PLUS_MS + MONO_DOT_MS) == 0 && r.s.monoStep(go + SPARKLE_MS - 1) == 0);     // then nothing
+    Sense idle; assert(idle.monoStep(0) == 0 && idle.monoStep(123456) == 0);
   }
-  { // Two busy edges only 2 minutes apart: the second one stays still.
-    Window w; Sense s; uint32_t t = 10 * MIN; s.update(t, w);
-    hear(w, t, 80); s.update(t + MIN + 1, w); assert(s.sparkling());
-    uint32_t first = t + MIN + 1;
-    s.update(first + 6 * MIN, w); assert(s.level() == Quiet);                           // fell quiet
-    // (can't get a second edge within 3 minutes through a 5-minute window: the cooldown is a second safety belt)
-    assert(COOLDOWN_MS < 5 * MIN);
-  }
-  { // Busy -> normal -> busy again inside the cooldown: the second sparkle is held back.
-    Window w; Sense s; uint32_t b = 10 * MIN; int sparkles = 0; bool was = false;
-    auto look = [&](uint32_t at) { s.update(at, w); if (s.sparkling() && !was) ++sparkles; was = s.sparkling(); };
-    hear(w, b, 20); look(b);
-    look(b + MIN + 1000); hear(w, b + MIN + 5000, 20);
-    look(b + 2 * MIN + 1000);
-    assert(s.level() == Normal && sparkles == 0);                              // 40 heard
-    hear(w, b + 2 * MIN + 5000, 20);
-    look(b + 3 * MIN + 40000UL); assert(s.level() == Busy && s.sparkling() && sparkles == 1);   // 60 heard: sparkle
-    look(b + 4 * MIN + 1000); look(b + 5 * MIN + 1000);
-    assert(s.level() == Normal && !s.sparkling());                             // the busy minutes aged out
-    hear(w, b + 5 * MIN + 5000, 40);
-    look(b + 6 * MIN + 1000);                                                  // busy again, only 141 s after the sparkle
-    assert(s.level() == Busy && !s.sparkling() && sparkles == 1);              // held back by the cooldown
-    // Later the same thing is allowed: quiet, then busy well after the cooldown.
-    look(b + 12 * MIN + 1000); assert(s.level() == Quiet);
-    hear(w, b + 12 * MIN + 5000, 80); look(b + 13 * MIN + 1000); assert(s.sparkling() && sparkles == 2);
-  }
-  { // A steady busy mesh for half an hour: exactly one sparkle.
-    Window w; Sense s; uint32_t t = 10 * MIN; s.update(t, w); int sparkles = 0; bool was = false;
-    for (uint32_t m = 0; m < 30; ++m) { hear(w, t + m * MIN, 40);
-      for (uint32_t sec = 1; sec < 60; sec += 3) { s.update(t + m * MIN + sec * 1000UL, w); if (s.sparkling() && !was) ++sparkles; was = s.sparkling(); } }
-    assert(sparkles == 1);
-  }
-
-  // The 32-bit millisecond clock wrapping round is fine.
-  { Window w; Sense s; uint32_t t = 0xFFFFFFFFu - 90000UL; s.update(t, w); hear(w, t, 100);
-    s.update(t + MIN + 1, w); assert(s.level() == Busy && s.sparkling());
-    s.update(t + MIN + 1 + SPARKLE_MS + 5, w); assert(!s.sparkling());       // across the wrap
-  }
-  // A reader a hair behind the radio (clock slightly earlier) does not blow anything up.
-  { Window w; Sense s; hear(w, 10 * MIN + 500, 80); s.update(10 * MIN + 400, w); assert(s.level() == Busy && w.total(10 * MIN + 400) == 80); }   // counts kept, no crash
-  // Twinkle frames cycle 0..3.
+  static_assert(MONO_PLUS_MS >= 800 && MONO_PLUS_MS <= 1200, "about one second");
+  static_assert(MONO_PLUS_MS + MONO_DOT_MS < SPARKLE_MS, "the mono sparkle ends before the colour one");
+  static_assert(!MONO_ON_EINK, "e-ink stays unchanged");
+  // --- the 32-bit millisecond clock wrapping round is fine
+  { Run r(0xFFFFFFFFu - 12 * MIN - 500); r.minutes(15, 10); r.minute(30); assert(r.sparkles == 1); r.minutes(5, 10); assert(r.sparkles == 1);
+    Run q(0xFFFFFFFFu - 12 * MIN - 500); q.minutes(30, 10); assert(q.sparkles == 0); }
+  // --- twinkle frames cycle 0..3
   { Sense s; for (uint32_t t = 0; t < 4000; t += 50) assert(s.frame(t) < 4);
     assert(s.frame(0) == 0 && s.frame(250) == 1 && s.frame(500) == 2 && s.frame(750) == 3 && s.frame(1000) == 0); }
-  // Tiny: a few bytes of RAM.
+  // --- mono corner: always inside the tank, never on the pet; only gives up when the pet is by both corners
+  for (int w : {128, 160, 240, 320}) {
+    for (int px = -10; px <= w + 10; ++px) for (int py = 0; py <= 130; ++py) {
+      int cx = -1, cy = -1;
+      if (monoSpot(w, px, py, cx, cy)) {
+        assert(cx - 1 >= 0 && cx + 1 < w && cy - 1 >= 16);                                 // on screen, under the header line
+        assert(cx + 1 < px - PET_HALF_W || cx - 1 > px + PET_HALF_W || cy + 1 < py - PET_ABOVE || cy - 1 > py + PET_BELOW);
+      }
+    }
+    for (int px = 20; px <= w - 20; ++px) for (int py = 30; py <= 60; ++py) { int cx, cy; assert(monoSpot(w, px, py, cx, cy)); }   // the pet's real swim range
+  }
+  // --- tiny
   assert(sizeof(Sense) <= 16);
-  printf("PASS levels quiet/normal/busy, changes only after the window rolls, short + rate-limited sparkle, wrap-safe, %zu bytes\n", sizeof(Sense));
+  printf("PASS relative rule: steady none, 3x sparkles, 1->3 none, 10-minute warm-up, cooldown, one per jump, wrap-safe, mono phases, corner clear of pet, %zu bytes\n", sizeof(Sense));
   return 0;
 }
 '''
@@ -182,6 +169,9 @@ code_only = re.sub(r'//[^\n]*', '', weather_h)                       # ignore th
 for banned in ('File', 'Serial', 'millis', 'SPIFFS', 'LittleFS', 'fopen', 'write(', 'save', 'Packet', 'sendFlood', 'sendDirect', 'MyMesh'):
     assert banned not in code_only, 'LoRaFishMeshWeather.h must stay free of %r' % banned
 assert re.findall(r'#include\s*[<"]([^>"]+)[>"]', weather_h) == ['stdint.h', 'LoRaFishRfStats.h']
+assert 'SPIKE_TENTHS' in weather_h and 'SPIKE_FLOOR' in weather_h and 'BASELINE_MINUTES' in weather_h   # the named constants
+# The old fixed thresholds are gone.
+assert 'QUIET_MAX' not in weather_h and 'BUSY_MIN' not in weather_h and 'levelFor' not in weather_h
 
 sparkle_fn = block_of(ui, 'static void drawLoRaFishMeshSparkle(')
 decl = 'static LoRaFishMeshWeather::Sense loRaFishMeshSense;'
@@ -193,7 +183,7 @@ for needle in ('MeshSense', 'MeshWeather'):
     allowed = ['#include "../LoRaFishMeshWeather.h"']
     hits = [h for h in hits if h not in allowed and 'drawLoRaFishMeshSparkle' not in h and not h.startswith('//')]
     assert not hits, 'unexpected %s outside the sparkle function: %s' % (needle, hits)
-assert stripped.count('drawLoRaFishMeshSparkle(display,x,y);') == 1, 'exactly one call site'
+assert stripped.count('drawLoRaFishMeshSparkle(display,x,y,') == 1, 'exactly one call site'
 # The save / restore / radio / packet code never hears of it.
 for fn in ('static void saveLoRaFish(', 'static bool restoreLoRaFish(', 'static void restoreLoRaFish('):
     if fn in ui:
@@ -204,16 +194,22 @@ for text, name in ((mymesh, 'MyMesh.cpp'), (mymesh_h, 'MyMesh.h')):
 # The sparkle function is presentational only: it reads counts and draws, nothing else.
 for banned in ('saveLoRaFish', 'happiness', 'dxVisits', 'meal', 'breed', 'loragotchiDX', 'sendFlood', 'sendDirect', 'File ', 'fish.'):
     assert banned not in sparkle_fn, 'sparkle function must be presentational only: %r' % banned
-# The one call site is inside the awake, living pet branch (not asleep, not travelling, not an egg or memorial).
+# The one call site is inside the awake, living pet branch (not asleep, not travelling, not an egg or memorial),
+# and tells the mono sparkle when a visitor is on the tank.
 agu = block_of(ui, 'static void drawLoRaFishAquarium(')
-call = agu.index('drawLoRaFishMeshSparkle(display,x,y);')
+call = agu.index('drawLoRaFishMeshSparkle(display,x,y,')
 awake = agu.index('else if (!homeTraveling && !loRaFishHomeTravelAnimation.active) {')
-assert awake < call and call - awake < 400
+assert awake < call and call - awake < 500
 assert 'LORAFISH_EGG_MINUTES' in agu[call - 200:call] and 'LORAFISH_LIFESPAN_MINUTES' in agu[call - 200:call]
-# Mono guard is the very first statement of the function.
-first = sparkle_fn[sparkle_fn.index('{') + 1:].lstrip().splitlines()[0]
-assert first.startswith('if (!loRaFishColorDisplay) return;'), first
-print('PASS temporary + not saved: header has no files/radio/Serial, no mention in save/restore/MyMesh, one call site in the awake living-pet branch, mono guard first')
+assert 'loragotchiDXGuest.present' in agu[call:call + 200]
+# E-ink is told apart from other 1-bit screens, and returns before anything else happens.
+assert 'loRaFishEinkDisplay = display && display->isEink();' in ui
+mono_branch = sparkle_fn[sparkle_fn.index('if (!loRaFishColorDisplay) {'):]
+assert mono_branch.index('loRaFishEinkDisplay') < mono_branch.index('.update(') < mono_branch.index('monoStep(')
+assert 'return;' in mono_branch[mono_branch.index('loRaFishEinkDisplay'):mono_branch.index('.update(')]
+# Colour keeps the three yellow twinkles.
+assert '0xFFE0' in sparkle_fn and 'dx[3]={-17,15,19}' in sparkle_fn and 'i<3' in sparkle_fn
+print('PASS temporary + not saved: header has no files/radio/Serial, no mention in save/restore/MyMesh, one call site in the awake living-pet branch, e-ink returns first, old fixed thresholds gone')
 
 # ---------------------------------------------------------------- part 3: packets untouched
 hook = block_of(mymesh, 'void MyMesh::logRxRaw(')
@@ -234,6 +230,8 @@ head = head[:head.index("code+=block('static int loRaFishBatteryPercent(')")]
 ns = {'__file__': str(head_path), '__name__': 'native_pages_head'}
 exec(compile(head, 'check_native_pages_head', 'exec'), ns)
 prelude = ns['code']
+if 'loRaFishEinkDisplay' not in prelude:
+    prelude += '\nstatic bool loRaFishEinkDisplay=false;\n'
 prelude += '\n#include "examples/companion_radio/LoRaFishMeshWeather.h"\n' + decl + '\n' + sparkle_fn + '\n'
 
 helpers = r'''
@@ -241,72 +239,181 @@ static const unsigned long MIN = 60000UL;
 static void hear(unsigned long t, int n) {
   for (int i = 0; i < n; ++i) { uint8_t f[6] = {(uint8_t)((4 << 2) | 1), 0, 7, 7, 7, 7}; lorafish_rf_stats.record((uint32_t)t, f, 6); }
 }
+static void reset() { lorafish_rf_stats = LoRaFishRfStats::Window(); loRaFishMeshSense = LoRaFishMeshWeather::Sense(); now = 10 * MIN; }
+// 'count' minutes of 'per' packets each; the screen is redrawn every 5 s like the real UI. Returns the number of redraws that showed a sparkle.
+static int play(int count, int per, int W, int H, int px, int py) {
+  int lit = 0;
+  for (int m = 0; m < count; ++m) {
+    hear(now + 500, per);
+    for (int s = 0; s < 12; ++s) { now += 5000; Recorder o(W, H); drawLoRaFishMeshSparkle(o, px, py); if (!o.shapes.empty()) ++lit; }
+  }
+  return lit;
+}
 '''
 colour_main = helpers + r'''
 int main() {
   loRaFishColorDisplay = true;
   for (auto dims : {std::pair<int,int>{320,170}, {320,240}, {240,135}}) {
-    const int W = dims.first, H = dims.second;
-    lorafish_rf_stats = LoRaFishRfStats::Window(); loRaFishMeshSense = LoRaFishMeshWeather::Sense();
-    now = 10 * MIN;
-    // Quiet mesh: nothing drawn.
-    { Recorder out(W, H); drawLoRaFishMeshSparkle(out, W / 2, H / 2); assert(out.shapes.empty()); }
-    // Busy, but the window has not rolled: still nothing.
-    hear(now, 150);
-    { Recorder out(W, H); now += 1000; drawLoRaFishMeshSparkle(out, W / 2, H / 2); assert(out.shapes.empty()); }
-    // Window rolls: the pet sparkles. Check pet positions all over the screen, corners included.
-    now = 11 * MIN + 1;
+    const int W = dims.first, H = dims.second, PX = W / 2, PY = H / 2;
+    // Steady, a small wobble, a quiet 1 -> 3 and the first ten minutes: nothing.
+    reset(); assert(play(40, 10, W, H, PX, PY) == 0);
+    reset(); assert(play(20, 1, W, H, PX, PY) == 0 && play(1, 3, W, H, PX, PY) == 0 && play(2, 1, W, H, PX, PY) == 0);
+    reset(); assert(play(9, 2, W, H, PX, PY) == 0 && play(1, 100, W, H, PX, PY) == 0 && play(2, 2, W, H, PX, PY) == 0);
+    // A real jump after the warm-up shows exactly one sparkle (it lasts less than one redraw interval of 5 s).
+    reset(); assert(play(15, 10, W, H, PX, PY) == 0 && play(1, 30, W, H, PX, PY) == 0 && play(1, 10, W, H, PX, PY) == 1 && play(10, 10, W, H, PX, PY) == 0);
+    // Cooldown: a second jump two minutes later is held back; one four minutes later is allowed.
+    reset(); play(15, 10, W, H, PX, PY);
+    { int lit = play(1, 30, W, H, PX, PY) + play(1, 10, W, H, PX, PY) + play(1, 200, W, H, PX, PY) + play(1, 10, W, H, PX, PY);
+      assert(lit == 1);
+      lit = play(1, 10, W, H, PX, PY) + play(1, 10, W, H, PX, PY) + play(1, 400, W, H, PX, PY) + play(1, 10, W, H, PX, PY);
+      assert(lit == 1); }
+    // The sparkle itself: appears only once the busy minute is finished, stays on screen with the pet anywhere, ends after 5 s.
+    reset(); play(15, 10, W, H, PX, PY);
+    hear(now + 500, 30);
+    now += 30000; { Recorder out(W, H); drawLoRaFishMeshSparkle(out, PX, PY); assert(out.shapes.empty()); }   // minute not finished yet
+    now += 31000; const unsigned long go = now;
     for (int x : {0, 5, W / 2, W - 5, W}) for (int y : {0, 20, H / 2, H - 20, H}) {
       Recorder out(W, H); drawLoRaFishMeshSparkle(out, x, y);       // Recorder aborts on any off-screen fill
       assert(!out.shapes.empty()); assert(out.shapes.size() <= 6);   // 3 twinkles, 1 or 2 rectangles each
       for (auto& s : out.shapes) { assert(s.x >= 2 && s.y >= 17 && s.x + s.w <= W && s.y + s.h <= H - 16); assert(s.w <= 3 && s.h <= 3); }
     }
-    // Twinkles move with time.
-    { Recorder a(W, H); drawLoRaFishMeshSparkle(a, W / 2, H / 2);
-      now += 250; Recorder b(W, H); drawLoRaFishMeshSparkle(b, W / 2, H / 2);
+    { Recorder a(W, H); drawLoRaFishMeshSparkle(a, PX, PY);
+      now += 250; Recorder b(W, H); drawLoRaFishMeshSparkle(b, PX, PY);       // twinkles move with time
       bool same = a.shapes.size() == b.shapes.size();
       for (size_t i = 0; same && i < a.shapes.size(); ++i) same = a.shapes[i].w == b.shapes[i].w && a.shapes[i].h == b.shapes[i].h;
       assert(!same); }
-    // It ends after 5 seconds, and does not come back while the mesh stays busy.
-    now = 11 * MIN + 1 + LoRaFishMeshWeather::SPARKLE_MS;
-    { Recorder out(W, H); drawLoRaFishMeshSparkle(out, W / 2, H / 2); assert(out.shapes.empty()); }
-    for (int k = 0; k < 30; ++k) { now += 20000; hear(now, 30);
-      Recorder out(W, H); drawLoRaFishMeshSparkle(out, W / 2, H / 2); assert(out.shapes.empty()); }
-    assert(loRaFishMeshSense.level() == LoRaFishMeshWeather::Busy);
+    now = go + LoRaFishMeshWeather::SPARKLE_MS - 1; { Recorder out(W, H); drawLoRaFishMeshSparkle(out, PX, PY); assert(!out.shapes.empty()); }
+    now = go + LoRaFishMeshWeather::SPARKLE_MS;     { Recorder out(W, H); drawLoRaFishMeshSparkle(out, PX, PY); assert(out.shapes.empty()); }
   }
-  puts("PASS colour: sparkle appears only after a busy window rolls, stays on screen at 320x170 / 320x240 / 240x135, ends after 5 s, no repeat while busy");
+  puts("PASS colour: sparkle only after a relative jump (not steady, not 1->3, not in the first 10 min), cooldown, three twinkles on screen at 320x170 / 320x240 / 240x135, ends after 5 s");
   return 0;
 }
 '''
 mono_main = helpers + r'''
-int main() {
-  loRaFishColorDisplay = false;
-  for (auto dims : {std::pair<int,int>{128,64}, {250,122}, {296,128}, {320,170}}) {
-    const int W = dims.first, H = dims.second;
-    lorafish_rf_stats = LoRaFishRfStats::Window(); loRaFishMeshSense = LoRaFishMeshWeather::Sense();
-    now = 10 * MIN; hear(now, 500);                                  // a very busy mesh is being counted ...
-    for (int k = 0; k < 20; ++k) {
-      now = 10 * MIN + k * 20000UL + 1;
-      Recorder out(W, H); drawLoRaFishMeshSparkle(out, W / 2, H / 2);
-      assert(out.shapes.empty() && out.printed.empty());             // ... and the mono screen gets not a single pixel of it
-      assert(!loRaFishMeshSense.sparkling());
-      assert(loRaFishMeshSense.level() == LoRaFishMeshWeather::Normal);   // state untouched too
-    }
+struct Obst { int x, y, w, h; };
+// What else is on the mono tank page (from drawLoRaFishHeader / TankBattery / StatusBar / Aquarium / Hygiene / Bubbles).
+static std::vector<Obst> obstacles(int W, int H) {
+  std::vector<Obst> v;
+  v.push_back({0, 0, W, 16});                          // header text, clock, battery icon and its separator line (y 15)
+  v.push_back({0, H - 15, W, 15});                     // floor line and the PKT/UNR status bar
+  v.push_back({(W - 84) / 2, 17, 84, 11});             // "* EVOLVED! *" / "* MESSAGE *" row
+  v.push_back({(W - 108) / 2, 25, 108, 11});           // visiting pet's name row
+  v.push_back({(W - 108) / 2, 33, 108, 12});           // "PET DX AWAY" / "DELIVERING..." row
+  for (int px : {20, 58, 96}) v.push_back({px, H - 28, 9, 9});   // poop
+  v.push_back({13, 16, 7, H - 31});                    // bubble columns (they rise through the whole tank)
+  v.push_back({27, 16, 8, H - 31});
+  v.push_back({W - 20, 16, 7, H - 31});
+  return v;
+}
+static bool hits(int x, int y, int w, int h, const Obst& o) { return x < o.x + o.w && x + w > o.x && y < o.y + o.h && y + h > o.y; }
+static void fixedPage(Recorder& d, int W, int H) {     // stand-in for everything else on the page
+  d.fillRect(2, 15, W - 4, 1); d.fillRect(2, H - 15, W - 4, 1);
+  d.setCursor(2, 5); d.print("PET"); d.setCursor(4, H - 9); d.print("PKT:12 UNR:0");
+  d.fillRect(40, 30, 20, 8);                           // the pet
+}
+static bool same(const Recorder& a, const Recorder& b) {
+  if (a.shapes.size() != b.shapes.size() || a.printed != b.printed) return false;
+  for (size_t i = 0; i < a.shapes.size(); ++i) {
+    const auto &p = a.shapes[i], &q = b.shapes[i];
+    if (p.x != q.x || p.y != q.y || p.w != q.w || p.h != q.h || p.outline != q.outline) return false;
   }
-  puts("PASS monochrome/e-ink: sparkle function draws nothing and touches no state, even on a very busy mesh");
+  return true;
+}
+static std::vector<Recorder::Shape> drawn(int W, int H, int px, int py, bool free = true) {
+  Recorder o(W, H); drawLoRaFishMeshSparkle(o, px, py, free); return o.shapes;
+}
+
+int main() {
+  loRaFishColorDisplay = false; loRaFishEinkDisplay = false;
+  for (auto dims : {std::pair<int,int>{128,64}, {128,128}, {240,135}}) {
+    const int W = dims.first, H = dims.second, PX = 60, PY = 38;
+    const auto obst = obstacles(W, H);
+    // Reference page: no sparkle code at all.
+    Recorder base(W, H); fixedPage(base, W, H);
+    auto page = [&](int px, int py, bool free = true) { Recorder o(W, H); fixedPage(o, W, H); drawLoRaFishMeshSparkle(o, px, py, free); return o; };
+
+    // 1. Idle: steady mesh, quiet jump, the first 10 minutes -- the page is IDENTICAL (shape for shape, text for text).
+    reset(); for (int m = 0; m < 40; ++m) { hear(now + 500, 10); for (int s = 0; s < 12; ++s) { now += 5000; assert(same(page(PX, PY), base)); } }
+    reset(); for (int m = 0; m < 20; ++m) { hear(now + 500, 1); for (int s = 0; s < 12; ++s) { now += 5000; assert(same(page(PX, PY), base)); } }
+    reset(); for (int m = 0; m < 12; ++m) { hear(now + 500, m == 5 ? 100 : 2); for (int s = 0; s < 12; ++s) { now += 5000; assert(same(page(PX, PY), base)); } }
+    assert(!loRaFishMeshSense.sparkling());
+
+    // 2. A real jump after the warm-up.
+    reset(); assert(play(15, 10, W, H, PX, PY) == 0);
+    hear(now + 500, 30);
+    now += 30000; assert(same(page(PX, PY), base));                       // minute not finished: nothing
+    now += 31000; const unsigned long go = now;
+    int plusFrames = 0, dotFrames = 0;
+    for (unsigned long t = 0; t < 2600; t += 50) {
+      now = go + t;
+      Recorder o = page(PX, PY);
+      const size_t extra = o.shapes.size() - base.shapes.size();
+      if (t < 1000) {                                                      // the plus: 5 pixels
+        assert(extra == 2 && o.shapes[base.shapes.size()].w == 3 && o.shapes[base.shapes.size()].h == 1
+               && o.shapes[base.shapes.size() + 1].w == 1 && o.shapes[base.shapes.size() + 1].h == 3); ++plusFrames;
+      } else if (t < 1300) {                                               // fade step: the centre dot
+        assert(extra == 1 && o.shapes.back().w == 1 && o.shapes.back().h == 1); ++dotFrames;
+      } else {                                                             // gone: identical to the page without it
+        assert(extra == 0 && same(o, base));
+      }
+      // Only the sparkle was added; everything else is untouched, and it overlaps nothing on the page.
+      for (size_t i = 0; i < base.shapes.size(); ++i) assert(o.shapes[i].x == base.shapes[i].x && o.shapes[i].y == base.shapes[i].y && o.shapes[i].w == base.shapes[i].w && o.shapes[i].h == base.shapes[i].h);
+      assert(o.printed == base.printed);
+      for (size_t i = base.shapes.size(); i < o.shapes.size(); ++i) {
+        const auto& s = o.shapes[i];
+        for (auto& ob : obst) assert(!hits(s.x, s.y, s.w, s.h, ob));
+        assert(!(s.x < 40 + 20 && s.x + s.w > 40 && s.y < 30 + 8 && s.y + s.h > 30));   // nor the stand-in pet
+      }
+    }
+    assert(plusFrames == 20 && dotFrames == 6);
+    // ... and it stays gone, for hours, while the mesh stays busy or goes quiet.
+    for (int k = 0; k < 400; ++k) { now += 7000; hear(now, 3); assert(same(page(PX, PY), base)); }
+
+    // 3. Wherever the pet is, the sparkle is clear of it and of everything else on the page (or not drawn at all).
+    reset(); play(15, 10, W, H, PX, PY); hear(now + 500, 30); now += 61000;
+    int drawnCount = 0;
+    for (int x = -4; x <= W + 4; x += 2) for (int y = 0; y <= H; y += 2) {
+      auto sh = drawn(W, H, x, y);
+      if (sh.empty()) continue;
+      ++drawnCount; assert(sh.size() == 2);
+      for (auto& s : sh) {
+        for (auto& ob : obst) assert(!hits(s.x, s.y, s.w, s.h, ob));
+        assert(s.x + s.w <= x - 24 || s.x >= x + 24 || s.y + s.h <= y - 17 || s.y >= y + 15);   // clear of the pet's box
+      }
+    }
+    assert(drawnCount > 0);
+    for (int x = 20; x <= W - 20; x += 2) for (int y = 34; y <= 42; ++y) assert(!drawn(W, H, x, y).empty());   // the pet's real swim range: always shown
+    // A visitor on the tank: nothing is drawn.
+    assert(drawn(W, H, PX, PY, false).empty());
+  }
+
+  // E-ink: never drawn, state untouched, however busy the mesh.
+  loRaFishEinkDisplay = true;
+  for (auto dims : {std::pair<int,int>{250,122}, {296,128}, {128,64}}) {
+    const int W = dims.first, H = dims.second;
+    Recorder base(W, H); fixedPage(base, W, H);
+    reset(); play(15, 10, W, H, 60, 38); hear(now + 500, 300); now += 61000;
+    for (unsigned long t = 0; t < 3000; t += 100) { now += 100; Recorder o(W, H); fixedPage(o, W, H); drawLoRaFishMeshSparkle(o, 60, 38); assert(same(o, base)); }
+    assert(!loRaFishMeshSense.sparkling());
+  }
+  loRaFishEinkDisplay = false;
+  puts("PASS monochrome: page identical to before whenever no sparkle is active (steady, 1->3, first 10 min, after it ends, e-ink); sparkle = plus 1 s, dot, gone, in a corner clear of pet / text / battery / status bar / poop / bubbles");
   return 0;
 }
 '''
+
 
 def build(prog, tmp, name, flags):
     cpp = tmp / (name + '.cpp'); cpp.write_text(prog); exe = tmp / name
     subprocess.run(['g++', '-std=c++17', '-DLORAGOTCHI_NATIVE_UI=1', '-I' + str(root), '-I' + str(root / 'src')] + flags + [str(cpp), '-o', str(exe)], check=True)
     return exe
 
+
 def run(exe):
     r = subprocess.run([str(exe)], capture_output=True, text=True)
     if r.returncode: raise SystemExit('FAILED %s:\n%s%s' % (exe.name, r.stdout[-600:], r.stderr[-1200:]))
     return r.stdout.strip()
+
 
 with tempfile.TemporaryDirectory(prefix='lrx-weather-') as t:
     tmp = Path(t)
