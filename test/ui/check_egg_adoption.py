@@ -12,10 +12,11 @@ source=source.replace('auto& data = files[path];','if(path==shortPath) count/=2;
 source=source.replace('const auto& data = files.at(path);','if(path==badReadPath) return 0;\n    const auto& data = files.at(path);')
 source=source.replace('} SPIFFS, InternalFS;', r''' } SPIFFS, InternalFS;
 #if defined(LORAFISH_TDECK_NVS)
+struct Preferences { bool begin(const char*,bool){return true;} bool remove(const char*){return true;} void end(){} };
 struct LoRaFishNVSFile {
  File f;
  LoRaFishNVSFile(const char* key,bool write):f(SPIFFS.open(!strcmp(key,"cfg")?"/lorafish.cfg":
-     !strcmp(key,"state")?"/lorafish.dat":!strcmp(key,"egg0")?"/lfegg0.dat":"/lfegg1.dat",write?FILE_WRITE:FILE_READ)){}
+     !strcmp(key,"state")?"/lorafish.dat":!strcmp(key,"statebak")?"/lorafish.bak":!strcmp(key,"egg0")?"/lfegg0.dat":"/lfegg1.dat",write?FILE_WRITE:FILE_READ)){}
  explicit operator bool() const{return (bool)f;}
  bool recordExists(){return files.count(f.path);}
  size_t size()const{return f.size();}

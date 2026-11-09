@@ -125,7 +125,7 @@ int main() {
   resetHappy();events(10);advance(29*60000);saveLoRaFishSettings();saveLoRaFish();
   const auto saved=loRaFishHappiness;const auto happy=fish.happiness;
   const auto stateSize=files["/lorafish.dat"].size();
-  assert(stateSize==sizeof(LoRaFishState));
+  assert(stateSize==sizeof(LoRaFishState)+LoRaFishSafeSave::kTrailer);
   reboot();assert(loRaFishHappiness.same(saved) && fish.happiness==happy);
   advance(60000);assert(fish.happiness==happy-2);
   advance(30*60000);events(10);assert(feeds==2);
