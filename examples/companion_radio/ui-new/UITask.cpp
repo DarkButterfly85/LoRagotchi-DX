@@ -2506,15 +2506,18 @@ static const char* loRaFishOptionLabel(LoRaFishOption option) {
   return labels[static_cast<uint8_t>(option)];
 }
 
-static void drawLoRaFishMenuHint(DisplayDriver& display) {
+// List menus pass flow=true: they are laid out in real panel rows (LoRaFishMenuLayout), so the hint sits on
+// the panel's bottom edge. Pages still drawn in the stretched 64 px frame keep their historic row 56.
+static void drawLoRaFishMenuHint(DisplayDriver& display, bool flow=false) {
   display.setColor(UIColor::secondary_txt);
+  const int y = flow ? LoRaFishMenuLayout::hintY(display.height()) : 56;
 #if defined(LORAFISH_WATCH_TOUCH)
   // LilyGo T-Watch S3: the footer already shows the taps; only hold needs a hint.
-  display.drawTextCentered(display.width()/2, 56, "LONG HOLD:SELECT");
+  display.drawTextCentered(display.width()/2, y, "LONG HOLD:SELECT");
 #elif defined(WIO_TRACKER_L1)
-  display.drawTextCentered(display.width()/2, 56, "CENTER:OK MENU:BACK");
+  display.drawTextCentered(display.width()/2, y, "CENTER:OK MENU:BACK");
 #else
-  display.drawTextCentered(display.width()/2, 56, "1:NEXT 2:BACK L:OK");
+  display.drawTextCentered(display.width()/2, y, "1:NEXT 2:BACK L:OK");
 #endif
 }
 
@@ -2526,6 +2529,29 @@ static void drawLoRaFishValuePicker(DisplayDriver& display) {
       "SCALES", "BODY / BORDER", "EYES", "SLEEP HOUR", "WAKE HOUR", "UTC OFFSET",
       "AWAKE TIMEOUT", "ASLEEP TIMEOUT", "DIM AFTER", "VOLUME", "WAKE ALARM",
       "SLEEP CUE", "MESSAGE TONE", "SCREEN COLOUR", "SPECIES", "ORIENTATION", "DISPLAY UPDATE", "ANIMAL SET"};
+#if LORAGOTCHI_DXPRO
+  if (setting == LoRaFishSetting::SpeciesSet || setting == LoRaFishSetting::Species) {
+    // Both DX-Pro steps are lists (3 sets, then up to 39 animals). They use the same compact rows as every
+    // other menu, with the draft candidate marked. Browsing, Select and Back behave exactly as before.
+    const int count = loRaFishValuePicker.count();
+    const int visible = LoRaFishMenuLayout::rowsFor(display);
+    const int first = LoRaFishMenuLayout::first(value, count, visible);
+    drawLoRaFishHeader(display, titles[static_cast<uint8_t>(setting)], "");
+    display.setColor(UIColor::primary_txt);
+    for (int row = 0; row < visible && first + row < count; ++row) {
+      const uint8_t item = first + row;
+      const char* name = setting == LoRaFishSetting::SpeciesSet ? LoRaFishSpecies::setLabel(item)
+          : item >= LoRaFishSpecies::setSize(loRaFishProSet) ? "Mystery egg"
+          : LoRaFishSpecies::label(LoRaFishSpecies::setSelectionId(loRaFishProSet, item));
+      char line[32];
+      snprintf(line, sizeof(line), "%c %s", item == value ? '>' : ' ', name);
+      display.setCursor(3, LoRaFishMenuLayout::rowYFor(display, row));
+      display.print(line);
+    }
+    drawLoRaFishMenuHint(display, true);
+    return;
+  }
+#endif
   char valueText[24];
   const char* text = valueText;
   switch (setting) {
@@ -2624,21 +2650,22 @@ static void drawLoRaFishWatchOptions(DisplayDriver& display) {
     if (option == loRaFishOption) selected = count;
     rows[count++] = option;
   }
-  const uint8_t first = selected > 3 ? selected - 3 : 0;
+  const int visible = LoRaFishMenuLayout::rowsFor(display);
+  const int first = LoRaFishMenuLayout::first(selected, count, visible);
   drawLoRaFishHeader(display, "OPTIONS", "");
   display.setColor(UIColor::primary_txt);
-  for (uint8_t row = 0; row < 4 && first + row < count; ++row) {
+  for (int row = 0; row < visible && first + row < count; ++row) {
     const auto option = rows[first + row];
     char line[24];
     snprintf(line, sizeof(line), "%c %s", option == loRaFishOption ? '>' : ' ', loRaFishOptionLabel(option));
-    display.setCursor(3, 18 + row*9);
+    display.setCursor(3, LoRaFishMenuLayout::rowYFor(display, row));
     display.print(line);
   }
 #if defined(LORAFISH_WATCH_TOUCH)
   display.setColor(UIColor::secondary_txt);
-  display.drawTextCentered(display.width()/2, 56, "LONG HOLD:OPEN");
+  display.drawTextCentered(display.width()/2, LoRaFishMenuLayout::hintY(display.height()), "LONG HOLD:OPEN");
 #else
-  drawLoRaFishMenuHint(display);
+  drawLoRaFishMenuHint(display, true);
 #endif
 }
 #endif
@@ -2654,32 +2681,32 @@ static void drawLoRaFishOptions(DisplayDriver& display, UITask* task) {
   const uint8_t selected = LoRaFishOptions::index(loRaFishOption, loRaFishHasSound, breed, loragotchiDXGuest.present);
   const uint8_t count = loRaFishOptionCount();
   #if defined(LORAFISH_CARDPUTER_25D)
-  const uint8_t first = selected > 5 ? selected - 5 : 0;
+  // Size-2 text is 16 px; 17 px rows from y=22 fill the 135 px panel to the bottom edge (6 rows).
+  const int visible = LoRaFishMenuLayout::rows(display.height(), 17, 22, false);
 #else
-  const uint8_t first = selected > 3 ? selected - 3 : 0;
+  const int visible = LoRaFishMenuLayout::rowsFor(display);
 #endif
+  const int first = LoRaFishMenuLayout::first(selected, count, visible);
   drawLoRaFishHeader(display, "OPTIONS", "");
   display.setColor(UIColor::primary_txt);
   #if defined(LORAFISH_CARDPUTER_25D)
   display.setTextSize(2);
-  for (uint8_t row = 0; row < 6 && first + row < count; ++row) {
-#else
-  for (uint8_t row = 0; row < 4 && first + row < count; ++row) {
 #endif
+  for (int row = 0; row < visible && first + row < count; ++row) {
     const auto option = LoRaFishOptions::at(first + row, loRaFishHasSound, breed, loragotchiDXGuest.present);
     char line[24];
     snprintf(line, sizeof(line), "%c %s", option == loRaFishOption ? '>' : ' ', loRaFishOptionLabel(option));
     #if defined(LORAFISH_CARDPUTER_25D)
     display.setCursor(6, 22 + row*17);
 #else
-    display.setCursor(3, 18 + row*9);
+    display.setCursor(3, LoRaFishMenuLayout::rowYFor(display, row));
 #endif
     display.print(line);
   }
 #if defined(LORAFISH_CARDPUTER_25D)
   display.setTextSize(1);
 #else
-  drawLoRaFishMenuHint(display);
+  drawLoRaFishMenuHint(display, true);
 #endif
 #endif
 }
@@ -2698,11 +2725,11 @@ static void drawLoRaFishAdvertMenu(DisplayDriver& display) {
     char line[24];
     snprintf(line, sizeof(line), "%c %s",
              row == static_cast<uint8_t>(loRaFishAdvertMenu.selected()) ? '>' : ' ', labels[row]);
-    display.setCursor(3, 18 + row * 11);
+    display.setCursor(3, LoRaFishMenuLayout::rowYFor(display, row, LoRaFishMenuLayout::kTop, 11));
     display.print(line);
   }
   display.setColor(UIColor::secondary_txt);
-  drawLoRaFishMenuHint(display);
+  drawLoRaFishMenuHint(display, true);
 }
 
 static void cancelLoRaFishReset() {
@@ -2831,17 +2858,18 @@ static void drawLoRaFishDisplayMenu(DisplayDriver& display) {
   static const char* monoLabels[] = {"Screen timeout", "Brightness", "Firmware theme", "Screen colour", "Game rendering", "Pet species"};
   static const char* colorLabels[] = {"Screen timeout", "Brightness", "Firmware theme", "Pet colours", "Game rendering", "Pet species"};
   const uint8_t count = loRaFishDisplayOptionCount();
-  const uint8_t first = loRaFishDisplayOption > 3 ? loRaFishDisplayOption - 3 : 0;
+  const int visible = LoRaFishMenuLayout::rowsFor(display);
+  const int first = LoRaFishMenuLayout::first(loRaFishDisplayOption, count, visible);
   drawLoRaFishHeader(display, "DISPLAY", "");
   display.setColor(UIColor::primary_txt);
-  for (uint8_t row = 0; row < 4 && first + row < count; ++row) {
+  for (int row = 0; row < visible && first + row < count; ++row) {
     const uint8_t option = first + row;
-    drawLoRaFishMenuLabel(display, 18 + row*9, option == loRaFishDisplayOption,
+    drawLoRaFishMenuLabel(display, LoRaFishMenuLayout::rowYFor(display, row), option == loRaFishDisplayOption,
         (loRaFishPartialSupported && option == 5 + (LORAGOTCHI_SPECIES_EDITION ? 1 : 0) + loRaFishOrientationSupported) ? "Display update" :
         (loRaFishOrientationSupported && option == 5 + (LORAGOTCHI_SPECIES_EDITION ? 1 : 0)) ? "Orientation" :
         (loRaFishColorDisplay ? colorLabels[option] : monoLabels[option]));
   }
-  drawLoRaFishMenuHint(display);
+  drawLoRaFishMenuHint(display, true);
 }
 
 
@@ -2854,8 +2882,8 @@ static void drawLoRaFishPetSetup(DisplayDriver& display) {
       loRaFishColorDisplay ? "Choose colours" : "Keep colours","Start pet"};
   display.setColor(UIColor::primary_txt);
   for (uint8_t i=0;i<4;++i)
-    drawLoRaFishMenuLabel(display,18+i*9,i==loRaFishPetSetupField,rows[i]);
-  drawLoRaFishMenuHint(display);
+    drawLoRaFishMenuLabel(display,LoRaFishMenuLayout::rowYFor(display,i),i==loRaFishPetSetupField,rows[i]);
+  drawLoRaFishMenuHint(display, true);
 }
 static void drawLoRaFishColorMenu(DisplayDriver& display) {
   static const char* parts[] = {"Scales", "Body", "Eyes", "Start pet"};
@@ -2863,12 +2891,12 @@ static void drawLoRaFishColorMenu(DisplayDriver& display) {
   drawLoRaFishHeader(display, loRaFishNeedsPetSetup ? "PET COLOURS" : (loRaFishNeedsAppearanceSetup ? "NEW PET" : "PET COLOURS"), "");
   display.setColor(UIColor::primary_txt);
   for (uint8_t row = 0; row < ((loRaFishNeedsAppearanceSetup || loRaFishNeedsPetSetup) ? 4 : 3); ++row) {
-    drawLoRaFishMenuLabel(display,18+row*9,row==loRaFishColorField,
+    drawLoRaFishMenuLabel(display,LoRaFishMenuLayout::rowYFor(display,row),row==loRaFishColorField,
         row==3 && loRaFishNeedsPetSetup ? "Done colours" : parts[row]);
-    if (row < 3) display.drawTextRightAlign(display.width()-3, 18 + row*9,
+    if (row < 3) display.drawTextRightAlign(display.width()-3, LoRaFishMenuLayout::rowYFor(display,row),
         colors[row] > 6 ? "Inherited" : loRaFishColorNames[colors[row]]);
   }
-  drawLoRaFishMenuHint(display);
+  drawLoRaFishMenuHint(display, true);
 }
 
 static void drawLoRaFishTimeMenu(DisplayDriver& display) {
@@ -2882,11 +2910,11 @@ static void drawLoRaFishTimeMenu(DisplayDriver& display) {
   for (uint8_t row=0; row<3; row++) {
     if (row<2) snprintf(value,sizeof(value),"%02d:00",hours[row]);
     else loRaFishFormatUtcOffset(value,sizeof(value),false);
-    drawLoRaFishMenuLabel(display,22+row*11,row==loRaFishTimeField,row==2 ? "Offset" : labels[row]);
-    display.drawTextRightAlign(w-3,22+row*11,value);
+    drawLoRaFishMenuLabel(display,LoRaFishMenuLayout::rowYFor(display,row,22,11),row==loRaFishTimeField,row==2 ? "Offset" : labels[row]);
+    display.drawTextRightAlign(w-3,LoRaFishMenuLayout::rowYFor(display,row,22,11),value);
   }
   display.setColor(UIColor::secondary_txt);
-  drawLoRaFishMenuHint(display);
+  drawLoRaFishMenuHint(display, true);
 }
 
 static void drawLoRaFishTimeoutMenu(DisplayDriver& display) {
@@ -2900,11 +2928,11 @@ static void drawLoRaFishTimeoutMenu(DisplayDriver& display) {
     const char* label=row==0 ? "Awake" : row==1 ? "Asleep" : "Dim after";
     const char* value=row<2 ? loRaFishTimeoutShortNames[min((uint8_t)5,setting)]
                 : loRaFishAlwaysOnDimNames[min((uint8_t)2,loRaFishAlwaysOnDimSetting)];
-    drawLoRaFishMenuLabel(display,22+row*12,row==loRaFishTimeoutField,label);
-    display.drawTextRightAlign(w-3,22+row*12,value);
+    drawLoRaFishMenuLabel(display,LoRaFishMenuLayout::rowYFor(display,row,22,12),row==loRaFishTimeoutField,label);
+    display.drawTextRightAlign(w-3,LoRaFishMenuLayout::rowYFor(display,row,22,12),value);
   }
   display.setColor(UIColor::secondary_txt);
-  drawLoRaFishMenuHint(display);
+  drawLoRaFishMenuHint(display, true);
 }
 
 
@@ -2922,11 +2950,11 @@ static void drawLoRaFishSoundMenu(DisplayDriver& display) {
   drawLoRaFishHeader(display,"SOUND","");
   display.setColor(UIColor::primary_txt);
   for (uint8_t row=0; row<4; row++) {
-    drawLoRaFishMenuLabel(display,18+row*9,row==loRaFishSoundField,labels[row]);
-    display.drawTextRightAlign(w-3,18+row*9,values[row]);
+    drawLoRaFishMenuLabel(display,LoRaFishMenuLayout::rowYFor(display,row),row==loRaFishSoundField,labels[row]);
+    display.drawTextRightAlign(w-3,LoRaFishMenuLayout::rowYFor(display,row),values[row]);
   }
   display.setColor(UIColor::secondary_txt);
-  drawLoRaFishMenuHint(display);
+  drawLoRaFishMenuHint(display, true);
 }
 #endif
 
@@ -3974,6 +4002,32 @@ static void drawLoRaFish(DisplayDriver& display, UITask* task) {
 #ifdef LORAGOTCHI_NATIVE_UI
 // Full-width habitat below a quiet two-line status ribbon. No side rail,
 // framebuffer magnification or bordered 64px card on larger native panels.
+// True when the page about to be drawn is a list menu. Those are laid out in real panel rows at the
+// driver's tight pitch (LoRaFishMenuLayout) instead of being stretched with the 64 px page frame.
+// Mirrors the precedence inside drawLoRaFish(): notices and adoption first, then the picker, then the page.
+static bool loRaFishListPage() {
+  if (loRaFishChannelNotice || loRaFishNameNotice || loRaFishMonoDisplayNotice || loRaFishAdoptionEligible)
+    return false;
+  if (loRaFishValuePicker.active()) {
+#if LORAGOTCHI_DXPRO
+    return loRaFishValuePicker.key() == LoRaFishSetting::Species ||
+        loRaFishValuePicker.key() == LoRaFishSetting::SpeciesSet;
+#else
+    return false;
+#endif
+  }
+  const uint8_t page = (loRaFishNeedsPetSetup && loRaFishPage != 9) ? LORAFISH_PET_SETUP_PAGE : loRaFishPage;
+  switch (page) {
+    case LORAFISH_PET_SETUP_PAGE: case LORAFISH_ADVERT_PAGE:
+    case 5: case 8: case 9: case 10: case 11: case 12: case 13: case 15:
+      return true;
+#ifdef PIN_BUZZER
+    case 14: return true;
+#endif
+    default: return false;
+  }
+}
+
 static void drawLoRaFishNative(DisplayDriver& display, UITask* task) {
   const int w=display.width(),h=display.height();
   const bool notice=loRaFishChannelNotice || loRaFishNameNotice ||
@@ -3994,6 +4048,9 @@ static void drawLoRaFishNative(DisplayDriver& display, UITask* task) {
     }
     LoRaFishLayout::Region habitat(display,0,ribbon,w,h-ribbon);
     drawLoRaFish(habitat,task);
+  } else if(loRaFishListPage()) {
+    LoRaFishLayout::Region flow(display,0,0,w,h); // identity mapping: rows are real panel rows
+    drawLoRaFish(flow,task);
   } else {
     LoRaFishLayout::Page page(display);
     drawLoRaFish(page,task);
