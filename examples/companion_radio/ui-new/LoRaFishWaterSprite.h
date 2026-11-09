@@ -5,13 +5,15 @@
 // Palette resolved at runtime by the same genetics/theme converter as legacy fish.
 // No framebuffer, heap or per-species RGB assets; max footprint is 32x24 pixels.
 namespace LoRaFishWaterSprite {
+// Tallest sprite any Water species draws (adult and elder stages); the tank band rule uses it.
+static constexpr int adultRows=24;
 template<class Display, class Colour>
 inline void draw(Display& d,int x,int y,bool right,uint16_t id,uint8_t stage,
                  uint32_t now,Colour body,Colour fins,Colour eyes,Colour background) {
   if (!id || !LoRaFishSpecies::waterKnown(id)) return; // caller preserves legacy fish
   const unsigned phase=(now/280U)&1U;
   const unsigned width=stage==0?20:stage==1?26:32;
-  const unsigned height=stage==0?15:stage==1?19:24;
+  const unsigned height=stage==0?15:stage==1?19:(unsigned)adultRows;
   const uint8_t* mask=LoRaFishWaterArt::masks[id-1][phase];
   const Colour palette[]={background,body,fins,eyes};
   // Coalesce equal semantic pixels into horizontal runs. Transparent pixels

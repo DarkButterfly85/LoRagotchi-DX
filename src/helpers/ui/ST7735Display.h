@@ -6,6 +6,9 @@
 #include "TFT_eSPI.h"
 #include <helpers/RefCountedDigitalPin.h>
 
+// 16-bit RGB565 colour panel: lets the pet UI compile its colour tank scenery (see UITask.cpp).
+#define LORAGOTCHI_RGB565_PANEL 1
+
 class ST7735Display : public DisplayDriver {
   bool _partial = false;
   bool _isOn;

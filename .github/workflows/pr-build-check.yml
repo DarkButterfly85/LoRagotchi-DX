@@ -1,5 +1,10 @@
 name: PR Build Check
 
+# Pull requests build only the LoRaGotchi boards (picker envs named
+# *loragotchi*/*dx* plus the Water_/Air_ editions). Stock MeshCore envs live in
+# platformio-meshcore.ini, are not in the picker and are never built here.
+# native and native_kiss_modem unit tests run in run-unit-tests.yml.
+
 on:
   pull_request:
     branches: [main, dev]
@@ -7,45 +12,46 @@ on:
       - 'src/**'
       - 'examples/**'
       - 'variants/**'
+      - 'boards/**'
+      - 'lib/**'
+      - 'arch/**'
+      - 'tools/ci/**'
       - 'platformio.ini'
-      - '.github/workflows/pr-build-check.yml'
-  push:
-    branches: [main, dev]
-    paths:
-      - 'src/**'
-      - 'examples/**'
-      - 'variants/**'
-      - 'platformio.ini'
+      - 'platformio-meshcore.ini'
+      - '.github/actions/**'
       - '.github/workflows/pr-build-check.yml'
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  build:
+  generate-build-matrix:
     runs-on: ubuntu-latest
+    outputs:
+      environments: ${{ steps.get-envs.outputs.environments }}
+    steps:
+      - name: Clone Repo
+        uses: actions/checkout@v6
+
+      - name: Setup Build Environment
+        uses: ./.github/actions/setup-build-environment
+
+      - name: Get LoRaGotchi environments
+        id: get-envs
+        run: echo "environments=$(python3 tools/ci/list-loragotchi-envs.py)" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: generate-build-matrix
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
-        environment:
-          # ESP32-S3 (most common platform)
-          - Heltec_v3_companion_radio_ble
-          - Heltec_v3_repeater
-          - Heltec_v3_room_server
-          # nRF52
-          - RAK_4631_companion_radio_ble
-          - RAK_4631_companion_radio_ethernet
-          - RAK_4631_repeater
-          - RAK_4631_repeater_ethernet
-          - RAK_4631_room_server
-          - RAK_4631_room_server_ethernet
-          # RP2040
-          - PicoW_repeater
-          # STM32
-          - wio-e5-mini_repeater
-          # ESP32-C6
-          - LilyGo_Tlora_C6_repeater_
-          # LR1110 (nRF52)
-          - wio_wm1110_repeater
-          # SX1276 (ESP32)
-          - Tbeam_SX1276_repeater
+        environment: ${{ fromJson(needs.generate-build-matrix.outputs.environments) }}
 
     steps:
       - name: Clone Repo

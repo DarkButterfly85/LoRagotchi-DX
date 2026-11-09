@@ -46,7 +46,7 @@ def check_config(config):
         assert actual_board['upload']['flash_size'] == '16MB'
         assert actual_board['upload']['maximum_size'] == 16777216
         expected.add('env:' + name)
-        for edition in ('water', 'air'):
+        for edition in ('water', 'air', 'land', 'dxpro'):
             alias = 'env:' + edition + '_' + suffix
             if edition == 'air' and not (ROOT / 'variants/loragotchi_air/platformio.ini').exists():
                 continue
@@ -54,8 +54,8 @@ def check_config(config):
             for key, value in cfg.items():
                 if key not in {'extends', 'build_flags'}:
                     assert a[key] == value, (alias, key)
-            assert a['build_flags'] == cfg['build_flags'] + [
-                '-D LORAGOTCHI_' + edition.upper() + '_EDITION=1'], alias
+            flag = '-D LORAGOTCHI_DXPRO=1' if edition == 'dxpro' else '-D LORAGOTCHI_' + edition.upper() + '_EDITION=1'
+            assert a['build_flags'] == cfg['build_flags'] + [flag], alias
             expected.add(alias)
     selected = {s for s, cfg in config.items() if cfg.get('board_build.partitions') == CSV}
     assert selected == expected, (selected, expected)

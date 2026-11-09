@@ -56,10 +56,6 @@ jobs:
           target: create_uf2
           format: uf2
           tier: experimental-L1
-        - environment: ThinkNode_M2_LoRaFish_companion_ble
-          target: build
-          format: bin
-          tier: shared-SH1106-control
     steps:
     - uses: actions/checkout@v4
       with:

@@ -618,9 +618,12 @@ void MyMesh::queueMessage(const ContactInfo &from, uint8_t txt_type, mesh::Packe
             loragotchiDXReservation.start(millis());
             loragotchiDXSave();
           }
-          if (LORAGOTCHI_AIR_EDITION)
+          // DX-Pro answers with the legacy ACK of its current pet's set (unchanged wire strings).
+          if (LORAGOTCHI_LAND_EDITION || (LORAGOTCHI_DXPRO && LoRaFishSpecies::landKnown(loragotchiDXLocalSpecies)))
+            snprintf(reply,sizeof(reply),"LFG1|ACK|%lu|%lu|S1|L1",tx,fid);
+          else if (LORAGOTCHI_AIR_EDITION || (LORAGOTCHI_DXPRO && LoRaFishSpecies::airKnown(loragotchiDXLocalSpecies)))
             snprintf(reply,sizeof(reply),"LFG1|ACK|%lu|%lu|S1|A1",tx,fid);
-          else if (LORAGOTCHI_WATER_EDITION)
+          else if (LORAGOTCHI_WATER_EDITION || LORAGOTCHI_DXPRO)
             snprintf(reply,sizeof(reply),"LFG1|ACK|%lu|%lu|S1",tx,fid);
           else
             snprintf(reply,sizeof(reply),"LFG1|ACK|%lu|%lu",tx,fid);
@@ -637,8 +640,8 @@ void MyMesh::queueMessage(const ContactInfo &from, uint8_t txt_type, mesh::Packe
         loragotchiDXVisit.phase!=LoRaFishVisit::Commit &&
         tx==loragotchiDXHome.txid && fid==loragotchiDXHome.fishid) {
       loragotchiDXAirFallback = LORAGOTCHI_SPECIES_EDITION &&
-          LoRaFishSpecies::airKnown(loragotchiDXLocalSpecies) && !LoRaFishSpecies::airAcknowledged(text);
-      if (loragotchiDXAirFallback) Serial.println("[LFG1 PEER] Air unsupported: visiting as legacy fish; home identity retained");
+          LoRaFishSpecies::wireFallback(loragotchiDXLocalSpecies,text);
+      if (loragotchiDXAirFallback) Serial.println("[LFG1 PEER] Air/Land unsupported: visiting as legacy fish; home identity retained");
       loRaFishCommitFrame.prepare(from.id.pub_key, tx, fid,
         loragotchiDXLocalHasColorGenes, loragotchiDXLocalColorIndex,
         loragotchiDXLocalScalesColorIndex, loragotchiDXLocalEyesColorIndex,
