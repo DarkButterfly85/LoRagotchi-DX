@@ -108,12 +108,98 @@ inline void waterPosition(uint16_t id,uint8_t stage,int width,uint32_t now,
                  : 30+(int)(6U*(pulse-600U)/1800U);
   }
 }
+// ---- Natural idle motion (pilot: Dog, the canine of the Land set) --------------------------------
+// Replaces the fixed-speed triangle wave with a stand / walk / look-around cycle. Presentation only:
+// nothing here is saved, sent or compared across devices. No heap, no per-frame allocation, no
+// per-frame randomness: a random number is drawn only when a phase STARTS, and positions inside a
+// phase are a closed-form function of millis(), so the result is identical however often it is drawn.
+// Two slots exist: 0 = the home animal (offset 0), 1 = a visitor (offset != 0), each with its own seed.
+inline bool naturalIdle(uint16_t id) { return id==Dog; }
+namespace naturalidle {
+struct Slot {
+  uint32_t rng, start, end, lookAt;
+  int32_t x0q, dq, spd;     // phase start x, walk distance, walk speed; units of 1/16 px inside the roam span
+  int16_t span; uint16_t id;
+  int8_t dir;               // walk direction, +1 right / -1 left
+  bool valid, walking, faceRight, look, edge;
+};
+inline uint32_t roll(Slot& s,uint32_t lo,uint32_t hi) {
+  s.rng^=s.rng<<13; s.rng^=s.rng>>17; s.rng^=s.rng<<5; // xorshift32
+  return lo+s.rng%(hi-lo+1U);
+}
+// Stand about 1-3 s. After an edge turn, or sometimes at random, look around: the animal faces the
+// other way part-way through the pause and then walks the way it is looking.
+inline void startStand(Slot& s,uint32_t at) {
+  const uint32_t d=s.edge ? roll(s,1400U,2600U) : roll(s,1000U,3000U);
+  s.walking=false; s.start=at; s.end=at+d;
+  s.look=s.edge || (d>=1800U && roll(s,0U,99U)<40U);
+  s.lookAt=at+d*45U/100U;
+}
+// Walk about 2-4.5 s, cut short at the screen edge (then the next pause is a forced turn-around).
+inline void startWalk(Slot& s,uint32_t at,int32_t spanq,int32_t speedq) {
+  s.dir=s.look ? (s.faceRight ? -1 : 1) : (roll(s,0U,1U) ? 1 : -1);
+  const int32_t margin=spanq/4<160 ? spanq/4 : 160; // never start a walk into a wall within 10 px
+  if(s.x0q<margin)s.dir=1;
+  else if(s.x0q>spanq-margin)s.dir=-1;
+  s.faceRight=s.dir>0;
+  uint32_t w=roll(s,2000U,4500U);
+  int32_t full=(int32_t)(((uint32_t)speedq*w)/1000U);
+  const int32_t room=s.dir>0 ? spanq-s.x0q : s.x0q;
+  s.edge=full>=room;
+  if(s.edge) {full=room; w=((uint32_t)room*1000U+(uint32_t)speedq-1U)/(uint32_t)speedq;}
+  s.walking=true; s.start=at; s.end=at+w; s.dq=full; s.spd=speedq;
+}
+inline int32_t walkEnd(const Slot& s) { return s.x0q+s.dir*s.dq; }
+inline void position(Slot& s,uint16_t id,uint8_t stage,int span,uint32_t now,bool seedGuest,int& x,bool& right) {
+  const int32_t spanq=span*16;
+  const uint32_t period=stage==0 ? 7500U : stage>=3 ? 12500U : 10000U; // same pace as the old drift
+  int32_t speedq=(int32_t)((uint32_t)span*32000U/period);
+  if(speedq<1)speedq=1;
+  const bool fresh=!s.valid || s.id!=id || s.span!=span || (int32_t)(now-s.start)<0;
+  if(fresh) {
+    s.rng=((uint32_t)id*2654435761U)^(seedGuest ? 0x9E3779B9U : 0x7F4A7C15U);
+    if(!s.rng)s.rng=1U;
+    s.id=id; s.span=(int16_t)span; s.valid=true; s.edge=false;
+    s.x0q=(int32_t)roll(s,0U,(uint32_t)spanq); s.faceRight=roll(s,0U,1U)!=0;
+    startStand(s,now);
+  } else if((int32_t)(now-s.end)>8000) { // not drawn for a while (screen off / other page): rest where it was
+    if(s.walking)s.x0q=walkEnd(s);
+    s.edge=false; startStand(s,now);
+  }
+  for(uint8_t guard=0;guard<8 && (int32_t)(now-s.end)>=0;++guard) {
+    const uint32_t at=s.end;
+    if(s.walking) {s.x0q=walkEnd(s); startStand(s,at);}
+    else startWalk(s,at,spanq,speedq);
+  }
+  int32_t xq=s.x0q;
+  if(s.walking) {
+    int32_t d=(int32_t)(((uint32_t)s.spd*(now-s.start))/1000U);
+    if(d>s.dq)d=s.dq;
+    xq+=s.dir*d;
+    right=s.dir>0;
+  } else {
+    right=(s.look && (int32_t)(now-s.lookAt)>=0) ? !s.faceRight : s.faceRight;
+  }
+  if(xq<0)xq=0;
+  if(xq>spanq)xq=spanq;
+  x=20+(xq+8)/16;
+}
+}
 // Home/visitor hook; other Water and all existing Air paths stay exact.
+// idleMotion=false (e-ink call sites) keeps the legacy drift: e-ink gets no new animation.
 inline void habitatPosition(uint16_t id,uint8_t stage,int width,uint32_t now,
-                            uint32_t offset,int& x,int& y,bool& right) {
+                            uint32_t offset,int& x,int& y,bool& right,bool idleMotion=true) {
   if(waterMotion(id)) {waterPosition(id,stage,width,now,offset,x,y,right);return;}
   if(!airKnown(id) && !landKnown(id))return;
   const Movement kind=movement(id);
+  if(idleMotion && naturalIdle(id)) {
+    static naturalidle::Slot slots[2]; // home, visitor: static storage only
+    const int span=width>40 ? width-40 : 1;
+    if(span>=16) naturalidle::position(slots[offset!=0 ? 1 : 0],id,stage,span,now+offset,offset!=0,x,right);
+    else x=20; // tank too narrow to roam
+    y=habitatY(id,y,now+offset);
+    return;
+  }
   uint32_t period=kind==Crawl ? 16000U : kind==Walk ? 10000U : kind==Flutter ? 4200U : 8000U;
   if(stage==0)period=period*3U/4U;
   else if(stage>=3)period=period*5U/4U;

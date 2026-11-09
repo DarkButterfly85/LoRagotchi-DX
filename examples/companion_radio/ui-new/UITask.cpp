@@ -3739,7 +3739,7 @@ static void drawLoRaFishAquarium(DisplayDriver& display, UITask* task) {
   bool right=true;
   loRaFishNaturalPosition(w,x,y,right);
   if (LORAGOTCHI_ANIMAL_EDITION || LoRaFishSpecies::waterMotion(loRaFishSpecies))
-    LoRaFishSpecies::habitatPosition(loRaFishSpecies,fish.evolution,w,(uint32_t)millis(),0,x,y,right);
+    LoRaFishSpecies::habitatPosition(loRaFishSpecies,fish.evolution,w,(uint32_t)millis(),0,x,y,right,!display.isEink());
 
   const int bodyOffset=LoRaFishLayout::bodyOffset(h);
 #ifdef LORAGOTCHI_NATIVE_UI
@@ -3857,7 +3857,7 @@ static void drawLoRaFishAquarium(DisplayDriver& display, UITask* task) {
   const uint16_t guestMotionSpecies=guestPresent ? loragotchiDXGuest.species :
       loRaFishGuestTravelAnimation.species;
   if (LORAGOTCHI_ANIMAL_EDITION || LoRaFishSpecies::waterMotion(guestMotionSpecies))
-    LoRaFishSpecies::habitatPosition(guestMotionSpecies,guestStage,w,(uint32_t)millis(),2700,gx,gy,gright);
+    LoRaFishSpecies::habitatPosition(guestMotionSpecies,guestStage,w,(uint32_t)millis(),2700,gx,gy,gright,!display.isEink());
 #ifdef LORAGOTCHI_NATIVE_UI
   if (h>64 && (!LoRaFishSpecies::waterMotion(guestMotionSpecies) || guestMotionSpecies==LoRaFishSpecies::Jellyfish))
     gy=30+(int)(11*sinf((millis()+4300)/5700.0f));
