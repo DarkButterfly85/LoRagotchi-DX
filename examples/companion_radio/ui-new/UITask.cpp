@@ -115,6 +115,7 @@ static void tdeckTouchPoll() {
 #include "LoRaFishRangeCheck.h"
 #include "LoRaFishText.h"
 #include "../LoRaFishColour.h"
+#include "../LoRaFishMeshWeather.h"
 #include "LoRaFishSafeSave.h"
 #include "../LoRaFishSpecies.h"
 #include "LoRaFishLifeArt.h"
@@ -3281,6 +3282,37 @@ static void drawLoRaFishRfTypes(DisplayDriver& display) {
   }
 }
 
+// Pet senses: when the mesh has just got busy (see LoRaFishMeshWeather.h) the pet gets a
+// brief sparkle -- three small twinkles round it for about 5 seconds, at most once every
+// 3 minutes. COLOUR SCREENS ONLY: on monochrome/e-ink this returns before touching the
+// display or the counters, so those screens draw exactly what they always did. RAM only;
+// nothing is saved and nothing about the radio, food, growth, breeding or visits changes.
+static LoRaFishMeshWeather::Sense loRaFishMeshSense;
+
+static void drawLoRaFishMeshSparkle(DisplayDriver& display,int x,int y) {
+  if (!loRaFishColorDisplay) return;                   // mono guard: no drawing, no state
+  const uint32_t now=(uint32_t)millis();
+  loRaFishMeshSense.update(now,lorafish_rf_stats);
+  if (!loRaFishMeshSense.sparkling()) return;
+  const int w=display.width(), h=display.height();
+  const uint8_t frame=loRaFishMeshSense.frame(now);
+  static const int8_t dx[3]={-17,15,19};
+  static const int8_t dy[3]={-12,-15,3};
+  display.setColor(0xFFE0);                            // warm yellow
+  for (uint8_t i=0;i<3;++i) {
+    int cx=x+dx[i], cy=y+dy[i];
+    cx=max(3,min(cx,w-4));                             // stay on screen, clear of header and floor
+    cy=max(18,min(cy,h-18));
+    if (((frame+i)&3)<2) {                             // glint: a small plus, then a dot
+      display.fillRect(cx-1,cy,3,1);
+      display.fillRect(cx,cy-1,1,3);
+    } else {
+      display.fillRect(cx,cy,1,1);
+    }
+  }
+  display.setColor(UIColor::primary_txt);
+}
+
 static void drawLoRaFishRFMonitor(DisplayDriver& display, UITask* task) {
   const int w=display.width(), h=display.height();
 
@@ -4070,6 +4102,8 @@ static void drawLoRaFishAquarium(DisplayDriver& display, UITask* task) {
       display.setCursor(min(w-4,sleepX+19), max(12,sleepY-16)); display.print("Z");
     } else if (!homeTraveling && !loRaFishHomeTravelAnimation.active) {
       drawHomeFishSprite(display,x,y,right);
+      if (fish.ageMinutes>=LORAFISH_EGG_MINUTES && fish.ageMinutes<LORAFISH_LIFESPAN_MINUTES)
+        drawLoRaFishMeshSparkle(display,x,y);          // awake, living pet only; colour screens only
 #if defined(LORAFISH_FISH_WANDER) && defined(LORAFISH_TALL_TANK)
       if (!loRaFishFeeding && !LoRaFishSpecies::waterMotion(loRaFishSpecies)) {
         int wx, wy; bool wright; LoRaFishWanderInfo info;
