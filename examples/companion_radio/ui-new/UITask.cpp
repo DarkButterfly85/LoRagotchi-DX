@@ -404,7 +404,7 @@ static bool loRaFishAppearanceLoaded = false;
 static bool loRaFishNeedsAppearanceSetup = false;
 static bool loRaFishAdoptionEligible = false;
 static bool loRaFishColorDisplay = false;
-static bool loRaFishEinkDisplay = false;   // e-ink keeps its pages exactly as they were (no pet-senses sparkle)
+static bool loRaFishEinkDisplay = false;   // e-ink gets no animation at all, by design (no pet-senses sparkle)
 
 struct LoRaFishAppearance {
   uint8_t scales;
@@ -3289,14 +3289,22 @@ static void drawLoRaFishRfTypes(DisplayDriver& display) {
 // about the radio, food, growth, breeding or visits changes.
 //   Colour screens: three yellow twinkles round the pet for about 5 seconds.
 //   Monochrome (1-bit OLED/LCD): one small white plus in a tank corner for about 1 second, then a
-//   single dot for a moment, then gone. E-ink: nothing (unchanged). With no sparkle active this
+//   single dot for a moment, then gone. E-ink: nothing, ever. E-ink is for still images and gets no
+//   animation by design; there is no option to turn it on. Two locks: an e-ink build (see
+//   LORAFISH_EINK_BUILD in LoRaFishMeshWeather.h) does not contain the sparkle at all, and the
+//   run-time e-ink check below returns before any drawing or timing. With no sparkle active this
 //   function draws nothing at all on any screen.
+#if !LORAFISH_EINK_BUILD
 static LoRaFishMeshWeather::Sense loRaFishMeshSense;
+#endif
 
 static void drawLoRaFishMeshSparkle(DisplayDriver& display,int x,int y,bool monoCornerFree=true) {
+#if LORAFISH_EINK_BUILD
+  (void)display; (void)x; (void)y; (void)monoCornerFree;   // e-ink build: the sparkle is not compiled in
+#else
+  if (loRaFishEinkDisplay) return;                     // e-ink: no drawing, no state, no timing
   const uint32_t now=(uint32_t)millis();
-  if (!loRaFishColorDisplay) {                         // monochrome / e-ink
-    if (loRaFishEinkDisplay && !LoRaFishMeshWeather::MONO_ON_EINK) return;   // e-ink: no drawing, no state
+  if (!loRaFishColorDisplay) {                         // monochrome (1-bit OLED / LCD)
     if (!monoCornerFree) return;                       // a visitor is on the tank
     loRaFishMeshSense.update(now,lorafish_rf_stats);
     const uint8_t step=loRaFishMeshSense.monoStep(now);
@@ -3330,6 +3338,7 @@ static void drawLoRaFishMeshSparkle(DisplayDriver& display,int x,int y,bool mono
     }
   }
   display.setColor(UIColor::primary_txt);
+#endif
 }
 
 static void drawLoRaFishRFMonitor(DisplayDriver& display, UITask* task) {

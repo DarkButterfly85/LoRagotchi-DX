@@ -27,6 +27,30 @@
 // The constants below are the only thing to tune.
 //
 // Written from scratch for LoRagotchi-DX; no Orion/Nova code is used here.
+
+// --- e-ink never gets this -----------------------------------------------------------------
+// E-ink panels are for still images. They get NO animation of any kind, by design, and this
+// effect is not available on them: there is no option to switch it on.
+//
+// Compile time: a build whose DISPLAY_CLASS is an e-ink driver defines LORAFISH_EINK_BUILD as 1,
+// and then the sparkle drawing, its state and its timing are not compiled in at all.
+// (An e-ink driver is any class in src/helpers/ui that says isEink() { return true; }.
+// test/ui/check_mesh_weather.py checks this list against those classes.)
+// Run time: UITask.cpp also asks display->isEink() and returns before touching anything.
+#define LORAFISH_EINK_CLASS_GxEPDDisplay 1
+#define LORAFISH_EINK_CLASS_E213Display 1
+#define LORAFISH_EINK_CLASS_E290Display 1
+#define LORAFISH_EINK_PASTE_(a, b) a##b
+#define LORAFISH_EINK_PASTE(a, b) LORAFISH_EINK_PASTE_(a, b)
+#ifdef DISPLAY_CLASS
+  #if LORAFISH_EINK_PASTE(LORAFISH_EINK_CLASS_, DISPLAY_CLASS)
+    #define LORAFISH_EINK_BUILD 1
+  #endif
+#endif
+#ifndef LORAFISH_EINK_BUILD
+  #define LORAFISH_EINK_BUILD 0
+#endif
+
 namespace LoRaFishMeshWeather {
 
 // --- the rule ---------------------------------------------------------------
@@ -44,7 +68,6 @@ static constexpr uint32_t COOLDOWN_MS = 180000UL;   // at least this long betwee
 // Monochrome (1-bit OLED / LCD): one small plus in a corner of the tank, then a single dot, then gone.
 static constexpr uint32_t MONO_PLUS_MS = 1000UL;    // the 3x3 plus (5 pixels)
 static constexpr uint32_t MONO_DOT_MS  = 300UL;     // fade step: just the centre pixel; after this, nothing
-static constexpr bool     MONO_ON_EINK = false;     // e-ink stays unchanged (a 1-second effect would cost extra screen refreshes)
 
 // Where the mono sparkle may go (centre of the plus). Both spots are inside the tank, under the
 // header line (y 15) and above the floor line (y h-15), clear of the centred text rows.
