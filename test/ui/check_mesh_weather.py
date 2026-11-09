@@ -18,7 +18,11 @@ Parts:
   5. Monochrome: the same function draws NOTHING unless a sparkle is active (proved by
      comparing a whole page with and without it), then a small plus for 1 s, a dot, and gone,
      in a tank corner that is clear of the pet, every text row, the header (battery / clock),
-     the bottom status bar, the poop spots and the bubble columns. E-ink: never draws.
+     the bottom status bar, the poop spots and the bubble columns.
+  6. E-ink gets NO animation, by design: the sparkle is compiled out of every e-ink build
+     (DISPLAY_CLASS = GxEPDDisplay / E213Display / E290Display), a run-time guard comes before
+     everything else, every frame across a surge is identical to the page without the sparkle
+     code, and the old MONO_ON_EINK switch no longer exists anywhere.
 """
 from pathlib import Path
 import re, subprocess, sys, tempfile
@@ -139,7 +143,6 @@ int main() {
   }
   static_assert(MONO_PLUS_MS >= 800 && MONO_PLUS_MS <= 1200, "about one second");
   static_assert(MONO_PLUS_MS + MONO_DOT_MS < SPARKLE_MS, "the mono sparkle ends before the colour one");
-  static_assert(!MONO_ON_EINK, "e-ink stays unchanged");
   // --- the 32-bit millisecond clock wrapping round is fine
   { Run r(0xFFFFFFFFu - 12 * MIN - 500); r.minutes(15, 10); r.minute(30); assert(r.sparkles == 1); r.minutes(5, 10); assert(r.sparkles == 1);
     Run q(0xFFFFFFFFu - 12 * MIN - 500); q.minutes(30, 10); assert(q.sparkles == 0); }
@@ -202,14 +205,37 @@ awake = agu.index('else if (!homeTraveling && !loRaFishHomeTravelAnimation.activ
 assert awake < call and call - awake < 500
 assert 'LORAFISH_EGG_MINUTES' in agu[call - 200:call] and 'LORAFISH_LIFESPAN_MINUTES' in agu[call - 200:call]
 assert 'loragotchiDXGuest.present' in agu[call:call + 200]
-# E-ink is told apart from other 1-bit screens, and returns before anything else happens.
+# E-ink is told apart from other screens, and the run-time guard comes before anything else happens.
 assert 'loRaFishEinkDisplay = display && display->isEink();' in ui
-mono_branch = sparkle_fn[sparkle_fn.index('if (!loRaFishColorDisplay) {'):]
-assert mono_branch.index('loRaFishEinkDisplay') < mono_branch.index('.update(') < mono_branch.index('monoStep(')
-assert 'return;' in mono_branch[mono_branch.index('loRaFishEinkDisplay'):mono_branch.index('.update(')]
+assert sparkle_fn.count('loRaFishEinkDisplay') == 1
+guard = sparkle_fn.index('loRaFishEinkDisplay')
+assert 'return;' in sparkle_fn[guard:guard + 90]
+assert guard < sparkle_fn.index('.update(') < sparkle_fn.index('monoStep(')
+assert guard < sparkle_fn.index('millis()') < sparkle_fn.index('loRaFishColorDisplay')   # before the colour / mono split too
+# Compile time: the e-ink build keeps none of the sparkle, its state or its call to update().
+assert '#if LORAFISH_EINK_BUILD' in sparkle_fn and '#else' in sparkle_fn and sparkle_fn.rstrip().endswith('#endif\n}')
+eink_stub = sparkle_fn[sparkle_fn.index('#if LORAFISH_EINK_BUILD'):sparkle_fn.index('#else')]
+assert 'update(' not in eink_stub and 'fillRect' not in eink_stub and 'millis' not in eink_stub
+assert ui.count('#if !LORAFISH_EINK_BUILD\n' + decl + '\n#endif') == 1
+# The old switch is gone, everywhere (code, headers, docs, build files).
+for sub in ('examples', 'src', 'variants', 'docs', 'boards'):
+    for f in (root / sub).rglob('*'):
+        if f.is_file() and f.suffix in ('.h', '.cpp', '.c', '.ini', '.md', '.py', '.txt', '.json', '.html'):
+            assert 'MONO_ON_EINK' not in f.read_text(errors='ignore'), 'the MONO_ON_EINK switch must not exist: ' + str(f)
+assert 'MONO_ON_EINK' not in ui and 'MONO_ON_EINK' not in weather_h
+# The e-ink class list in the header is exactly the display drivers that report isEink() == true.
+eink_classes = set()
+for hp in (root / 'src/helpers/ui').glob('*.h'):
+    t = hp.read_text(errors='ignore')
+    for m in re.finditer(r'class\s+(\w+)\s*:\s*public\s+\w+\s*\{', t):
+        end = t.find('\nclass ', m.end()); body = t[m.end(): end if end > 0 else len(t)]
+        if re.search(r'bool\s+isEink\s*\(\s*\)\s*override\s*\{\s*return\s+true\s*;', body): eink_classes.add(m.group(1))
+listed = set(re.findall(r'#define\s+LORAFISH_EINK_CLASS_(\w+)\s+1', weather_h))
+assert eink_classes and listed == eink_classes, (listed, eink_classes)
 # Colour keeps the three yellow twinkles.
 assert '0xFFE0' in sparkle_fn and 'dx[3]={-17,15,19}' in sparkle_fn and 'i<3' in sparkle_fn
-print('PASS temporary + not saved: header has no files/radio/Serial, no mention in save/restore/MyMesh, one call site in the awake living-pet branch, e-ink returns first, old fixed thresholds gone')
+print('PASS temporary + not saved: header has no files/radio/Serial, no mention in save/restore/MyMesh, one call site in the awake living-pet branch, old fixed thresholds gone')
+print('PASS e-ink lock: compile-time stub for %s, run-time guard first, MONO_ON_EINK no longer exists anywhere' % ', '.join(sorted(eink_classes)))
 
 # ---------------------------------------------------------------- part 3: packets untouched
 hook = block_of(mymesh, 'void MyMesh::logRxRaw(')
@@ -232,7 +258,7 @@ exec(compile(head, 'check_native_pages_head', 'exec'), ns)
 prelude = ns['code']
 if 'loRaFishEinkDisplay' not in prelude:
     prelude += '\nstatic bool loRaFishEinkDisplay=false;\n'
-prelude += '\n#include "examples/companion_radio/LoRaFishMeshWeather.h"\n' + decl + '\n' + sparkle_fn + '\n'
+prelude += '\n#include "examples/companion_radio/LoRaFishMeshWeather.h"\n#if !LORAFISH_EINK_BUILD\n' + decl + '\n#endif\n' + sparkle_fn + '\n'
 
 helpers = r'''
 static const unsigned long MIN = 60000UL;
@@ -387,20 +413,56 @@ int main() {
     assert(drawn(W, H, PX, PY, false).empty());
   }
 
-  // E-ink: never drawn, state untouched, however busy the mesh.
+  // E-ink (run-time guard): every frame across a surge is identical to the page without the sparkle code,
+  // and the sparkle state is never even touched -- on a 1-bit panel and on a (hypothetical) colour-flagged one.
   loRaFishEinkDisplay = true;
-  for (auto dims : {std::pair<int,int>{250,122}, {296,128}, {128,64}}) {
-    const int W = dims.first, H = dims.second;
-    Recorder base(W, H); fixedPage(base, W, H);
-    reset(); play(15, 10, W, H, 60, 38); hear(now + 500, 300); now += 61000;
-    for (unsigned long t = 0; t < 3000; t += 100) { now += 100; Recorder o(W, H); fixedPage(o, W, H); drawLoRaFishMeshSparkle(o, 60, 38); assert(same(o, base)); }
-    assert(!loRaFishMeshSense.sparkling());
+  for (bool colour : {false, true}) {
+    loRaFishColorDisplay = colour;
+    for (auto dims : {std::pair<int,int>{250,122}, {296,128}, {128,64}}) {
+      const int W = dims.first, H = dims.second;
+      Recorder base(W, H); fixedPage(base, W, H);
+      reset();
+      long frames = 0;
+      for (int m = 0; m < 60; ++m) {                    // quiet, then a 30x surge for 12 minutes, then quiet again
+        hear(now + 500, m >= 20 && m < 32 ? 300 : 10);
+        for (int s = 0; s < 240; ++s) {                 // a frame every 250 ms, a whole minute of them
+          now += 250; Recorder o(W, H); fixedPage(o, W, H); drawLoRaFishMeshSparkle(o, 60, 38, true);
+          assert(same(o, base)); assert(!loRaFishMeshSense.sparkling()); ++frames;
+          Recorder o2(W, H); fixedPage(o2, W, H); drawLoRaFishMeshSparkle(o2, 20, 20, false); assert(same(o2, base));
+        }
+      }
+      assert(frames == 60 * 240);
+    }
   }
+  loRaFishColorDisplay = false;
   loRaFishEinkDisplay = false;
-  puts("PASS monochrome: page identical to before whenever no sparkle is active (steady, 1->3, first 10 min, after it ends, e-ink); sparkle = plus 1 s, dot, gone, in a corner clear of pet / text / battery / status bar / poop / bubbles");
+  puts("PASS monochrome: page identical to before whenever no sparkle is active (steady, 1->3, first 10 min, after it ends); sparkle = plus 1 s, dot, gone, in a corner clear of pet / text / battery / status bar / poop / bubbles");
   return 0;
 }
 '''
+
+
+# What an e-ink BUILD looks like: the sparkle state does not exist, and nothing is ever drawn, whatever the flags say.
+page_utils = mono_main[mono_main.index('static void fixedPage'):mono_main.index('static std::vector<Recorder::Shape> drawn')]
+eink_main = helpers.replace('loRaFishMeshSense = LoRaFishMeshWeather::Sense(); ', '') + page_utils + r"""
+int main() {
+  static_assert(LORAFISH_EINK_BUILD == 1, "this program is the e-ink build");
+  for (bool colour : {false, true}) for (bool eink : {false, true}) {
+    loRaFishColorDisplay = colour; loRaFishEinkDisplay = eink;
+    for (auto dims : {std::pair<int,int>{250,122}, {296,128}, {128,64}, {320,170}}) {
+      const int W = dims.first, H = dims.second;
+      Recorder base(W, H); fixedPage(base, W, H);
+      reset();
+      for (int m = 0; m < 60; ++m) {
+        hear(now + 500, m >= 20 && m < 32 ? 300 : 10);
+        for (int s = 0; s < 240; ++s) { now += 250; Recorder o(W, H); fixedPage(o, W, H); drawLoRaFishMeshSparkle(o, 60, 38, true); assert(same(o, base)); }
+      }
+    }
+  }
+  puts("PASS e-ink build: sparkle compiled out; every frame across a surge identical to the page without it");
+  return 0;
+}
+"""
 
 
 def build(prog, tmp, name, flags):
@@ -420,7 +482,14 @@ with tempfile.TemporaryDirectory(prefix='lrx-weather-') as t:
     (tmp / 'unit.cpp').write_text(unit)
     subprocess.run(['g++', '-std=c++17', '-Wall', '-I' + str(root), str(tmp / 'unit.cpp'), '-o', str(tmp / 'unit')], check=True)
     print(run(tmp / 'unit'))
-    for flags in ([], ['-DLILYGO_TDECK=1'], ['-DLORAGOTCHI_SPECIES_EDITION=1']):
+    for flags in ([], ['-DLILYGO_TDECK=1'], ['-DLORAGOTCHI_SPECIES_EDITION=1'],
+                  ['-DDISPLAY_CLASS=SSD1306Display'], ['-DDISPLAY_CLASS=ST7789Display']):    # mono OLED and colour LCD builds keep their sparkle
         label = ' '.join(flags) or 'default'
         print(run(build(prelude + colour_main, tmp, 'colour', flags)), '[%s]' % label)
         print(run(build(prelude + mono_main, tmp, 'mono', flags)), '[%s]' % label)
+    for cls in sorted(eink_classes):                                                         # every e-ink build: compiled out
+        flags = ['-DDISPLAY_CLASS=' + cls]
+        print(run(build(prelude + eink_main, tmp, 'eink', flags)), '[%s]' % ' '.join(flags))
+        r = subprocess.run(['g++', '-std=c++17', '-DLORAGOTCHI_NATIVE_UI=1', '-I' + str(root), '-I' + str(root / 'src')] + flags + ['-fsyntax-only', '-x', 'c++', '-'],
+                           input=prelude + 'int main(){ loRaFishMeshSense.sparkling(); }', capture_output=True, text=True)
+        assert r.returncode != 0, 'the sparkle state must not exist in an e-ink build'
