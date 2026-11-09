@@ -978,18 +978,23 @@ static uint8_t inheritLoRaFishColor(uint8_t localColor,uint8_t visitorColor) {
   return LoRaFishColour::inherit(localColor, visitorColor, (unsigned)random(0,241));
 }
 
+// Breeding is same-species only. The guest species arrives from the wire, so it
+// must be known to this edition AND equal the local species; a guest with an
+// unknown or other-habitat ID can never match and is refused.
+static bool loRaFishGuestSameSpecies() {
+  return LoRaFishSpecies::editionKnown(loragotchiDXGuest.species) &&
+      loragotchiDXGuest.species==loRaFishSpecies;
+}
+
 static bool breedLoRaFishWithGuest() {
-  if (!loRaFishCanBreed()) return false;
+  if (!loRaFishCanBreed() || !loRaFishGuestSameSpecies()) return false;
   const LoRaFishAppearance local=loRaFishLocalAppearance();
   const LoRaFishAppearance visitor=loRaFishGuestAppearance();
   loRaFishEggAppearance.scales=inheritLoRaFishColor(local.scales,visitor.scales);
   loRaFishEggAppearance.body=inheritLoRaFishColor(local.body,visitor.body);
   loRaFishEggAppearance.eyes=inheritLoRaFishColor(local.eyes,visitor.eyes);
-  // Guest species arrives from the wire: only accept IDs known to this edition,
-  // otherwise breed from the local species.
-  const uint16_t guestSpecies=LoRaFishSpecies::editionKnown(loragotchiDXGuest.species)
-      ? loragotchiDXGuest.species : loRaFishSpecies;
-  loRaFishEggSpecies=random(0,2) ? guestSpecies : loRaFishSpecies;
+  // Both parents are the same species (gated above), so the egg is that species.
+  loRaFishEggSpecies=loRaFishSpecies;
   loRaFishPendingEgg=true;
   loRaFishMemorialEggSide=0;
   saveLoRaFishSettings();
@@ -5650,6 +5655,8 @@ char UITask::handleLongPress(char c, bool isHold) {
         if (breedLoRaFishWithGuest()) {
           loRaFishOption = LoRaFishOption::Guess;
           showAlert("Egg saved", 1100);
+        } else {
+          showAlert("Same species only", 1100);
         }
         break;
       default: break;
