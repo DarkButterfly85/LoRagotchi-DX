@@ -37,7 +37,7 @@ inline bool isFish(uint32_t code) {
 }
 
 inline bool isAirMarker(uint32_t code) {
-#if LORAGOTCHI_AIR_EDITION
+#if LORAGOTCHI_HAS_AIR
   switch(code) {
     case 0x1F985: case 0x1F426: case 0x1F989: case 0x1F986: case 0x1F9A2:
     case 0x1F427: case 0x1F99C: case 0x1F9A9: case 0x1F99A: case 0x1F983:
@@ -52,7 +52,7 @@ inline bool isAirMarker(uint32_t code) {
 // Land build discovery hints: the emoji for the Land species (Phoenix has no
 // single-codepoint emoji and is intentionally not a marker). Never proof of habitat.
 inline bool isLandMarker(uint32_t code) {
-#if LORAGOTCHI_LAND_EDITION
+#if LORAGOTCHI_HAS_LAND
   switch(code) {
     case 0x1F415: case 0x1F408: case 0x1F40E: case 0x1F404: case 0x1F418: case 0x1F416:
     case 0x1F40F: case 0x1F411: case 0x1F410: case 0x1F992: case 0x1F998: case 0x1F999:

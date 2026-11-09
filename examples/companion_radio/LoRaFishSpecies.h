@@ -30,8 +30,21 @@ inline bool landKnown(uint16_t id) { return id>=Dog && id<=TRex; }
 inline bool known(uint16_t id) { return waterKnown(id) || airKnown(id) || landKnown(id); }
 // Known AND belongs to this build's habitat (Land build: Land IDs; Air build: Air IDs; otherwise Water IDs).
 inline bool editionKnown(uint16_t id) {
-  return LORAGOTCHI_LAND_EDITION ? landKnown(id) : LORAGOTCHI_AIR_EDITION ? airKnown(id) : waterKnown(id);
+  // DX-Pro owns every set, so any known ID belongs to it.
+  return LORAGOTCHI_DXPRO ? known(id)
+       : LORAGOTCHI_LAND_EDITION ? landKnown(id) : LORAGOTCHI_AIR_EDITION ? airKnown(id) : waterKnown(id);
 }
+// Set-then-species menu (DX-Pro). Sets are the three ID ranges; only the species ID is persisted, so the
+// set is always derived from the ID and no save or wire field is added. Pure helpers, any build may call them.
+static constexpr uint8_t setCount=3; // 0 Water, 1 Air, 2 Land
+inline uint8_t setOf(uint16_t id) { return landKnown(id) ? 2 : airKnown(id) ? 1 : 0; }
+inline uint8_t setSize(uint8_t set) { return set==2 ? landCount : set==1 ? airCount : count; }
+inline uint16_t setBase(uint8_t set) { return set==2 ? (uint16_t)Dog : set==1 ? (uint16_t)Eagle : (uint16_t)TropicalFish; }
+inline const char* setLabel(uint8_t set) { return set==2 ? "Land" : set==1 ? "Air" : "Water"; }
+inline uint16_t setSelectionId(uint8_t set,uint8_t index) {
+  return setBase(set)+(index<setSize(set) ? index : 0);
+}
+inline uint8_t setSelectionIndex(uint16_t id) { return known(id) ? (uint8_t)(id-setBase(setOf(id))) : 0; }
 // Menu offsets are never persisted or sent. Legacy saves remain fish.
 static constexpr uint8_t selectableCount=LORAGOTCHI_LAND_EDITION ? landCount : LORAGOTCHI_AIR_EDITION ? airCount : count;
 static constexpr uint16_t freshSpecies=LORAGOTCHI_LAND_EDITION ? Dog : LORAGOTCHI_AIR_EDITION ? Eagle : TropicalFish;
@@ -289,6 +302,8 @@ inline uint16_t checksum(const uint8_t* p,size_t n) {
 static constexpr size_t savedSize=18;
 inline uint32_t mix(uint32_t x) { x^=x>>16; x*=0x7feb352dUL; x^=x>>15; x*=0x846ca68bUL; return x^(x>>16); }
 inline uint16_t mystery(uint32_t seed) { return (uint16_t)(selectionId((uint8_t)(mix(seed)%selectableCount))); }
+// Mystery egg inside a chosen set: the same formula a single-set build uses, so one seed gives one animal.
+inline uint16_t setMystery(uint32_t seed,uint8_t set) { return setSelectionId(set,(uint8_t)(mix(seed)%setSize(set))); }
 inline uint8_t mysteryColour(uint32_t seed,unsigned role) { return (uint8_t)(8+mix(seed+0x9e3779b9UL*(role+1))%240); }
 inline void encode(uint8_t* p,uint16_t local,uint16_t egg,uint32_t seed,bool setup) {
   memcpy(p,"SPC1",4); p[4]=local; p[5]=local>>8; p[6]=egg; p[7]=egg>>8;

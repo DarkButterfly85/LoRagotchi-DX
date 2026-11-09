@@ -618,11 +618,12 @@ void MyMesh::queueMessage(const ContactInfo &from, uint8_t txt_type, mesh::Packe
             loragotchiDXReservation.start(millis());
             loragotchiDXSave();
           }
-          if (LORAGOTCHI_LAND_EDITION)
+          // DX-Pro answers with the legacy ACK of its current pet's set (unchanged wire strings).
+          if (LORAGOTCHI_LAND_EDITION || (LORAGOTCHI_DXPRO && LoRaFishSpecies::landKnown(loragotchiDXLocalSpecies)))
             snprintf(reply,sizeof(reply),"LFG1|ACK|%lu|%lu|S1|L1",tx,fid);
-          else if (LORAGOTCHI_AIR_EDITION)
+          else if (LORAGOTCHI_AIR_EDITION || (LORAGOTCHI_DXPRO && LoRaFishSpecies::airKnown(loragotchiDXLocalSpecies)))
             snprintf(reply,sizeof(reply),"LFG1|ACK|%lu|%lu|S1|A1",tx,fid);
-          else if (LORAGOTCHI_WATER_EDITION)
+          else if (LORAGOTCHI_WATER_EDITION || LORAGOTCHI_DXPRO)
             snprintf(reply,sizeof(reply),"LFG1|ACK|%lu|%lu|S1",tx,fid);
           else
             snprintf(reply,sizeof(reply),"LFG1|ACK|%lu|%lu",tx,fid);
