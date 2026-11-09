@@ -404,6 +404,7 @@ static bool loRaFishAppearanceLoaded = false;
 static bool loRaFishNeedsAppearanceSetup = false;
 static bool loRaFishAdoptionEligible = false;
 static bool loRaFishColorDisplay = false;
+static bool loRaFishEinkDisplay = false;   // e-ink keeps its pages exactly as they were (no pet-senses sparkle)
 
 struct LoRaFishAppearance {
   uint8_t scales;
@@ -3282,16 +3283,34 @@ static void drawLoRaFishRfTypes(DisplayDriver& display) {
   }
 }
 
-// Pet senses: when the mesh has just got busy (see LoRaFishMeshWeather.h) the pet gets a
-// brief sparkle -- three small twinkles round it for about 5 seconds, at most once every
-// 3 minutes. COLOUR SCREENS ONLY: on monochrome/e-ink this returns before touching the
-// display or the counters, so those screens draw exactly what they always did. RAM only;
-// nothing is saved and nothing about the radio, food, growth, breeding or visits changes.
+// Pet senses: when the mesh suddenly gets much busier than it has been lately (see
+// LoRaFishMeshWeather.h: the newest minute is at least 2.5x the average of the minutes before it)
+// the pet gets a brief sparkle, at most once every 3 minutes. RAM only; nothing is saved and nothing
+// about the radio, food, growth, breeding or visits changes.
+//   Colour screens: three yellow twinkles round the pet for about 5 seconds.
+//   Monochrome (1-bit OLED/LCD): one small white plus in a tank corner for about 1 second, then a
+//   single dot for a moment, then gone. E-ink: nothing (unchanged). With no sparkle active this
+//   function draws nothing at all on any screen.
 static LoRaFishMeshWeather::Sense loRaFishMeshSense;
 
-static void drawLoRaFishMeshSparkle(DisplayDriver& display,int x,int y) {
-  if (!loRaFishColorDisplay) return;                   // mono guard: no drawing, no state
+static void drawLoRaFishMeshSparkle(DisplayDriver& display,int x,int y,bool monoCornerFree=true) {
   const uint32_t now=(uint32_t)millis();
+  if (!loRaFishColorDisplay) {                         // monochrome / e-ink
+    if (loRaFishEinkDisplay && !LoRaFishMeshWeather::MONO_ON_EINK) return;   // e-ink: no drawing, no state
+    if (!monoCornerFree) return;                       // a visitor is on the tank
+    loRaFishMeshSense.update(now,lorafish_rf_stats);
+    const uint8_t step=loRaFishMeshSense.monoStep(now);
+    int cx=0, cy=0;
+    if (step==0 || !LoRaFishMeshWeather::monoSpot(display.width(),x,y,cx,cy)) return;   // idle: draw nothing
+    display.setColor(UIColor::primary_txt);
+    if (step==1) {                                     // a 3x3 plus
+      display.fillRect(cx-1,cy,3,1);
+      display.fillRect(cx,cy-1,1,3);
+    } else {                                           // fade step: the centre dot
+      display.fillRect(cx,cy,1,1);
+    }
+    return;
+  }
   loRaFishMeshSense.update(now,lorafish_rf_stats);
   if (!loRaFishMeshSense.sparkling()) return;
   const int w=display.width(), h=display.height();
@@ -4103,7 +4122,7 @@ static void drawLoRaFishAquarium(DisplayDriver& display, UITask* task) {
     } else if (!homeTraveling && !loRaFishHomeTravelAnimation.active) {
       drawHomeFishSprite(display,x,y,right);
       if (fish.ageMinutes>=LORAFISH_EGG_MINUTES && fish.ageMinutes<LORAFISH_LIFESPAN_MINUTES)
-        drawLoRaFishMeshSparkle(display,x,y);          // awake, living pet only; colour screens only
+        drawLoRaFishMeshSparkle(display,x,y,!loragotchiDXGuest.present && !loRaFishGuestTravelAnimation.active);   // awake, living pet only
 #if defined(LORAFISH_FISH_WANDER) && defined(LORAFISH_TALL_TANK)
       if (!loRaFishFeeding && !LoRaFishSpecies::waterMotion(loRaFishSpecies)) {
         int wx, wy; bool wright; LoRaFishWanderInfo info;
@@ -5349,6 +5368,7 @@ void UITask::begin(DisplayDriver* display, SensorManager* sensors, NodePrefs* no
   loRaFishPartialSupported = display && display->supportsPartialUpdates();
   loRaFishOrientationSupported = display && display->supportsOrientation();
   loRaFishColorDisplay = display && display->supportsColor();
+  loRaFishEinkDisplay = display && display->isEink();
   loadLoRaFish();
   loadLoRaFishSettings();
   loadLoRaFishEggReceipt();
