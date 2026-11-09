@@ -100,6 +100,10 @@ public:
     }
   }
 
+  // Start of the minute the window is currently on. It changes exactly when the window rolls,
+  // so a reader can tell "same minute as last time" without keeping its own clock.
+  uint32_t rollMark(uint32_t now) { advance(now); return headStart; }
+
   void record(uint32_t now, const Frame& f) {
     if (!f.ok) return;
     advance(now);
