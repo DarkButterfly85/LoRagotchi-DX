@@ -112,6 +112,7 @@ static void tdeckTouchPoll() {
 #include "LoRaFishLayout.h"
 #include "LoRaFishHappiness.h"
 #include "LoRaFishBedtime.h"
+#include "LoRaFishRangeCheck.h"
 #include "LoRaFishText.h"
 #include "../LoRaFishColour.h"
 #include "LoRaFishSafeSave.h"
@@ -391,6 +392,8 @@ static uint8_t loRaFishMemorialScales=0;
 static bool loRaFishNeedsPetSetup=false;
 static uint8_t loRaFishPetSetupField=0;
 static constexpr uint8_t LORAFISH_PET_SETUP_PAGE=20;
+// Colour screens only: the Range Check page, opened with Select on the RF Monitor page.
+static constexpr uint8_t LORAFISH_RANGE_PAGE=21;
 static constexpr uint8_t LORAFISH_MONOCHROME_COLOR = 6;
 static constexpr uint8_t LORAFISH_MONOCHROME_RENDER_TINT = 7;
 static uint8_t loRaFishScaleColor = 0;
@@ -3284,6 +3287,13 @@ static void drawLoRaFishRFMonitor(DisplayDriver& display, UITask* task) {
   snprintf(line,sizeof(line),"RSSI %.0f  SNR %.1f",lorafish_last_rssi,lorafish_last_snr);
   display.setCursor(3,20);
   display.print(line);
+#if !defined(LORAFISH_WATCH_TOUCH)
+  if (loRaFishColorDisplay) {  // colour screens only: monochrome and e-ink pages are unchanged
+    display.setColor(UIColor::secondary_txt);
+    display.drawTextRightAlign(w-2,20,"L:RANGE CHECK");
+    display.setColor(UIColor::primary_txt);
+  }
+#endif
 
   // 48-column RSSI history graph. -120 dBm is bottom, -40 dBm is top.
   const int gx=3, gy=31, gw=min(48,w-6), gh=20;
@@ -3317,6 +3327,94 @@ static void drawLoRaFishRFMonitor(DisplayDriver& display, UITask* task) {
   int fill=(batt*(bw-4))/100;
   if(fill>0) display.fillRect(bx+2,by+2,fill,bh-4);
   if (loRaFishColorDisplay) drawLoRaFishBatteryLeft(display,bx+bw+8,55,rxLeft);
+}
+
+
+// ---- Range Check (colour screens only) ----------------------------------------
+// Sends the stock zero-hop "node discover" probe (repeaters only, short replies)
+// and grades the replies that come back. See LoRaFishRangeCheck.h.
+static LoRaFishRangeCheck::Session loRaFishRange;
+
+__attribute__((unused)) static bool sendLoRaFishRangeProbe() {   // unused on the touch watch, which has no Range Check
+  uint8_t cmd[6];
+  cmd[0] = CTL_TYPE_NODE_DISCOVER_REQ | 1;   // prefix-only replies keep them short
+  cmd[1] = (1 << ADV_TYPE_REPEATER);         // repeaters only: fewest replies, least airtime
+  uint32_t tag = 0;
+  the_mesh.getRNG()->random((uint8_t*)&tag, 4);
+  if (!tag) tag = 1;
+  memcpy(&cmd[2], &tag, 4);
+  mesh::Packet* req = the_mesh.createControlData(cmd, sizeof(cmd));
+  if (!req) return false;
+  the_mesh.sendZeroHop(req);
+  loRaFishRange.start(millis(), tag);
+  return true;
+}
+
+// Select on the RF Monitor page (colour only) opens the Range Check page and
+// probes; Select on the Range Check page probes again. Returns 0 when the press
+// is not ours (every monochrome/e-ink screen, every other page), 1 probe sent,
+// 2 too soon (waitSeconds says how long), 3 the radio could not queue it.
+static uint8_t selectLoRaFishRange(uint32_t now, uint32_t& waitSeconds) {
+#if defined(LORAFISH_WATCH_TOUCH)
+  (void)now; (void)waitSeconds;
+  return 0;   // the touch watch has its own navigation; it keeps its pages as they were
+#else
+  if (!loRaFishColorDisplay || (loRaFishPage != 6 && loRaFishPage != LORAFISH_RANGE_PAGE)) return 0;
+  loRaFishPage = LORAFISH_RANGE_PAGE;
+  if (!loRaFishRange.canStart(now)) { waitSeconds = loRaFishRange.waitSeconds(now); return 2; }
+  return sendLoRaFishRangeProbe() ? 1 : 3;
+#endif
+}
+
+// Called for every control packet the radio hands to the UI.
+static void noteLoRaFishRangeReply(const mesh::Packet* packet) {
+  if (packet->payload_len < 14 || (packet->payload[0] & 0xF0) != CTL_TYPE_NODE_DISCOVER_RESP) return;
+  uint32_t tag;
+  memcpy(&tag, &packet->payload[2], 4);
+  // payload[1] is the SNR the repeater heard our probe at (x4); the last RX sample is this reply.
+  loRaFishRange.onReply(millis(), tag, (int)lorafish_last_rssi, (int)(lorafish_last_snr * 4.0f),
+                        (int)(int8_t)packet->payload[1]);
+}
+
+static void drawLoRaFishRangeCheck(DisplayDriver& display, UITask* task) {
+  (void)task;
+  const int w=display.width(), h=display.height();
+  drawLoRaFishHeader(display,"RANGE CHECK","");
+  const uint32_t now=millis();
+  const auto state=loRaFishRange.state(now);
+  char line[40];
+  display.setColor(UIColor::primary_txt);
+  display.setTextSize(2);
+  if (state==LoRaFishRangeCheck::State::Idle) {
+    display.drawTextCentered(w/2,24,"READY");
+  } else if (state==LoRaFishRangeCheck::State::Listening) {
+    display.drawTextCentered(w/2,24,"CHECKING");
+  } else {
+    const auto v=loRaFishRange.verdict();
+    if (v==LoRaFishRangeCheck::Verdict::None || v==LoRaFishRangeCheck::Verdict::Weak)
+      display.setColor(UIColor::warning_txt);
+    display.drawTextCentered(w/2,24,LoRaFishRangeCheck::word(v));
+  }
+  display.setTextSize(1);
+  display.setColor(UIColor::secondary_txt);
+  if (state==LoRaFishRangeCheck::State::Idle) {
+    display.drawTextCentered(w/2,42,"Asks nearby repeaters");
+  } else if (state==LoRaFishRangeCheck::State::Listening) {
+    snprintf(line,sizeof(line),"Listening %lus  heard %u",(unsigned long)loRaFishRange.secondsLeft(now),
+             (unsigned)loRaFishRange.replies());
+    display.drawTextCentered(w/2,42,line);
+  } else if (loRaFishRange.replies()==0) {
+    display.drawTextCentered(w/2,42,"No repeater answered");
+    display.drawTextCentered(w/2,51,"Try higher up or outside");
+  } else {
+    snprintf(line,sizeof(line),"%u repeater%s answered",(unsigned)loRaFishRange.replies(),
+             loRaFishRange.replies()==1?"":"s");
+    display.drawTextCentered(w/2,42,line);
+    snprintf(line,sizeof(line),"Best RSSI %d  SNR %.1f",loRaFishRange.bestRssiDbm(),
+             loRaFishRange.bestSnrQuarterDb()/4.0f);
+    display.drawTextCentered(w/2,51,line);
+  }
+  display.drawTextCentered(w/2,h-9,"L:CHECK AGAIN  CLICK:BACK");
 }
 
 static void drawLoRaFishGNSS(DisplayDriver& display, UITask* task) {
@@ -4257,6 +4355,7 @@ static void drawLoRaFish(DisplayDriver& display, UITask* task) {
     case 5: drawLoRaFishOptions(display,task); break;
     case 6: drawLoRaFishRFMonitor(display,task); break;
     case 7: drawLoRaFishGNSS(display,task); break;
+    case LORAFISH_RANGE_PAGE: drawLoRaFishRangeCheck(display,task); break;
     case 8: drawLoRaFishDisplayMenu(display); break;
     case 9: drawLoRaFishColorMenu(display); break;
     case 10: drawLoRaFishTimeMenu(display); break;
@@ -4594,6 +4693,7 @@ public:
     }
     if (loRaFishPage == 2 || loRaFishPage == 4 ||
         loRaFishPage == LORAFISH_DX_CONTACT_PAGE || loRaFishPage == 6) return 1000;  // clock, DX, RF
+    if (loRaFishPage == LORAFISH_RANGE_PAGE) return 500;  // countdown while listening
     return 2000;                                     // static pages
 #else
     display.setColor(UIColor::title_bkg);
@@ -4970,6 +5070,8 @@ public:
       if (!loragotchiDXHome.away && !loragotchiDXHome.pending && !loragotchiDXHome.committing) {
         moveLoRaFishDXContact(previous);
       }
+    } else if (loRaFishPage == LORAFISH_RANGE_PAGE) {
+      loRaFishPage = 6;   // Range Check is a child of the RF Monitor page; a click goes back
     } else {
       loRaFishPage = move(loRaFishPage, LORAFISH_PAGE_COUNT);
     }
@@ -5393,6 +5495,9 @@ void UITask::onDiscoveredContact(ContactInfo &contact, bool is_new, uint8_t path
 }
 
 void UITask::onControlDataRecv(const mesh::Packet* packet) {
+#ifdef LORAFISH_UI
+  noteLoRaFishRangeReply(packet);   // counts only replies to a Range Check probe we sent
+#endif
 #if UI_DISCOVER_SCREEN
   if (packet->payload_len >= 14 && (packet->payload[0] & 0xF0) == CTL_TYPE_NODE_DISCOVER_RESP) {
     ((HomeScreen *) home)->handleDiscoverResponse(packet);
@@ -6030,6 +6135,22 @@ char UITask::handleLongPress(char c, bool isHold) {
     return 0;
   }
 
+  {
+    uint32_t waitSeconds = 0;
+    const uint8_t range = selectLoRaFishRange(millis(), waitSeconds);
+    if (range) {
+      if (range == 2) {
+        char message[24];
+        snprintf(message, sizeof(message), "Wait %lus", (unsigned long)waitSeconds);
+        showAlert(message, 1000);
+      } else if (range == 3) {
+        showAlert("Check failed", 1000);
+      }
+      _next_refresh = 0;
+      return 0;
+    }
+  }
+
   if (loRaFishPage == 7) {
     toggleGPS();
     _next_refresh = 0;
@@ -6272,6 +6393,7 @@ char UITask::handleDoubleClick(char c, bool oneButtonDirection) {
       else loRaFishPage = 4;
       break;
     case 6: returnToLoRaFishOptions(LoRaFishOption::RF); break;
+    case LORAFISH_RANGE_PAGE: loRaFishPage = 6; break;
     case 7: returnToLoRaFishOptions(LoRaFishOption::GNSS); break;
     case 10: returnToLoRaFishOptions(LoRaFishOption::Schedule); break;
     case 12: returnToLoRaFishOptions(LoRaFishOption::Display); break;

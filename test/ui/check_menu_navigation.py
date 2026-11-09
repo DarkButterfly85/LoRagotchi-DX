@@ -44,6 +44,9 @@ static bool loRaFishMysterySelected=false;
 static bool loRaFishNeedsPetSetup=false;
 static uint8_t loRaFishPetSetupField=0;
 static constexpr uint8_t LORAFISH_PET_SETUP_PAGE=20;
+static constexpr uint8_t LORAFISH_RANGE_PAGE=21;
+// Range Check is colour-only and has its own host check (check_range_check.py); here Select is never its press.
+static uint8_t selectLoRaFishRange(uint32_t, uint32_t&){return 0;}
 #include "examples/companion_radio/LoRaFishEgg.h"
 static bool loRaFishAdoptionEligible=false,loRaFishEggApplying=false;
 static bool loRaFishMonoDisplayNotice=false,loRaFishMonoDisplayColourKnown=false;

@@ -81,7 +81,7 @@ loRaFishTimeField loRaFishTimeoutField loRaFishSoundField loRaFishValuePicker
 loRaFishResetConfirmation loRaFishAdvertMenu loRaFishScreenDimmed
 loRaFishPartialSupported loRaFishPartialNeedsApply loRaFishOrientationNeedsApply loRaFishBrightnessNeedsApply loRaFishTimeoutSleepStateKnown loRaFishTimeoutSleepState
 loRaFishLastActivityMs loRaFishAlwaysOnDimValues loRaFishBrightnessValues
-LORAFISH_RESET_CONFIRM_PAGE LORAFISH_DX_CONTACT_PAGE'''.split():
+LORAFISH_RESET_CONFIRM_PAGE LORAFISH_DX_CONTACT_PAGE LORAFISH_RANGE_PAGE'''.split():
     source += '\n' + declaration(name)
 for marker in ['static uint16_t loRaFishDisplayBattery(', 'static bool shouldRenderLoRaFish(',
                'static void applyLoRaFishBrightness(']:
