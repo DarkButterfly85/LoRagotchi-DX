@@ -18,6 +18,8 @@ static constexpr uint8_t airCount=18;
 inline bool waterKnown(uint16_t id) { return id<count; }
 inline bool airKnown(uint16_t id) { return id>=Eagle && id<=Bug; }
 inline bool known(uint16_t id) { return waterKnown(id) || airKnown(id); }
+// Known AND belongs to this build's habitat (Air build: Air IDs; otherwise Water IDs).
+inline bool editionKnown(uint16_t id) { return LORAGOTCHI_AIR_EDITION ? airKnown(id) : waterKnown(id); }
 // Menu offsets are never persisted or sent. Legacy saves remain fish.
 static constexpr uint8_t selectableCount=LORAGOTCHI_AIR_EDITION ? airCount : count;
 static constexpr uint16_t freshSpecies=LORAGOTCHI_AIR_EDITION ? Eagle : TropicalFish;

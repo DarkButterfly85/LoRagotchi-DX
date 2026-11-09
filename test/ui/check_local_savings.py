@@ -35,6 +35,11 @@ source = source.replace('if (mode == FILE_WRITE) files[path].clear();', '''if (m
 #endif
     }''')
 source = source.replace('return files.erase(path);', 'if (path == failRemove) return false; return files.erase(path);')
+# The extracted task loop owns the actual production frame-clock scope.
+_ui_clock=(ROOT/'examples/companion_radio/ui-new/UITask.cpp').read_text()
+_clock_start=_ui_clock.index('static bool loRaFishRenderClockActive=')
+_clock_end=_ui_clock.index('// Only pet helpers observe frame time;',_clock_start)
+source += _ui_clock[_clock_start:_clock_end]
 source += r'''
 #include "examples/companion_radio/ui-new/LoRaFishMenu.h"
 #include "examples/companion_radio/ui-new/AdvertMenu.h"
