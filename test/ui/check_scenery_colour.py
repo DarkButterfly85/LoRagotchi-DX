@@ -5,8 +5,10 @@ Host checks of the production scenery code (functions are sliced out of UITask.c
 against a recording display). Not a hardware or timing test: nothing here sees a real panel.
 
 * colour panels without a scenery macro of their own (T190, T114, V4 TFT: native; ST7735: 64-row
-  logical) draw the colour tank on Water/DX tanks; Air and Land habitats are left as they were
-* T-Deck and Cardputer pixels are identical to the build before this change
+  logical) draw the colour tank on Water/DX tanks and the colour sky / meadow on Air and Land
+  (the Air and Land pixel checks are in check_air_land_colour.py)
+* T-Deck and Cardputer Water tanks are identical to the build before this change; their Air and
+  Land habitats draw the same colour sky and meadow (pixel checks in check_air_land_colour.py)
 * monochrome (1-bit OLED, e-ink, colour flag off) pixels are identical to the build before this change
   (test/ui/scenery_legacy_pixels.json, recorded from the pre-change UITask.cpp)
 * no scenery code names a board
@@ -68,14 +70,14 @@ EDITIONS = {
     'dxpro': ['-DLORAGOTCHI_DXPRO=1'],
 }
 TICKS = (0, 1234, 5678, 98765)
-# Changed on purpose: colour flag on, a colour panel with no scenery macro, and a tank (not sky/meadow).
+# Changed on purpose: colour flag on and a colour panel with no scenery macro (colour tank, sky or meadow).
 COLOUR_SETS = ('rgb565', 'rgb565_native')
 
 
 def harness(src):
     v = lambda *a: maybe(src, *a)
     colour_def = ''
-    m = re.search(r'(// Colour tank scenery.*?\n#endif\n)', src, re.S)
+    m = re.search(r'(// Colour tank scenery.*?\n#endif\n// Colour Air and Land scenes:.*?\n#endif\n)', src, re.S)
     if m:
         colour_def = m.group(1)
     awake = preamble(src, 'static void drawLoRaFishAquarium(',
@@ -127,6 +129,15 @@ static void drawLoRaFishTankBattery(DisplayDriver&,UITask*,const char*){}
     body += v('static void drawTDeckPixelAquarium(',
               'defined(LORAFISH_TDECK_PIXEL_ART) || defined(LORAFISH_COLOUR_TANK)')
     body += v('static void drawLoRaFishBubbles(')
+    body += v('static void fillLoRaFishColourSky(',
+              'defined(LORAFISH_COLOUR_SCENES) && (LORAGOTCHI_HAS_AIR || LORAGOTCHI_HAS_LAND)')
+    body += v('static void drawLoRaFishColourSun(',
+              'defined(LORAFISH_COLOUR_SCENES) && (LORAGOTCHI_HAS_AIR || LORAGOTCHI_HAS_LAND)')
+    body += v('static void drawLoRaFishColourTrees(',
+              'defined(LORAFISH_COLOUR_SCENES) && defined(LORAGOTCHI_NATIVE_UI) && '
+              '(LORAGOTCHI_HAS_AIR || LORAGOTCHI_HAS_LAND)')
+    body += v('static void drawLoRaFishAirColour(', 'defined(LORAFISH_COLOUR_SCENES) && LORAGOTCHI_HAS_AIR')
+    body += v('static void drawLoRaFishLandColour(', 'defined(LORAFISH_COLOUR_SCENES) && LORAGOTCHI_HAS_LAND')
     body += v('static void drawLoRaFishAirHabitat(', 'LORAGOTCHI_HAS_AIR')
     body += v('static void drawLoRaFishLandHabitat(', 'LORAGOTCHI_HAS_LAND')
     body += v('static bool loRaFishAnimalHome(')
@@ -174,7 +185,17 @@ int main(int argc,char** argv){
     UITask task;sceneAwake(a,&task);sceneSleeping(z,&task);
     printf("%s.%s.awake.%lu %016llx\n",s.name,names[k],t,a.hash());
     printf("%s.%s.sleep.%lu %016llx\n",s.name,names[k],t,z.hash());
-#if defined(METRICS) && defined(LORAFISH_COLOUR_TANK)
+    if(argc>1&&s.colour){
+     // Frame dump for check_air_land_colour.py: colour awake/sleeping, and the 1-bit render of the same tick.
+     auto dump=[&](const char* kind,const DisplayDriver& f){
+      char path[512];snprintf(path,sizeof(path),"%s/%s.%s.%lu.%s.bin",argv[1],s.name,names[k],t,kind);
+      FILE* o=fopen(path,"wb");fwrite(f.px.data(),2,f.px.size(),o);fclose(o);};
+     dump("awake",a);dump("sleep",z);
+     loRaFishColorDisplay=false;UIColor::secondary_txt=1;UIColor::primary_txt=1;UIColor::window_bkg=0;
+     DisplayDriver m(s.w,s.h);UITask mt;sceneAwake(m,&mt);dump("mono",m);
+     loRaFishColorDisplay=true;UIColor::secondary_txt=midnight[1];UIColor::primary_txt=midnight[2];UIColor::window_bkg=midnight[0];
+    }
+#if defined(METRICS) && defined(LORAFISH_COLOUR_TANK) && !LORAGOTCHI_AIR_EDITION && !LORAGOTCHI_LAND_EDITION
     if(s.colour&&k==0){
      // Tank rows (17 .. h-17) are fully painted water/reef/sand, never left on the window colour.
      int bare=0;for(int y=17;y<s.h-17;++y)for(int x=0;x<s.w;++x)if(a.at(x,y)==UIColor::window_bkg)++bare;
@@ -204,7 +225,7 @@ int main(int argc,char** argv){
     return pre + body + main
 
 
-def build_and_run(src, edition, mset, metrics, tmp):
+def build_and_run(src, edition, mset, metrics, tmp, dump=None):
     code = harness(src)
     table = ','.join(f'{{"{n}",{w},{h},{int(c)}}}' for n, w, h, c in DISPLAYS[mset])
     code = code.replace('DISPLAY_TABLE', table).replace('{TICKS}', '{' + ','.join(f'{t}UL' for t in TICKS) + '}')
@@ -218,34 +239,37 @@ def build_and_run(src, edition, mset, metrics, tmp):
         cmd.append('-DMETRICS')
     r = subprocess.run(cmd, capture_output=True, text=True)
     assert r.returncode == 0, r.stderr[:3000]
-    out = subprocess.run([str(exe)], check=True, capture_output=True, text=True).stdout
+    args = [str(exe)]
+    if dump:
+        d = Path(dump) / name
+        d.mkdir(parents=True, exist_ok=True)
+        args.append(str(d))
+    out = subprocess.run(args, check=True, capture_output=True, text=True).stdout
     return {f'{edition}.{mset}.{k}': v for k, v in (l.split() for l in out.splitlines())}
 
 
-def run_all(src, metrics=False):
+def run_all(src, metrics=False, dump=None):
     results = {}
     with tempfile.TemporaryDirectory(prefix='dx-scenery-') as tmp:
         jobs = [(e, m) for e in EDITIONS for m in MACRO_SETS]
         with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
-            futs = [pool.submit(build_and_run, src, e, m, metrics, tmp) for e, m in jobs]
+            futs = [pool.submit(build_and_run, src, e, m, metrics, tmp, dump) for e, m in jobs]
             for f in futs:
                 results.update(f.result())
     return results
 
 
 def changed(key):
-    """True for the scenes that should now draw the colour tank."""
+    """True for the scenes that should now draw a colour scene (tank, sky or meadow)."""
     edition, mset, rest = key.split('.', 2)
-    if mset not in COLOUR_SETS:
-        return False
     display, kind = rest.split('.')[:2]
     if display in ('st7735_flag_off', 'native_flag_off'):
         return False
-    if edition in ('air', 'land'):
+    if mset in ('tdeck', 'cardputer'):    # their Water tank keeps its own scenery; Air and Land go colour
+        return edition in ('air', 'land') or (edition == 'dxpro' and kind in ('air', 'land'))
+    if mset not in COLOUR_SETS:
         return False
-    if edition == 'dxpro':
-        return kind == 'water'
-    return True   # dx and water editions: a tank whatever the species id
+    return True   # tank (dx, water), sky (air) or meadow (land); DX-Pro by the pet's set
 
 
 def static_checks(src):
@@ -266,7 +290,11 @@ def static_checks(src):
         assert mono not in defining, mono
         t = (ROOT / 'src/helpers/ui' / mono).read_text(errors='ignore')
         assert not re.search(r'supportsColor\(\) const override \{ return true; \}', t), mono
-    # 2. The macro rule itself: colour panels, never in front of the T-Deck / Cardputer scenery.
+    # 2. The macro rules: the tank on colour panels, never in front of the T-Deck / Cardputer scenery;
+    #    the Air and Land scenes on those two as well, but not on the T-Watch tall canvas.
+    assert ('#if (defined(LORAGOTCHI_RGB565_PANEL) || defined(LORAFISH_CARDPUTER_25D) || '
+            'defined(LORAFISH_TDECK_PIXEL_ART)) && \\\n    !defined(LORAFISH_TALL_TANK)\n'
+            '#define LORAFISH_COLOUR_SCENES 1\n#endif') in ui
     assert ('#if defined(LORAGOTCHI_RGB565_PANEL) && !defined(LORAFISH_CARDPUTER_25D) && '
             '!defined(LORAFISH_TDECK_PIXEL_ART)\n#define LORAFISH_COLOUR_TANK 1\n#endif') in ui
     # 3. No scenery code names a board.
@@ -286,7 +314,7 @@ def static_checks(src):
     assert len(re.findall(r'drawLoRaFishColourTank\(display\)', ui)) == 4
     assert len(re.findall(r'if \(!loRaFishColourTank\(\)\) drawLoRaFish(Home|Native)Scenery\(display\);', ui)) == 4
     body = block(ui, 'static bool loRaFishColourTank(')
-    assert 'return loRaFishColorDisplay && !loRaFishAnimalHome();' in body and 'return false;' in body
+    assert 'return loRaFishColorDisplay;' in body and 'return false;' in body
     # 5. Tall panels use the Cardputer layout, 64-row panels the T-Deck layout.
     body = block(ui, 'static void drawLoRaFishColourTank(')
     assert re.sub(r'\s+', '', body).endswith('if(d.height()>64)drawCardputerTankDepth(d);elsedrawTDeckPixelAquarium(d);}')
@@ -319,8 +347,8 @@ def main():
             assert sig[k] == legacy[k], f'pixels changed where they must not: {k}'
             n_same += 1
     print(f'PASS {n_same} scene signatures identical to the pre-change build '
-          '(OLED 128x64, e-ink, colour-flag-off, Air/Land habitats, T-Deck, Cardputer)')
-    print(f'PASS {n_changed} colour-display tank scenes differ from the old build (colour tank drawn)')
+          '(OLED 128x64, e-ink, colour-flag-off, T-Deck and Cardputer Water)')
+    print(f'PASS {n_changed} colour-display scenes differ from the old build (colour tank, sky or meadow drawn; T-Deck and Cardputer: sky and meadow)')
     # Colour tank metrics: tank rows fully painted, wide panels keep the layout and fill their width.
     seen = {'bare': 0, 'rightcolours': 0, 'leftmatch': 0, 'shafts': 0}
     for k, v in now.items():
@@ -329,8 +357,8 @@ def main():
             continue
         seen[parts[-2]] += 1
         edition, mset, display = parts[0], parts[1], parts[2]
-        if not changed(f'{edition}.{mset}.{display}.water.awake.0'):
-            continue
+        if edition in ('air', 'land') or not changed(f'{edition}.{mset}.{display}.water.awake.0'):
+            continue            # the tank metrics only describe tanks (Air and Land: check_air_land_colour.py)
         if parts[-2] == 'bare':
             assert int(v) == 0, (k, v)
         if parts[-2] == 'rightcolours':
