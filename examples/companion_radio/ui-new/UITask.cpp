@@ -2071,6 +2071,12 @@ static void drawElderFishSprite(DisplayDriver& d, int x, int y, bool right,
 #if defined(LORAGOTCHI_RGB565_PANEL) && !defined(LORAFISH_CARDPUTER_25D) && !defined(LORAFISH_TDECK_PIXEL_ART)
 #define LORAFISH_COLOUR_TANK 1
 #endif
+// Colour Air and Land scenes: every colour panel above, and also the T-Deck and the Cardputer, whose
+// Water tanks keep their own scenery. The T-Watch tall canvas is left as it was.
+#if (defined(LORAGOTCHI_RGB565_PANEL) || defined(LORAFISH_CARDPUTER_25D) || defined(LORAFISH_TDECK_PIXEL_ART)) && \
+    !defined(LORAFISH_TALL_TANK)
+#define LORAFISH_COLOUR_SCENES 1
+#endif
 
 // Cardputer-only lightweight 2.5D effects. Other boards compile none of this.
 #if defined(LORAFISH_CARDPUTER_25D)
@@ -3381,12 +3387,95 @@ static void drawLoRaFishHygiene(DisplayDriver& display) {
   }
 }
 
+#if defined(LORAFISH_COLOUR_SCENES) && (LORAGOTCHI_HAS_AIR || LORAGOTCHI_HAS_LAND)
+// Colour Air and Land scenes for the colour panels (T-Deck and Cardputer included).
+// Same objects at the same positions as the 1-bit habitats below (sun, clouds, ridge, grass tufts,
+// the two trees on tall panels), drawn with rectangles in RGB565 and sized from the panel's own
+// width and height like the 1-bit habitats are, so every panel size gets the same layout. The sky
+// is painted from just under the header rule to the floor rule, so no row is left on the window colour.
+static void fillLoRaFishColourSky(DisplayDriver& d,const ColorVal* bands,int count) {
+  const int top=17,bottom=d.height()-15,span=bottom-top;
+  for(int i=0;i<count;i++) {
+    const int y0=top+(span*i)/count, y1=top+(span*(i+1))/count;
+    d.setColor(bands[i]); d.fillRect(0,y0,d.width(),y1-y0);
+  }
+}
+// The 1-bit sun (outline square with four short rays), filled and tinted.
+static void drawLoRaFishColourSun(DisplayDriver& d,int top) {
+  const int sx=d.width()-28,sy=top+9;
+  d.setColor(0xFEA8); d.fillRect(sx-5,sy-5,11,11);
+  d.setColor(0xECA4); d.drawRect(sx-5,sy-5,11,11);
+  d.setColor(0xFF71);
+  d.fillRect(sx-2,sy-7,5,1);
+  d.fillRect(sx-2,sy+7,5,1);
+  d.fillRect(sx-8,sy,2,1);
+  d.fillRect(sx+7,sy,2,1);
+}
+#ifdef LORAGOTCHI_NATIVE_UI
+// The two trees the 1-bit build draws beside the habitat on panels taller than 64 rows.
+static void drawLoRaFishColourTrees(DisplayDriver& d) {
+  if(d.height()<=64) return;
+  const int w=d.width(),floor=d.height()-16;
+  for(int side=0;side<2;++side) {
+    const int x=side ? w-22 : 10;
+    d.setColor(0x6A66); d.fillRect(x,floor-19,2,19);
+    d.setColor(0x2C28); d.fillRect(x-5,floor-15,12,2);
+    d.setColor(0x556A); d.fillRect(x-3,floor-22,8,2);
+  }
+}
+#endif
+#endif
+
+#if defined(LORAFISH_COLOUR_SCENES) && LORAGOTCHI_HAS_AIR
+// Air: a sky that deepens upward, a sun, three drifting clouds, hazy hills and a bank of mist at the floor.
+static void drawLoRaFishAirColour(DisplayDriver& display) {
+  const int w=display.width(), h=display.height();
+  const int top=28, bottom=h-18;
+  static const ColorVal sky[]={0x118F,0x2231,0x32D3,0x4375,0x5416,0x64D8,0x757A,0x8E1C};
+  fillLoRaFishColourSky(display,sky,8);
+  drawLoRaFishColourSun(display,top);
+  const int drift=(millis()/900U)%((unsigned)(w+48));
+  const int cloudX[3]={w/7, w/2, (w*5)/6};
+  const int cloudY[3]={top+5,top+17,top+8};
+  for (int i=0;i<3;i++) {
+    const int x=(cloudX[i]+w+48-(drift/(i+2)))%(w+48)-24;
+    const int y=cloudY[i];
+    // The 1-bit clouds may dip below the floor rule on a 64-row panel; the colour ones stop at the rule.
+    auto puff=[&](int px,int py,int pw,int ph) {
+      if (py+ph>h-15) ph=h-15-py;
+      if (ph>0) display.fillRect(px,py,pw,ph);
+    };
+    display.setColor(0xF7DF);
+    puff(x+5,y,15,3);
+    puff(x+1,y+3,24,3);
+    puff(x-3,y+6,31,3);
+    display.setColor(0xBE7D);
+    puff(x+2,y+9,22,1);
+  }
+  const int ridge=bottom-10;
+  for(int x=0;x<w;x+=16) {
+    const int rise=((x/16)%4==0)?7:((x/16)%4==1?4:2);
+    const int y=ridge+8-rise;
+    display.setColor(0x963A); display.fillRect(x,y,16,1);
+    display.setColor(0x4C14); display.fillRect(x,y+1,16,bottom-y-1);
+  }
+  display.setColor(0xEFBF); display.fillRect(0,bottom,w,1);
+  display.setColor(0xCF1E); display.fillRect(0,bottom+1,w,h-15-(bottom+1));
+#ifdef LORAGOTCHI_NATIVE_UI
+  drawLoRaFishColourTrees(display);
+#endif
+}
+#endif
+
 #if LORAGOTCHI_HAS_AIR
 static void drawLoRaFishAirHabitat(DisplayDriver& display) {
   const int w=display.width(), h=display.height();
   // Keep the header (top 18 px) and footer (bottom 15 px) unobstructed.
   const int top=28, bottom=h-18;
   if (w<64 || bottom<=top+12) return;
+#if defined(LORAFISH_COLOUR_SCENES)
+  if (loRaFishColorDisplay) { drawLoRaFishAirColour(display); return; }
+#endif
   const int drift=(millis()/900U)%((unsigned)(w+48));
   const int cloudX[3]={w/7, w/2, (w*5)/6};
   const int cloudY[3]={top+5,top+17,top+8};
@@ -3417,12 +3506,46 @@ static void drawLoRaFishAirHabitat(DisplayDriver& display) {
 }
 #endif
 
+#if defined(LORAFISH_COLOUR_SCENES) && LORAGOTCHI_HAS_LAND
+// Land: a daytime sky, a sun, green hills, grass tufts and a strip of turf over earth at the floor.
+static void drawLoRaFishLandColour(DisplayDriver& display) {
+  const int w=display.width(), h=display.height();
+  const int top=28, bottom=h-18;
+  static const ColorVal sky[]={0x2317,0x3397,0x4C18,0x5CB9,0x753A,0x85BB,0x965C,0xAEDD};
+  fillLoRaFishColourSky(display,sky,8);
+  drawLoRaFishColourSun(display,top);
+  const int ridge=bottom-10;
+  for(int x=0;x<w;x+=16) {
+    const int rise=((x/16)%4==0)?7:((x/16)%4==1?4:2);
+    const int y=ridge+8-rise;
+    display.setColor(0x7E0C); display.fillRect(x,y,16,1);
+    display.setColor(0x44AA); display.fillRect(x,y+1,16,bottom-y-1);
+  }
+  for(int x=6;x<w-6;x+=19) {
+    display.setColor(0x1AE5);
+    display.fillRect(x,bottom-3,1,3);
+    display.fillRect(x+4,bottom-2,1,2);
+    display.setColor(0x9E8B);
+    display.fillRect(x+2,bottom-4,1,4);
+  }
+  display.setColor(0x2B67); display.fillRect(0,bottom,w,1);
+  display.setColor(0x7AA6); display.fillRect(0,bottom+1,w,1);
+  display.setColor(0x59E5); display.fillRect(0,bottom+2,w,h-15-(bottom+2));
+#ifdef LORAGOTCHI_NATIVE_UI
+  drawLoRaFishColourTrees(display);
+#endif
+}
+#endif
+
 #if LORAGOTCHI_HAS_LAND
 // Plain meadow: sun, low hills and grass tufts. Keeps header/footer clear.
 static void drawLoRaFishLandHabitat(DisplayDriver& display) {
   const int w=display.width(), h=display.height();
   const int top=28, bottom=h-18;
   if (w<64 || bottom<=top+12) return;
+#if defined(LORAFISH_COLOUR_SCENES)
+  if (loRaFishColorDisplay) { drawLoRaFishLandColour(display); return; }
+#endif
   display.setColor(UIColor::secondary_txt);
   const int sx=w-28,sy=top+9;
   display.drawRect(sx-5,sy-5,11,11);
@@ -3463,11 +3586,14 @@ static void drawLoRaFishColourTank(DisplayDriver& d) {
   else drawTDeckPixelAquarium(d);
 }
 #endif
-// True when the colour tank replaces the grey perimeter reeds and rocks. Always false on mono panels
-// and on builds that compile no colour tank, so those keep drawing exactly what they drew before.
+// True when the colour scene replaces the grey perimeter scenery (tank reeds and rocks, or the Air and
+// Land trees): the colour tank, sky and meadow draw their own (on the T-Deck and Cardputer, the sky and meadow only). Always false on mono panels and on
+// builds that compile no colour scenery, so those keep drawing exactly what they drew before.
 static bool loRaFishColourTank() {
 #if defined(LORAFISH_COLOUR_TANK)
-  return loRaFishColorDisplay && !loRaFishAnimalHome();
+  return loRaFishColorDisplay;
+#elif defined(LORAFISH_COLOUR_SCENES)
+  return loRaFishColorDisplay && loRaFishAnimalHome();   // T-Deck / Cardputer: their Water tank keeps its scenery
 #else
   return false;
 #endif
