@@ -2686,7 +2686,7 @@ static void drawLoRaFishValuePicker(DisplayDriver& display) {
   const uint8_t value = loRaFishValuePicker.value();
   const auto setting = loRaFishValuePicker.key();
   static const char* titles[] = {"FIRMWARE THEME", "BRIGHTNESS", "GAME RENDERING",
-      "SCALES", "BODY / BORDER", "EYES", "SLEEP HOUR", "WAKE HOUR", "UTC OFFSET",
+      "ACCENT", "BODY", "EYES", "SLEEP HOUR", "WAKE HOUR", "UTC OFFSET",
       "AWAKE TIMEOUT", "ASLEEP TIMEOUT", "DIM AFTER", "VOLUME", "WAKE ALARM",
       "SLEEP CUE", "MESSAGE TONE", "SCREEN COLOUR", "SPECIES", "ORIENTATION", "DISPLAY UPDATE", "ANIMAL SET", "SLOW WHEN DIM"};
 #if LORAGOTCHI_DXPRO
@@ -3048,7 +3048,7 @@ static void drawLoRaFishPetSetup(DisplayDriver& display) {
   drawLoRaFishMenuHint(display, true);
 }
 static void drawLoRaFishColorMenu(DisplayDriver& display) {
-  static const char* parts[] = {"Scales", "Body", "Eyes", "Start pet"};
+  static const char* parts[] = {"Accent", "Body", "Eyes", "Start pet"};
   const uint8_t colors[] = {loRaFishScaleColor, loRaFishColor, loRaFishEyeColor};
   drawLoRaFishHeader(display, loRaFishNeedsPetSetup ? "PET COLOURS" : (loRaFishNeedsAppearanceSetup ? "NEW PET" : "PET COLOURS"), "");
   display.setColor(UIColor::primary_txt);
