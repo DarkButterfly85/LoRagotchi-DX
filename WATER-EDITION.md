@@ -220,7 +220,7 @@ proof**; only the explicit transaction-bound ACK controls extensions.
 
 ## Build and validation
 
-Use the [explicit Water aliases and build commands in README](README.md#water-edition-build-targets).
+Use the [explicit Water aliases and build commands](docs/BUILDING.md#board-and-edition-selection).
 The original environment names now build DX; they must not be used as Water
 selection instructions. V3/V4 OLED/T096 are the owner regression profiles; the
 other new aliases require their own current-revision build/hardware validation.
