@@ -32,6 +32,11 @@ docs/number_allocations.md table covers MeshCore group data types, not species I
   fallback as Air without A1). Water/Air peers still parse the ACK as an S1 ACK.
 - **Motion:** shares the Air habitat model; most species walk, reptiles/amphibians
   crawl, Dragon/Dragon face/Phoenix fly.
+- **Sniff (pilot):** 29 Land walkers (all Walk animals except Koala and Sloth) sometimes slow to
+  30% speed with the nose down for 1.2-2.4 s during a walk, then walk on. The head-down picture is
+  drawn by shearing the head columns of the normal frame (table `sniffTable` in LoRaFishSpecies.h),
+  so it adds **no** art bytes. It is also shown on e-ink (different frames, not more frames; no
+  sparkle). Presentation only: no save-file or radio change.
 - **Art:** tools/land/generate_sprites.py writes ui-new/LoRaFishLandArt.h
   (39 x 2 frames x 192 bytes = 14976 bytes ROM). All 39 sprites are draft.
 - **Discovery:** the Land animal emoji (except Phoenix, which has no single
