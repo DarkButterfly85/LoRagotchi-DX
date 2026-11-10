@@ -21,7 +21,7 @@ build time; they share one source tree.
 | **Land** | Ground animals with natural idle motion and a nose-down sniff | 43 | `land_*`, see [LAND-EDITION.md](LAND-EDITION.md) |
 | **DX-Pro** | One firmware with the Water, Air and Land animal sets together (combined DX + Water + Air + Land) | Water, Air and Land sets | `dxpro_<board>`, for example `dxpro_heltec_v3_ble`; see [DX-Pro](docs/dxpro.md) and [the board matrix](docs/BUILDING.md#board-and-edition-selection) |
 
-Land and DX-Pro are available on the `orion` branch, not yet on `main`. A build target or a
+Land and DX-Pro are available on the `orion` branch; check that your checkout lists the `land_*` or `dxpro_*` environments before relying on them. A build target or a
 successful compile is not a claim of physical hardware acceptance; see the
 testing notes in [docs/BUILDING.md](docs/BUILDING.md).
 
@@ -41,8 +41,8 @@ For setup, controls, menus, pet behaviour and DX travel, see
 
 1. **Get the source.** Install Git and
    [PlatformIO Core](https://docs.platformio.org/en/latest/core/installation/index.html),
-   then clone `main` (DX, Water and Air). Land and DX-Pro are on the `orion`
-   branch: clone with `--branch orion` instead.
+   then clone `main`. If your checkout of `main` does not list the `land_*` or
+   `dxpro_*` environments, clone with `--branch orion` instead.
 
    ```sh
    git clone --branch main https://github.com/DrToxic/LoRagotchi-DX.git
