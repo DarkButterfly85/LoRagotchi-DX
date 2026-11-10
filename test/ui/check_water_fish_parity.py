@@ -99,6 +99,7 @@ with tempfile.TemporaryDirectory(prefix='dx-parity-') as tmp:
 # Call sites really use the shared gate (home and visitor), not an edition list.
 assert ui.count('if (LORAGOTCHI_HABITAT_MOTION || LoRaFishSpecies::waterMotion(')==2
 assert 'LORAGOTCHI_ANIMAL_EDITION || LoRaFishSpecies::waterMotion(' not in ui
-assert 'right,!display.isEink(),&pose,idleFloorY' in ui and 'gright,!display.isEink(),&gpose,guestFloorY' in ui
-print('PASS UITask.cpp call sites: one shared gate for home and visitor; e-ink still uses the legacy path')
+assert 'right,LoRaFishSpecies::idleMotionFor(loRaFishSpecies,display.isEink()),&pose,idleFloorY' in ui
+assert 'gright,LoRaFishSpecies::idleMotionFor(guestMotionSpecies,display.isEink()),&gpose,guestFloorY' in ui
+print('PASS UITask.cpp call sites: one shared gate for home and visitor; e-ink uses the legacy path except Land sniff walkers (idleMotionFor)')
 

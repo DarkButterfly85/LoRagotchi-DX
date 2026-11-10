@@ -133,6 +133,26 @@ inline IdleGroup idleGroup(uint16_t id) {
   }
 }
 inline bool naturalIdle(uint16_t id) { return idleGroup(id)!=IdleNone; }
+// ---- Sniff (Land walkers only) -------------------------------------------------------------------
+// During a walk some Land animals slow down and put the nose to the ground for a moment, then walk on.
+// The "head down" picture costs NO extra art bytes: the sprite code shears the head columns of the
+// normal walking frame downwards (LoRaFishLandSprite). This table says, per Land animal, from which
+// mask column (0..31) the head/neck starts and how many mask rows (of 24) the nose drops by at the
+// right-hand edge; {0,0} = never sniffs (Koala and Sloth hang from a branch; crawlers, Dragon, Dragon
+// face and Phoenix have their own movement). Presentation only: nothing here is saved or sent.
+struct SniffHead { uint8_t hx, drop; };
+static constexpr SniffHead sniffTable[landCount]={
+  {19,5},{19,4},{18,8},{20,6},{22,3},{20,6},{21,5},{21,5},{19,5},{14,10},   // Dog Cat Horse Cow Elephant Pig Ram Sheep Goat Giraffe
+  {14,4},{15,8},{17,7},{17,4},{18,4},{18,5},{20,4},{0,0},{14,5},{0,0},     // Kangaroo Llama Deer Mouse Hamster Rabbit Hedgehog Koala Panda Sloth
+  {21,4},{20,5},{21,4},{19,5},{19,5},{19,8},{19,8},{19,4},                // Otter Skunk Badger Hippo Rhino Camel Bactrian Bison
+  {0,0},{0,0},{0,0},{0,0},{0,0},                                            // Frog Crocodile Lizard Turtle Snake
+  {18,8},{0,0},{0,0},{0,0},{17,10},{17,5}                                   // Unicorn Dragon DragonFace Phoenix Sauropod TRex
+};
+inline SniffHead sniffHead(uint16_t id) { return landKnown(id) ? sniffTable[id-Dog] : SniffHead{0,0}; }
+inline bool sniffer(uint16_t id) { return sniffHead(id).drop!=0; }
+// Whether the natural idle motion is used. E-ink keeps the legacy drift (never frozen) EXCEPT for Land
+// walkers that sniff: the owner allows e-ink to get different frames (not more frames) for them.
+inline bool idleMotionFor(uint16_t id,bool eink) { return !eink || sniffer(id); }
 // Ground animals step their legs by distance walked, so a standing animal holds one still frame.
 inline bool steppedByDistance(uint16_t id) { return idleGroup(id)==IdleGround; }
 // Pose bits reported to the call site (0 = legacy path was used; the call site keeps its old behaviour).
@@ -140,7 +160,8 @@ enum : uint8_t {
   PoseIdle=1,    // the natural idle motion produced this position
   PoseLanded=2,  // flyer standing on the floor: the ONLY case in which a flap animation may pause
   PoseHover=4,   // swimmer hovering: slow tail/fin wobble, still moving
-  PoseOwnsY=8    // y was set by the motion; the call site must not overwrite it
+  PoseOwnsY=8,   // y was set by the motion; the call site must not overwrite it
+  PoseSniff=16   // Land walker with its nose down (sniff phase); the sprite draws the head-down picture
 };
 // Clock handed to the sprite animation. Airborne: the real clock (never stops). Landed: frozen frame.
 // Hovering fish: half speed, a slow wobble that still moves.
@@ -159,6 +180,7 @@ struct Slot {
   int8_t dip;               // flyer: rows the animal swoops down in the middle of a turn
   uint8_t ph;               // flyer / swimmer phase (FlyPhase / SwimPhase)
   bool valid, walking, faceRight, look, edge;
+  bool sniff, resumed;      // ground: in a sniff phase / this walk resumes after a sniff (no second sniff)
 };
 inline uint32_t roll(Slot& s,uint32_t lo,uint32_t hi) {
   s.rng^=s.rng<<13; s.rng^=s.rng>>17; s.rng^=s.rng<<5; // xorshift32
@@ -177,37 +199,52 @@ inline void seed(Slot& s,uint16_t id,int span,bool seedGuest) {
   s.rng=((uint32_t)id*2654435761U)^(seedGuest ? 0x9E3779B9U : 0x7F4A7C15U);
   if(!s.rng)s.rng=1U;
   s.id=id; s.span=(int16_t)span; s.valid=true; s.edge=false; s.look=false; s.walking=false;
+  s.sniff=false; s.resumed=false;
   s.dq=0; s.rq=0; s.dip=0; s.ph=0;
 }
 
 // ======== Ground group: stand / walk / look around ====================================================
-struct Gait { uint16_t standLo,standHi,edgeLo,edgeHi,walkLo,walkHi,period; };
+// sniffPct: chance (%) that a finished walk is followed by a sniff (only Land animals with a head-down
+// picture, see sniffer()); sniffLo/Hi: sniff length in ms; sniff speed is 30% of the walking speed.
+struct Gait { uint16_t standLo,standHi,edgeLo,edgeHi,walkLo,walkHi,period,sniffPct,sniffLo,sniffHi; };
 // Walk is the pilot gait (Dog). Crawl is the same cycle, slower, with longer pauses.
 inline Gait gaitFor(uint16_t id) {
-  return movement(id)==Crawl ? Gait{1500U,4500U,2000U,3500U,1800U,4000U,16000U}
-                             : Gait{1000U,3000U,1400U,2600U,2000U,4500U,10000U};
+  return movement(id)==Crawl ? Gait{1500U,4500U,2000U,3500U,1800U,4000U,16000U,0U,0U,0U}
+                             : Gait{1000U,3000U,1400U,2600U,2000U,4500U,10000U,35U,1200U,2400U};
 }
 // Stand about 1-3 s. After an edge turn, or sometimes at random, look around: the animal faces the
 // other way part-way through the pause and then walks the way it is looking.
 inline void startStand(Slot& s,uint32_t at,const Gait& g) {
   const uint32_t d=s.edge ? roll(s,g.edgeLo,g.edgeHi) : roll(s,g.standLo,g.standHi);
-  s.walking=false; s.start=at; s.end=at+d;
+  s.walking=false; s.sniff=false; s.resumed=false; s.start=at; s.end=at+d;
   s.look=s.edge || (d>=g.standLo+800U && roll(s,0U,99U)<40U);
   s.lookAt=at+d*45U/100U;
 }
 // Walk about 2-4.5 s, cut short at the screen edge (then the next pause is a forced turn-around).
-inline void startWalk(Slot& s,uint32_t at,int32_t spanq,int32_t speedq,const Gait& g) {
-  s.dir=s.look ? (s.faceRight ? -1 : 1) : (roll(s,0U,1U) ? 1 : -1);
-  const int32_t margin=spanq/4<160 ? spanq/4 : 160; // never start a walk into a wall within 10 px
-  if(s.x0q<margin)s.dir=1;
-  else if(s.x0q>spanq-margin)s.dir=-1;
-  s.faceRight=s.dir>0;
+// keepDir: resume after a sniff, same direction (no draw, no wall margin: the edge test below covers walls).
+inline void startWalk(Slot& s,uint32_t at,int32_t spanq,int32_t speedq,const Gait& g,bool keepDir=false) {
+  if(!keepDir) {
+    s.dir=s.look ? (s.faceRight ? -1 : 1) : (roll(s,0U,1U) ? 1 : -1);
+    const int32_t margin=spanq/4<160 ? spanq/4 : 160; // never start a walk into a wall within 10 px
+    if(s.x0q<margin)s.dir=1;
+    else if(s.x0q>spanq-margin)s.dir=-1;
+  }
+  s.faceRight=s.dir>0; s.sniff=false; s.resumed=keepDir;
   uint32_t w=roll(s,g.walkLo,g.walkHi);
   int32_t full=(int32_t)(((uint32_t)speedq*w)/1000U);
   const int32_t room=s.dir>0 ? spanq-s.x0q : s.x0q;
   s.edge=full>=room;
   if(s.edge) {full=room; w=((uint32_t)room*1000U+(uint32_t)speedq-1U)/(uint32_t)speedq;}
   s.walking=true; s.start=at; s.end=at+w; s.dq=full; s.spd=speedq;
+}
+// Sniff: still walking the same way, at 30% speed with the nose down, for about 1.2-2.4 s; cut short at a wall.
+inline void startSniff(Slot& s,uint32_t at,int32_t room,int32_t speedq,const Gait& g) {
+  const int32_t spd=speedq*30/100>0 ? speedq*30/100 : 1;
+  uint32_t w=roll(s,g.sniffLo,g.sniffHi);
+  int32_t full=(int32_t)(((uint32_t)spd*w)/1000U);
+  s.edge=full>=room;
+  if(s.edge) {full=room; w=((uint32_t)room*1000U+(uint32_t)spd-1U)/(uint32_t)spd;}
+  s.walking=true; s.sniff=true; s.start=at; s.end=at+w; s.dq=full; s.spd=spd;
 }
 inline int32_t walkEnd(const Slot& s) { return s.x0q+s.dir*s.dq; }
 inline void position(Slot& s,uint16_t id,uint8_t stage,int span,uint32_t now,bool seedGuest,int& x,bool& right) {
@@ -227,7 +264,15 @@ inline void position(Slot& s,uint16_t id,uint8_t stage,int span,uint32_t now,boo
   }
   for(uint8_t guard=0;guard<8 && (int32_t)(now-s.end)>=0;++guard) {
     const uint32_t at=s.end;
-    if(s.walking) {s.x0q=walkEnd(s); startStand(s,at,g);}
+    if(s.walking) {
+      s.x0q=walkEnd(s);
+      const int32_t room=s.dir>0 ? spanq-s.x0q : s.x0q;
+      if(s.sniff) {                     // sniff over: walk on the same way unless it ended at a wall
+        if(s.edge)startStand(s,at,g); else startWalk(s,at,spanq,speedq,g,true);
+      } else if(g.sniffPct && sniffer(id) && !s.edge && !s.resumed && roll(s,0U,99U)<g.sniffPct && room>=128) {
+        startSniff(s,at,room,speedq,g); // draws only here, at the start of a phase
+      } else startStand(s,at,g);
+    }
     else startWalk(s,at,spanq,speedq,g);
   }
   int32_t xq=s.x0q;
@@ -446,7 +491,9 @@ inline void positionSwimmer(Slot& s,uint16_t id,uint8_t stage,int span,uint32_t 
 }
 }
 // Home/visitor hook; crab, snail, jellyfish and all legacy paths stay exact.
-// idleMotion=false (e-ink call sites) keeps the legacy drift: e-ink gets no new animation and no freeze.
+// idleMotion=false keeps the legacy drift (no freeze). Call sites pass idleMotionFor(id,isEink()): true on
+// every non-e-ink display, and on e-ink only for the Land walkers that sniff (owner decision: different
+// frames, not more frames). All other e-ink pets keep the legacy drift.
 // The Efficient 1 FPS mode needs no special case: it only redraws less often, and every position
 // above is a pure function of the clock, so the same motion is simply sampled once a second.
 // pose (optional) reports PoseIdle/PoseLanded/PoseHover/PoseOwnsY; floorY is the row a flyer lands on;
@@ -467,6 +514,7 @@ inline void habitatPosition(uint16_t id,uint8_t stage,int width,uint32_t now,
       if(group==IdleGround) {
         naturalidle::position(slot,id,stage,span,now+offset,guest,x,right);
         y=habitatY(id,y,now+offset); p=PoseIdle;
+        if(slot.sniff && slot.walking)p|=PoseSniff; // nose down: Land walkers only (sniffer())
       } else if(group==IdleFlyer) {
         y=habitatY(id,y,now+offset);
         naturalidle::positionFlyer(slot,id,stage,span,now+offset,guest,x,right,y,floorY,airY,p);
