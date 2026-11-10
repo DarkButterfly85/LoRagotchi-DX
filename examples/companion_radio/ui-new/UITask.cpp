@@ -3741,7 +3741,7 @@ static void drawLoRaFishAquarium(DisplayDriver& display, UITask* task) {
 
   int x=0, y=0;
   bool right=true;
-  uint8_t pose=0; // LoRaFishSpecies::Pose* bits; 0 = legacy motion (e-ink, crab/snail/jellyfish, Water builds)
+  uint8_t pose=0; // LoRaFishSpecies::Pose* bits; 0 = legacy motion (e-ink, crab/snail/jellyfish, plain DX)
 #ifdef LORAGOTCHI_NATIVE_UI
   const int idleFloorY=h>64 ? 42 : 37; // row a landing flyer settles on (42 maps to the tall-panel floor)
   const int idleAirY=h>64 ? 30+(int)(11*sinf(millis()/5100.0f)) : -1; // tall panels: the flyer keeps its slow vertical sway
@@ -3752,7 +3752,7 @@ static void drawLoRaFishAquarium(DisplayDriver& display, UITask* task) {
   loRaFishNaturalPosition(w,x,y,right);
   // !isEink(): e-ink keeps its existing drift (never frozen); the Efficient 1 FPS mode just samples the
   // same clock-driven path once a second, so it needs no special case here.
-  if (LORAGOTCHI_ANIMAL_EDITION || LoRaFishSpecies::waterMotion(loRaFishSpecies))
+  if (LORAGOTCHI_HABITAT_MOTION || LoRaFishSpecies::waterMotion(loRaFishSpecies))
     LoRaFishSpecies::habitatPosition(loRaFishSpecies,fish.evolution,w,(uint32_t)millis(),0,x,y,right,!display.isEink(),&pose,idleFloorY,idleAirY);
 
   const int bodyOffset=LoRaFishLayout::bodyOffset(h);
@@ -3878,7 +3878,7 @@ static void drawLoRaFishAquarium(DisplayDriver& display, UITask* task) {
   loRaFishNaturalPositionForStage(w,guestStage,guestPeriod/2,gx,gy,gright);
   const uint16_t guestMotionSpecies=guestPresent ? loragotchiDXGuest.species :
       loRaFishGuestTravelAnimation.species;
-  if (LORAGOTCHI_ANIMAL_EDITION || LoRaFishSpecies::waterMotion(guestMotionSpecies))
+  if (LORAGOTCHI_HABITAT_MOTION || LoRaFishSpecies::waterMotion(guestMotionSpecies))
     LoRaFishSpecies::habitatPosition(guestMotionSpecies,guestStage,w,(uint32_t)millis(),2700,gx,gy,gright,!display.isEink(),&gpose,guestFloorY,guestAirY);
 #ifdef LORAGOTCHI_NATIVE_UI
   if (h>64 && !(gpose&LoRaFishSpecies::PoseOwnsY) && (!LoRaFishSpecies::waterMotion(guestMotionSpecies) || guestMotionSpecies==LoRaFishSpecies::Jellyfish))
