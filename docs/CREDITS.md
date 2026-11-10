@@ -22,8 +22,10 @@ in the public LoRaGotchi Discord channel:
 
 - **Aries Thorne** and **Todd Steinhauer**, creators of the LODESTAR ORION
   firmware and the LODESTAR NOVA web dashboard.
-- **FEAR REACTIVE**, the studio behind LODESTAR ORION, which made the original
-  1-bit emblems and artwork used in those projects.
+- **Wolf Reactive Systems / FEAR REACTIVE**, the studio behind LODESTAR ORION,
+  which made the original 1-bit emblems and artwork used in those projects.
+  (Listed under both names for now; the studio's preferred name is to be
+  confirmed with Aries Thorne.)
 
 Where we have rewritten an idea rather than copying code, we still credit the
 original. Where code or artwork has been copied, its header comment keeps the
@@ -34,9 +36,15 @@ Features taken from or inspired by ORION:
 - Bedtime quiet (silent messages while the pet sleeps)
 - Power-safe pet save with a backup copy
 - Accurate battery percentage and time-left estimate
-- Range check and RF monitor (planned)
+- Range check and RF monitor
+- Land species Wolf, Fox, Bear, Kitsune and Griffin, drawn as a visual take on
+  the ORION wolf and creature art (no code or packets copied)
+- Natural idle motion and the nose-down sniff, based on the ORION wolf's motion
 - USB and web dashboard (planned, colour screens)
 - Trip tracking and wardriving (planned, GPS boards only)
+
+The Nova dashboard sync in our fork (`lodestar_nova_alpha`) is also built on
+LODESTAR NOVA by Aries Thorne and Todd Steinhauer, with the same permission.
 
 ## Other contributors
 
