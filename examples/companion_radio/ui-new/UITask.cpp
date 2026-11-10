@@ -404,7 +404,7 @@ static bool loRaFishAppearanceLoaded = false;
 static bool loRaFishNeedsAppearanceSetup = false;
 static bool loRaFishAdoptionEligible = false;
 static bool loRaFishColorDisplay = false;
-static bool loRaFishEinkDisplay = false;   // e-ink gets no animation at all, by design (no pet-senses sparkle)
+static bool loRaFishEinkDisplay = false;   // e-ink never gets the pet-senses sparkle, by design (Land sniff frames are separate)
 
 struct LoRaFishAppearance {
   uint8_t scales;
@@ -2286,7 +2286,7 @@ static void drawFishSpriteForStage(DisplayDriver& d,int x,int y,bool right,uint8
 #if LORAGOTCHI_DXPRO
     if (LoRaFishSpecies::landKnown(species))
       LoRaFishLandSprite::draw(d,x,y,right,species,stage,animNow,
-          body,fins,eyes,UIColor::window_bkg);
+          body,fins,eyes,UIColor::window_bkg,(pose&LoRaFishSpecies::PoseSniff)!=0);
     else if (LoRaFishSpecies::airKnown(species))
       LoRaFishAirSprite::draw(d,x,y,right,species,stage,animNow,
           body,fins,eyes,UIColor::window_bkg);
@@ -2294,7 +2294,7 @@ static void drawFishSpriteForStage(DisplayDriver& d,int x,int y,bool right,uint8
 #elif LORAGOTCHI_LAND_EDITION
     if (LoRaFishSpecies::landKnown(species))
       LoRaFishLandSprite::draw(d,x,y,right,species,stage,animNow,
-          body,fins,eyes,UIColor::window_bkg);
+          body,fins,eyes,UIColor::window_bkg,(pose&LoRaFishSpecies::PoseSniff)!=0);
     else
 #elif LORAGOTCHI_AIR_EDITION
     if (LoRaFishSpecies::airKnown(species))
@@ -4072,10 +4072,11 @@ static void drawLoRaFishAquarium(DisplayDriver& display, UITask* task) {
   const int idleAirY=-1; // -1 = the species' own wing-bob row
 #endif
   loRaFishNaturalPosition(w,x,y,right);
-  // !isEink(): e-ink keeps its existing drift (never frozen); the Efficient 1 FPS mode just samples the
-  // same clock-driven path once a second, so it needs no special case here.
+  // idleMotionFor(): e-ink keeps its existing drift (never frozen) except Land walkers, which get the
+  // sniff walk (different frames, not more frames); the Efficient 1 FPS mode just samples the same
+  // clock-driven path once a second, so it needs no special case here.
   if (LORAGOTCHI_HABITAT_MOTION || LoRaFishSpecies::waterMotion(loRaFishSpecies))
-    LoRaFishSpecies::habitatPosition(loRaFishSpecies,fish.evolution,w,(uint32_t)millis(),0,x,y,right,!display.isEink(),&pose,idleFloorY,idleAirY);
+    LoRaFishSpecies::habitatPosition(loRaFishSpecies,fish.evolution,w,(uint32_t)millis(),0,x,y,right,LoRaFishSpecies::idleMotionFor(loRaFishSpecies,display.isEink()),&pose,idleFloorY,idleAirY);
 
   const int bodyOffset=LoRaFishLayout::bodyOffset(h);
 #ifdef LORAGOTCHI_NATIVE_UI
@@ -4203,7 +4204,7 @@ static void drawLoRaFishAquarium(DisplayDriver& display, UITask* task) {
   const uint16_t guestMotionSpecies=guestPresent ? loragotchiDXGuest.species :
       loRaFishGuestTravelAnimation.species;
   if (LORAGOTCHI_HABITAT_MOTION || LoRaFishSpecies::waterMotion(guestMotionSpecies))
-    LoRaFishSpecies::habitatPosition(guestMotionSpecies,guestStage,w,(uint32_t)millis(),2700,gx,gy,gright,!display.isEink(),&gpose,guestFloorY,guestAirY);
+    LoRaFishSpecies::habitatPosition(guestMotionSpecies,guestStage,w,(uint32_t)millis(),2700,gx,gy,gright,LoRaFishSpecies::idleMotionFor(guestMotionSpecies,display.isEink()),&gpose,guestFloorY,guestAirY);
 #ifdef LORAGOTCHI_NATIVE_UI
   if (h>64 && !(gpose&LoRaFishSpecies::PoseOwnsY) && (!LoRaFishSpecies::waterMotion(guestMotionSpecies) || guestMotionSpecies==LoRaFishSpecies::Jellyfish))
     gy=30+(int)(11*sinf((millis()+4300)/5700.0f));

@@ -19,7 +19,7 @@ Parts:
      comparing a whole page with and without it), then a small plus for 1 s, a dot, and gone,
      in a tank corner that is clear of the pet, every text row, the header (battery / clock),
      the bottom status bar, the poop spots and the bubble columns.
-  6. E-ink gets NO animation, by design: the sparkle is compiled out of every e-ink build
+  6. E-ink gets NO sparkle, by design (other e-ink frames, e.g. the Land sniff, are a separate owner decision): the sparkle is compiled out of every e-ink build
      (DISPLAY_CLASS = GxEPDDisplay / E213Display / E290Display), a run-time guard comes before
      everything else, every frame across a surge is identical to the page without the sparkle
      code, and the old MONO_ON_EINK switch no longer exists anywhere.

@@ -2,8 +2,12 @@
 """Natural idle motion for every animal group (host-compiled C++ model; no firmware build, no hardware).
 
 Ground animals stand / walk / turn / look around. Flyers never stop flapping while airborne (only a landed
-flyer may hold a wing frame). Swimmers never fully stop. E-ink call sites keep the legacy drift (no freeze) and the
+flyer may hold a wing frame). Swimmers never fully stop. E-ink call sites keep the legacy drift (no freeze) EXCEPT the
+Land walkers that sniff: owner decision, e-ink may get different frames (not more frames, never a sparkle). The
 Efficient 1 FPS mode simply samples the same clock-driven path once a second.
+
+Sniff (Land walkers only): during a walk the animal slows to 30% speed with its nose down for 1.2-2.4 s, then walks
+on. The head-down picture is a draw-time shear of the normal walking frame (no extra art bytes).
 """
 from pathlib import Path
 import subprocess, tempfile
@@ -16,6 +20,7 @@ source=r'''
 #include <cstdlib>
 #include <vector>
 #include "examples/companion_radio/LoRaFishSpecies.h"
+#include "examples/companion_radio/ui-new/LoRaFishLandSprite.h"
 using namespace LoRaFishSpecies;
 struct S {int x=71,y=39;bool r=false;uint8_t pose=0;uint32_t anim=0;};
 S at(uint16_t id,uint8_t stage,uint32_t now,uint32_t offset=0,int width=128,bool idle=true,int floorY=37,int airY=-1) {
@@ -41,10 +46,29 @@ template<class F> static uint32_t longestStill(const std::vector<S>& v,uint32_t 
 }
 static void checkGround(uint16_t id,uint8_t stage,int width,uint32_t offset) {
  const auto v=run(id,stage,width,offset,10,240);
- uint32_t stand=0,walk=0,turns=0,edges=0;
+ uint32_t stand=0,walk=0,turns=0,edges=0,sniffRuns=0,sniffRun=0;
+ const int span=width-40;
+ const double pxPerSec=span*2000.0/(stage==0 ? naturalidle::gaitFor(id).period*3/4 : stage>=3 ? naturalidle::gaitFor(id).period*5/4 : naturalidle::gaitFor(id).period);
  for(size_t i=1;i<v.size();++i) {
   assert(v[i].x>=20 && v[i].x<=width-20 && v[i].y==37);          // stays in its tank, on the ground
-  assert(v[i].pose==PoseIdle && v[i].anim==1000+i*10+offset);      // ground: live clock, legs step by distance
+  assert((v[i].pose&~PoseSniff)==PoseIdle && v[i].anim==1000+i*10+offset);      // ground: live clock, legs step by distance
+  assert(!(v[i].pose&PoseSniff) || sniffer(id));                  // only sniffing animals ever put their nose down
+  if(v[i].pose&PoseSniff) {
+   ++sniffRun;
+   assert(v[i].x==v[i-1].x || v[i].r==(v[i].x>v[i-1].x));        // still facing the way it walks
+  } else if(sniffRun) {
+   ++sniffRuns;
+   assert(sniffRun*10<=2400+20 && sniffRun*10>=1);               // a sniff lasts at most 2.4 s
+   if(sniffRun>=100) {                                           // 30% speed: far slower than the walk
+    const int moved=abs(v[i-1].x-v[i-1-sniffRun+1].x);
+    assert(moved<=0.4*pxPerSec*sniffRun*0.01+2);
+   }
+   if(v[i-1].x>21 && v[i-1].x<width-21) {                        // a sniff that did not hit a wall: the animal walks on
+    size_t j=i+30<v.size() ? i+30 : v.size()-1;
+    assert(v[j].x!=v[i].x);
+   }
+   sniffRun=0;
+  }
   assert(abs(v[i].x-v[i-1].x)<=1);                                // no jumps
   if(v[i].x!=v[i-1].x)assert(v[i].r==(v[i].x>v[i-1].x));          // faces the way it walks
   if(i<50)continue;
@@ -55,6 +79,38 @@ static void checkGround(uint16_t id,uint8_t stage,int width,uint32_t offset) {
  assert(walk*8>=v.size() && stand*8>=v.size());                  // genuinely walks AND genuinely pauses
  assert(turns>=6 && edges>0);                                    // turns and reaches an edge
  assert(longestStill(v,10,[](const S&){return true;})<=6000);    // never frozen for long
+ assert(sniffer(id) ? sniffRuns>=1 : sniffRuns==0);              // Land walkers sniff now and then; nobody else does
+}
+// Mock display: fillRect into a 96x64 canvas, colour index = palette role (0 background, 1 body, 2 fins, 3 eyes).
+struct Mock {
+ std::vector<uint8_t> px=std::vector<uint8_t>(96*64,0);uint16_t col=0;
+ void setColor(uint16_t c){col=c;}
+ void fillRect(int x,int y,int w,int h){for(int j=y;j<y+h;++j)for(int i=x;i<x+w;++i)if(i>=0&&i<96&&j>=0&&j<64)px[j*96+i]=(uint8_t)col;}
+};
+static Mock sprite(uint16_t id,uint8_t stage,bool right,bool nose,int x=48) {
+ Mock m;LoRaFishLandSprite::draw(m,x,32,right,id,stage,0,(uint16_t)1,(uint16_t)2,(uint16_t)3,(uint16_t)0,nose);return m;
+}
+static void checkSniffSprite(uint16_t id,uint8_t stage,bool right) {
+ const Mock a=sprite(id,stage,right,false),b=sprite(id,stage,right,true),c=sprite(id,stage,right,false);
+ assert(a.px==c.px);                                             // noseDown=false is exactly the old picture
+ const SniffHead h=sniffHead(id);
+ const int width=stage==0?20:stage==1?26:32;
+ uint32_t na=0,nb=0,diff=0;
+ for(int j=0;j<64;++j)for(int i=0;i<96;++i){
+  const uint8_t p=a.px[j*96+i],q=b.px[j*96+i];
+  if(p)++na;
+  if(q)++nb;
+  if(p!=q)++diff;
+ }
+ assert(diff>0);                                                 // a different picture
+ assert(nb*100>=na*85 && nb*100<=na*115);                       // same animal: nothing lost or duplicated (small stages resample rows, so +-15%)
+ // Body columns (before the head) are untouched; the sprite faces right, so they are the LEFT columns, mirrored when facing left.
+ const int firstHeadCol=(int)((unsigned)h.hx*width/32U);        // first drawn column that belongs to the head
+ const int safe=firstHeadCol-2;
+ for(int j=0;j<64;++j)for(int i=0;i<96;++i){
+  const int local=right ? i-48+width/2 : width/2-(i-48);
+  if(local>=0 && local<safe)assert(a.px[j*96+i]==b.px[j*96+i]);
+ }
 }
 static void checkFlyer(uint16_t id,uint8_t stage,int width,uint32_t offset,int floorY,bool sway) {
  const auto v=run(id,stage,width,offset,10,300,floorY,sway);
@@ -114,6 +170,26 @@ static void checkSwimmer(uint16_t id,uint8_t stage,int width,uint32_t offset) {
  assert((hi-lo)*10>=(width-40)*6);                               // roams most of the tank
 }
 int main() {
+ // ---- sniff table: Land walkers only, never Koala/Sloth (they hang from a branch) ------------------------
+ {
+  uint32_t n=0;
+  for(uint16_t id=0;id<700;++id) {
+   const bool want=landKnown(id) && movement(id)==Walk && id!=Koala && id!=Sloth;
+   assert(sniffer(id)==want);
+   assert(want==(sniffHead(id).drop>0 && sniffHead(id).hx>0 && sniffHead(id).hx<28 && sniffHead(id).drop<=12));
+   if(want)++n;
+   assert(idleMotionFor(id,false));                              // everything but e-ink
+   assert(idleMotionFor(id,true)==want);                         // e-ink: only the sniffing Land walkers
+  }
+  assert(n==29);
+  for(uint16_t id:{Penguin,Flamingo,Worm,Eagle,Dragon,Phoenix,Frog,Snake,Koala,Sloth,TropicalFish,Crab})assert(!sniffer(id) && !idleMotionFor(id,true));
+  // E-ink: a Land walker gets the natural motion (incl. sniff) through the call-site rule; an Air walker keeps the legacy drift.
+  S d=at(Dog,2,5000,0,128,idleMotionFor(Dog,true));assert(d.pose&PoseIdle);
+  S p=at(Penguin,2,5000,0,128,idleMotionFor(Penguin,true));assert(p.pose==0);
+  // The head-down picture: every sniffer, every stage, both facings; frame stays inside the 14976-byte art.
+  for(uint16_t id=Dog;id<=TRex;++id)if(sniffer(id))for(uint8_t stage=0;stage<4;++stage)for(bool right:{true,false})checkSniffSprite(id,stage,right);
+  static_assert(sizeof(LoRaFishLandArt::masks)==14976,"Land art budget is unchanged");
+ }
  // ---- group table -------------------------------------------------------------------------------------
  uint32_t nGround=0,nFly=0,nSwim=0;
  for(uint16_t id=0;id<700;++id) {
@@ -221,8 +297,12 @@ with tempfile.TemporaryDirectory(prefix='dx-idle-') as tmp:
         subprocess.run([str(exe)],check=True)
         print('PASS natural idle motion, all groups',edition)
 ui=(ROOT/'examples/companion_radio/ui-new/UITask.cpp').read_text()
-# E-ink keeps the legacy path (idleMotion=false), no freeze; 1 FPS mode just samples the same clock-driven path.
-assert 'right,!display.isEink(),&pose,idleFloorY' in ui and 'gright,!display.isEink(),&gpose,guestFloorY' in ui
+# E-ink keeps the legacy path (idleMotion=false), no freeze, EXCEPT Land walkers (idleMotionFor: sniff walk, different
+# frames not more frames); 1 FPS mode just samples the same clock-driven path.
+assert 'right,LoRaFishSpecies::idleMotionFor(loRaFishSpecies,display.isEink()),&pose,idleFloorY' in ui
+assert 'gright,LoRaFishSpecies::idleMotionFor(guestMotionSpecies,display.isEink()),&gpose,guestFloorY' in ui
+assert '!display.isEink(),&pose' not in ui and '!display.isEink(),&gpose' not in ui
+assert ui.count('UIColor::window_bkg,(pose&LoRaFishSpecies::PoseSniff)!=0);')==2   # DX-Pro and Land builds draw the head-down picture
 assert 'animClock(pose,(uint32_t)millis())' in ui
 assert 'loRaFishFeeding ? 0 : pose' in ui            # a feeding animal is never frozen
 assert ui.count('animNow,')>=4                        # sprites get the pose-aware clock
@@ -230,4 +310,4 @@ assert 'loRaFishSimulationMode==2 ? 1000' in ui        # the Efficient 1 FPS ref
 for name in ('Air','Land'):
     sprite=(ROOT/f'examples/companion_radio/ui-new/LoRaFish{name}Sprite.h').read_text()
     assert 'steppedByDistance(id) ?' in sprite and '(now/280U)&1U' in sprite   # walkers by distance, flyers by clock
-print('PASS call sites: e-ink legacy path, 1 FPS interval, pose-aware clock; ground legs step by distance')
+print('PASS call sites: e-ink legacy path (Land sniff walkers excepted), 1 FPS interval, pose-aware clock; ground legs step by distance')
