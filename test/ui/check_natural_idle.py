@@ -212,7 +212,7 @@ int main() {
   for(uint32_t offset:{0U,2700U}) {
    switch(idleGroup(id)) {
     case IdleGround:checkGround(id,2,128,offset);break;
-    case IdleFlyer:checkFlyer(id,2,128,offset,37,false);break;
+    case IdleFlyer:if(!walkFly(id))checkFlyer(id,2,128,offset,37,false);break; // the Griffin walks and flies: check_griffin_walk_fly.py
     default:checkSwimmer(id,2,128,offset);
    }
   }
@@ -303,12 +303,12 @@ ui=(ROOT/'examples/companion_radio/ui-new/UITask.cpp').read_text()
 assert 'right,LoRaFishSpecies::idleMotionFor(loRaFishSpecies,display.isEink()),&pose,idleFloorY' in ui
 assert 'gright,LoRaFishSpecies::idleMotionFor(guestMotionSpecies,display.isEink()),&gpose,guestFloorY' in ui
 assert '!display.isEink(),&pose' not in ui and '!display.isEink(),&gpose' not in ui
-assert ui.count('UIColor::window_bkg,(pose&LoRaFishSpecies::PoseSniff)!=0);')==2   # DX-Pro and Land builds draw the head-down picture
+assert ui.count('UIColor::window_bkg,(pose&LoRaFishSpecies::PoseSniff)!=0,')==2   # DX-Pro and Land builds draw the head-down picture
 assert 'animClock(pose,(uint32_t)millis())' in ui
 assert 'loRaFishFeeding ? 0 : pose' in ui            # a feeding animal is never frozen
 assert ui.count('animNow,')>=4                        # sprites get the pose-aware clock
 assert 'loRaFishSimulationMode==2 ? 1000' in ui        # the Efficient 1 FPS refresh interval is untouched
 for name in ('Air','Land'):
     sprite=(ROOT/f'examples/companion_radio/ui-new/LoRaFish{name}Sprite.h').read_text()
-    assert 'steppedByDistance(id) ?' in sprite and '(now/280U)&1U' in sprite   # walkers by distance, flyers by clock
+    assert 'steppedByDistance(id) ?' in sprite.replace('steppedByDistance(id)) ?','steppedByDistance(id) ?') and '(now/280U)&1U' in sprite   # walkers by distance, flyers by clock
 print('PASS call sites: e-ink legacy path (Land sniff walkers excepted), 1 FPS interval, pose-aware clock; ground legs step by distance')
