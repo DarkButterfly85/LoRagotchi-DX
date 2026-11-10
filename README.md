@@ -39,29 +39,13 @@ For setup, controls, menus, pet behaviour and DX travel, see
 ## Boards and edition targets
 
 Use the [complete board/edition matrix](docs/BUILDING.md#board-and-edition-selection)
-for the exact, case-sensitive DX, Water and Air environment names and BIN/UF2
-output. It covers Heltec V3, V4 OLED, T096 and T114, ThinkNode M2, M5Stack
-Cardputer, T-Deck BLE/USB, Wio Tracker L1/L1-1W, RAK4631/4630, T-Beam 1W,
+for the exact, case-sensitive DX, Water, Air, Land and DX-Pro environment names
+and BIN/UF2 output. It covers Heltec V3, V4 OLED, T096 and T114, ThinkNode M2,
+M5Stack Cardputer, T-Deck BLE/USB, Wio Tracker L1/L1-1W, RAK4631/4630, T-Beam 1W,
 and Station G2/G3 ESP32. Select the exact radio, display and board variant;
-V4 OLED is not V4 TFT, and L1 is not L1-1W.
-
-RAK4631/4630, T-Beam 1W and Station G2/G3 profiles are **experimental**;
-RAK modules need the [correct carrier, fitted display and controls](docs/RAK4630-EXPERIMENTAL.md).
-See the [experimental screen matrix](docs/EXPERIMENTAL-SCREEN-TARGETS.md)
-for further DX-only targets and board-specific limitations. Its experimental
-profiles are not hardware-accepted; optional-display boards need a fitted panel
-and controls. Screenless and e-ink profiles are excluded.
-
-These additional DX-only targets are retained, but are **untested on hardware**;
-there are no corresponding Water/Air aliases:
-
-| Board / radio | DX environment |
-| --- | --- |
-| T-Beam SX1262 | `Tbeam_SX1262_LoRaFish_companion_ble` |
-| T-Beam SX1276 | `Tbeam_SX1276_LoRaFish_companion_ble` |
-| T-Watch S3 SX1262, BLE | `TWatch_S3_LoRaFish_companion_ble` |
-| T-Watch S3 SX1262, no Bluetooth | `TWatch_S3_LoRaFish_standalone` |
-| T-Watch S3 SX1280, 2.4 GHz | `TWatch_S3_1280_LoRaFish_companion_ble` |
+V4 OLED is not V4 TFT, and L1 is not L1-1W. Which boards are experimental or
+untested on hardware is listed in
+[Compatibility and test status](docs/BUILDING.md#compatibility-and-test-status).
 
 ## Build and install DX, Water or Air
 
