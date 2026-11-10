@@ -129,7 +129,9 @@ physical T190 acceptance or a save-retention guarantee. See
 - nRF52: `.pio/build/<environment>/firmware.uf2`, after `-t create_uf2`.
 
 For the USB upload command, UF2 copy procedure and pre-install backup checklist,
-see [README: build and install](../README.md#build-and-install-dx-water-or-air).
+see [Check the device and protect existing data](#check-the-device-and-protect-existing-data)
+and [Install using the board's matching method](#install-using-the-boards-matching-method)
+below.
 Use the same environment for building and installing; choose the exact board
 variant rather than a similarly named target.
 
@@ -137,6 +139,69 @@ Do not assume an application BIN belongs at address zero. Station G2/G3 and
 T-Beam 1W now use a single factory app and no OTA; an app-only update cannot
 migrate an old partition table. Read the [migration/data-loss warning](SINGLE-APP-MIGRATION.md)
 and back up first. Matching data geometry is not a data-retention guarantee.
+
+## Check the device and protect existing data
+
+Building does not install anything. Before writing to a device, confirm the
+board/radio/display variant and export or back up its identity/keys, settings,
+contacts and pet data using a verified recovery route. Keep key backups private.
+Read the [Water](../WATER-EDITION.md) or [Air](../AIR-EDITION.md) save/compatibility
+notes before changing editions; matching storage layouts do not guarantee
+saved-data retention.
+
+**Station G2, Station G3 ESP32 and T-Beam 1W:** stop and read the
+[partition migration and data-loss warning](SINGLE-APP-MIGRATION.md)
+first. These profiles use a single factory app with no OTA. An app-only update
+does not migrate an old partition table; the generic upload example below is
+not a migration procedure. Do not erase flash, upload a filesystem or blindly
+write a combined image to make a firmware fit.
+
+## Install using the board's matching method
+
+- **ESP32 (BIN):** `.pio/build/<environment>/firmware.bin` is an application,
+  not a complete installer. For a supported serial-programmed board with a
+  compatible installed layout, connect its USB data cable and use PlatformIO's
+  board-specific upload recipe with the **same environment**. For Water on
+  Heltec V3, for example:
+
+  ```sh
+  pio run -e water_heltec_v3_ble -j 1 -t upload
+  ```
+
+  Select the correct serial device with `--upload-port <port>` if necessary;
+  use the board's documented boot/download-mode procedure if it cannot connect.
+  An upload may also write bootloader/partition images: it is not a promise of
+  app-only writes or data retention. Do not flash an application BIN at address
+  zero or assume a web flasher migrates partition tables.
+- **nRF52 (UF2):** build with `-t create_uf2`. For Water on **Heltec T096**:
+
+  ```sh
+  pio run -e water_heltec_t096_ble -j 1 -t create_uf2
+  ```
+
+  Enter the board's existing UF2 bootloader using its documented procedure,
+  then copy `.pio/build/water_heltec_t096_ble/firmware.uf2` to the mounted
+  bootloader drive. Use the selected environment's own UF2 for DX, Air or
+  another board; do not copy the application BIN instead. If no UF2 drive
+  appears, consult the board's bootloader instructions rather than erasing or
+  replacing its bootloader blindly.
+
+After reboot, check the splash shows the intended edition and verify display,
+controls, pairing and saved state. The [GitHub-hosted builds](#github-hosted-builds-and-product-scope)
+section also covers exact-commit hosted artifacts. A successful build is neither a
+published release nor physical hardware acceptance.
+
+## Buzzer pins
+
+LoRaFish buzzer outputs are assigned per board:
+
+| Device | Buzzer pin |
+| --- | --- |
+| ThinkNode M2 | GPIO5 |
+| Heltec WiFi LoRa 32 V3 | GPIO6 |
+| Heltec WiFi LoRa 32 V4 OLED | GPIO6 |
+| Heltec T114 | GPIO46 / P1.14 |
+| Heltec T096 | GPIO45 / P1.13 |
 
 ## GitHub-hosted builds and product scope
 

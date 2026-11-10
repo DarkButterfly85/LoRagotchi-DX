@@ -47,91 +47,46 @@ V4 OLED is not V4 TFT, and L1 is not L1-1W. Which boards are experimental or
 untested on hardware is listed in
 [Compatibility and test status](docs/BUILDING.md#compatibility-and-test-status).
 
-## Build and install DX, Water or Air
+## Build and install
 
-### 1. Get the shared source and choose an edition
+1. **Get the source.** Install Git and
+   [PlatformIO Core](https://docs.platformio.org/en/latest/core/installation/index.html),
+   then clone `main` (DX, Water and Air). Land and DX-Pro are on the `orion`
+   branch: clone with `--branch orion` instead.
 
-Install Git and [PlatformIO Core](https://docs.platformio.org/en/latest/core/installation/index.html),
-then clone `main`:
+   ```sh
+   git clone --branch main https://github.com/DrToxic/LoRagotchi-DX.git
+   cd LoRagotchi-DX
+   ```
 
-```sh
-git clone --branch main https://github.com/DrToxic/LoRagotchi-DX.git
-cd LoRagotchi-DX
-```
+2. **Choose the board and edition** from the
+   [board/edition matrix](docs/BUILDING.md#board-and-edition-selection), then run
+   **one** command for it. Heltec V3 examples are below. Do not run an unqualified
+   `pio run`, which selects unrelated upstream targets.
 
-Run **one** command for your chosen edition. These examples are for a
-**Heltec V3**; replace the environment using the
-[board/edition matrix](docs/BUILDING.md#board-and-edition-selection) for other boards.
-Do not run an unqualified `pio run`, which selects unrelated upstream targets.
+   ```sh
+   pio run -e Heltec_v3_LoRaFish_companion_ble -j 1  # DX
+   pio run -e water_heltec_v3_ble -j 1              # Water
+   pio run -e air_heltec_v3_ble -j 1                # Air
+   ```
 
-```sh
-pio run -e Heltec_v3_LoRaFish_companion_ble -j 1  # DX
-pio run -e water_heltec_v3_ble -j 1              # Water
-pio run -e air_heltec_v3_ble -j 1                # Air
-```
+3. **Flash using the board's own method.** Building installs nothing; back up the
+   device's keys, settings, contacts and pet data first
+   ([details](docs/BUILDING.md#check-the-device-and-protect-existing-data)).
+   ESP32 boards produce an application BIN (upload with the same environment and
+   `-t upload`); nRF52 boards need `-t create_uf2` and the UF2 copied to the
+   bootloader drive. Full steps for both:
+   [install guide](docs/BUILDING.md#install-using-the-boards-matching-method).
+   Station G2, Station G3 ESP32 and T-Beam 1W need the
+   [partition migration warning](docs/SINGLE-APP-MIGRATION.md) first. Device
+   guides: [T-Watch S3](docs/devices/t-watch-s3/GETTING_STARTED.md),
+   [T-Deck](docs/devices/t-deck/GETTING_STARTED.md),
+   [Cardputer](docs/devices/cardputer/GETTING_STARTED.md).
 
-### 2. Check the device and protect existing data
-
-Building does not install anything. Before writing to a device, confirm the
-board/radio/display variant and export or back up its identity/keys, settings,
-contacts and pet data using a verified recovery route. Keep key backups private.
-Read the [Water](WATER-EDITION.md) or [Air](AIR-EDITION.md) save/compatibility
-notes before changing editions; matching storage layouts do not guarantee
-saved-data retention.
-
-**Station G2, Station G3 ESP32 and T-Beam 1W:** stop and read the
-[partition migration and data-loss warning](docs/SINGLE-APP-MIGRATION.md)
-first. These profiles use a single factory app with no OTA. An app-only update
-does not migrate an old partition table; the generic upload example below is
-not a migration procedure. Do not erase flash, upload a filesystem or blindly
-write a combined image to make a firmware fit.
-
-### 3. Install using the board's matching method
-
-- **ESP32 (BIN):** `.pio/build/<environment>/firmware.bin` is an application,
-  not a complete installer. For a supported serial-programmed board with a
-  compatible installed layout, connect its USB data cable and use PlatformIO's
-  board-specific upload recipe with the **same environment**. For Water on
-  Heltec V3, for example:
-
-  ```sh
-  pio run -e water_heltec_v3_ble -j 1 -t upload
-  ```
-
-  Select the correct serial device with `--upload-port <port>` if necessary;
-  use the board's documented boot/download-mode procedure if it cannot connect.
-  An upload may also write bootloader/partition images: it is not a promise of
-  app-only writes or data retention. Do not flash an application BIN at address
-  zero or assume a web flasher migrates partition tables.
-- **nRF52 (UF2):** build with `-t create_uf2`. For Water on **Heltec T096**:
-
-  ```sh
-  pio run -e water_heltec_t096_ble -j 1 -t create_uf2
-  ```
-
-  Enter the board's existing UF2 bootloader using its documented procedure,
-  then copy `.pio/build/water_heltec_t096_ble/firmware.uf2` to the mounted
-  bootloader drive. Use the selected environment's own UF2 for DX, Air or
-  another board; do not copy the application BIN instead. If no UF2 drive
-  appears, consult the board's bootloader instructions rather than erasing or
-  replacing its bootloader blindly.
-
-After reboot, check the splash shows the intended edition and verify display,
-controls, pairing and saved state. The [full build guide](docs/BUILDING.md)
-also covers exact-commit hosted artifacts. A successful build is neither a
-published release nor physical hardware acceptance.
-
-### Buzzer pins
-
-LoRaFish buzzer outputs are assigned per board:
-
-| Device | Buzzer pin |
-| --- | --- |
-| ThinkNode M2 | GPIO5 |
-| Heltec WiFi LoRa 32 V3 | GPIO6 |
-| Heltec WiFi LoRa 32 V4 OLED | GPIO6 |
-| Heltec T114 | GPIO46 / P1.14 |
-| Heltec T096 | GPIO45 / P1.13 |
+4. **First-boot check.** After reboot, check that the splash shows the intended
+   edition, then verify display, controls, pairing and saved state (your pet,
+   contacts and settings). A successful build is neither a published release nor
+   physical hardware acceptance.
 
 ### LilyGo T-Watch S3
 
