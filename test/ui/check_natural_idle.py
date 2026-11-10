@@ -182,7 +182,7 @@ int main() {
    assert(idleMotionFor(id,true)==want);                         // e-ink: only the sniffing Land walkers
   }
   assert(n==29);
-  for(uint16_t id:{Penguin,Flamingo,Worm,Eagle,Dragon,Phoenix,Frog,Snake,Koala,Sloth,TropicalFish,Crab})assert(!sniffer(id) && !idleMotionFor(id,true));
+  for(uint16_t id:{Penguin,Flamingo,Worm,Eagle,Dragon,Griffin,Phoenix,Frog,Snake,Koala,Sloth,TropicalFish,Crab})assert(!sniffer(id) && !idleMotionFor(id,true));
   // E-ink: a Land walker gets the natural motion (incl. sniff) through the call-site rule; an Air walker keeps the legacy drift.
   S d=at(Dog,2,5000,0,128,idleMotionFor(Dog,true));assert(d.pose&PoseIdle);
   S p=at(Penguin,2,5000,0,128,idleMotionFor(Penguin,true));assert(p.pose==0);
@@ -203,7 +203,7 @@ int main() {
  }
  assert(nGround==43 && nFly==14 && nSwim==12); // 36 Land + 7 Air walkers/crawlers; 11 Air + 3 Land flyers; 12 Water swimmers
  assert(idleGroup(Dog)==IdleGround && idleGroup(Worm)==IdleGround && idleGroup(Penguin)==IdleGround);
- assert(idleGroup(Eagle)==IdleFlyer && idleGroup(Butterfly)==IdleFlyer && idleGroup(Dragon)==IdleFlyer);
+ assert(idleGroup(Eagle)==IdleFlyer && idleGroup(Butterfly)==IdleFlyer && idleGroup(Dragon)==IdleFlyer && idleGroup(Griffin)==IdleFlyer);
  assert(idleGroup(TropicalFish)==IdleSwimmer && idleGroup(Whale)==IdleSwimmer);
  // ---- every animal, default tank (128 px), home and visitor slots ---------------------------------------
  for(uint16_t id=0;id<700;++id) {

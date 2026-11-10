@@ -62,7 +62,7 @@ int main() {
   auto kind=movement(id);assert(kind==Walk || kind==Crawl || kind==FlyMotion);
   if(kind==Walk || kind==Crawl)assert(p.y==37);
  }
- assert(movement(Dog)==Walk && movement(Snake)==Crawl && movement(Dragon)==FlyMotion);
+ assert(movement(Dog)==Walk && movement(Snake)==Crawl && movement(Dragon)==FlyMotion && movement(Griffin)==FlyMotion);
 }
 '''
 with tempfile.TemporaryDirectory(prefix='dx-motion-') as tmp:

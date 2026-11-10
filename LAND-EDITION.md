@@ -17,7 +17,7 @@ before any release.
 |---|---|
 | 512-539 | Dog, Cat, Horse, Cow, Elephant, Pig, Ram, Sheep, Goat, Giraffe, Kangaroo, Llama, Deer, Mouse, Hamster, Rabbit, Hedgehog, Koala, Panda, Sloth, Otter, Skunk, Badger, Hippo, Rhino, Camel, Bactrian camel, Bison |
 | 540-544 | Frog, Crocodile, Lizard, Turtle, Snake |
-| 545-550 | Unicorn, Dragon, Dragon face, Phoenix, Sauropod, T-Rex |
+| 545-550 | Unicorn, Dragon, Griffin, Phoenix, Sauropod, T-Rex |
 
 (IDs are consecutive in the order shown: Dog=512 ... TRex=550.) The
 docs/number_allocations.md table covers MeshCore group data types, not species IDs.
@@ -31,7 +31,7 @@ docs/number_allocations.md table covers MeshCore group data types, not species I
   peer that advertised L1, otherwise it visits as the legacy fish (same
   fallback as Air without A1). Water/Air peers still parse the ACK as an S1 ACK.
 - **Motion:** shares the Air habitat model; most species walk, reptiles/amphibians
-  crawl, Dragon/Dragon face/Phoenix fly.
+  crawl, Dragon/Griffin/Phoenix fly.
 - **Sniff (pilot):** 29 Land walkers (all Walk animals except Koala and Sloth) sometimes slow to
   30% speed with the nose down for 1.2-2.4 s during a walk, then walk on. The head-down picture is
   drawn by shearing the head columns of the normal frame (table `sniffTable` in LoRaFishSpecies.h),

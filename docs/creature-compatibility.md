@@ -47,7 +47,7 @@ from, or adds to, what the code literally says; these are open decisions in sect
 Locomotion words map to abilities: swim = Swim; walk, crawl = Walk (ground); fly, flutter = Fly.
 Code reads: Water: all Swim. Air: Worm and Bug Crawl; Penguin, Flamingo, Peacock, Turkey,
 Rooster Walk; Honeybee, Butterfly, Fly Flutter; the rest FlyMotion. Land: Frog, Crocodile,
-Lizard, Turtle, Snake Crawl; Dragon, Dragon face, Phoenix FlyMotion; everything else Walk.
+Lizard, Turtle, Snake Crawl; Dragon, Griffin, Phoenix FlyMotion; everything else Walk.
 
 | Name | ID | Set | Habitat (home) | Locomotion | Mythic | Basis | Note |
 |---|---:|---|---|---|---|---|---|
@@ -119,7 +119,7 @@ Lizard, Turtle, Snake Crawl; Dragon, Dragon face, Phoenix FlyMotion; everything 
 | Snake | 544 | Land | land | crawl | no | I | registry says amphibious/reptile; recommend land-only ‡ |
 | Unicorn | 545 | Land | land | walk | yes | R | mythic: horse-like, code walks |
 | Dragon | 546 | Land | land+air | fly+walk | yes | R/I | mythic: code flies; walk and L+A home are my choice ‡ |
-| Dragon face | 547 | Land | land+air | fly+walk | yes | I | mythic: same creature as Dragon (inferred) ‡ |
+| Griffin | 547 | Land | land+air | fly+walk | yes | I | mythic: replaced the old Dragon face slot (same ID, same flyer behaviour for now); walk-then-fly is a later step ‡ |
 | Phoenix | 548 | Land | air | fly | yes | R | mythic: code flies; sky home |
 | Sauropod | 549 | Land | land | walk | yes | R | listed as mythic by registry; extinct dinosaur, grounded |
 | T-Rex | 550 | Land | land | walk | yes | R | listed as mythic by registry; extinct dinosaur, grounded |
@@ -129,10 +129,11 @@ amphibious 3; land+sky 2. Mythic (as the registry groups them): 6.
 
 **Mythic choices (explicit).**
 - *Unicorn*: land, walk. It is horse-like and the code walks it. No wings, so no flight.
-- *Dragon* and *Dragon face*: **land + air** home, walk + fly. The code flies them, so they
+- *Dragon* and *Griffin*: **land + air** home, walk + fly. The code flies them, so they
   must reach the sky; they also stand on the ground. Home = both so that a Land owner's
-  dragon can receive walkers and a sky owner's dragon can receive fliers. Dragon face is a
-  portrait of the same creature (I), so it is treated identically.
+  dragon can receive walkers and a sky owner's dragon can receive fliers. Griffin took over
+  ID 547 (formerly "Dragon face", a portrait of the dragon); it keeps the same rules for now,
+  so existing 547 pets simply show as Griffins.
 - *Phoenix*: **air** home, fly (code flies it). Perches on land (the fly rule), so it can still
   visit land hosts, but walkers cannot visit its tank. Alternative in section 7.
 - *Sauropod*, *T-Rex*: land, walk. They are extinct animals rather than myth; the registry
@@ -142,7 +143,7 @@ amphibious 3; land+sky 2. Mythic (as the registry groups them): 6.
 **Rows I am not sure about** (all flagged ‡ or I above): Lizard and Snake (registry comment
 says "amphibious/reptiles"; I recommend land-only because nothing in the name implies water);
 Frog/Crocodile/Turtle amphibious (registry label, name agrees); Bug (the name is ambiguous,
-the code crawls it, the Air marker list uses the caterpillar emoji); Dragon face; and the
+the code crawls it, the Air marker list uses the caterpillar emoji); Griffin (formerly Dragon face); and the
 "candidate: also swim/walk" animals Seal, Otter, Hippo, Duck, Swan, Penguin. I did **not**
 apply those upgrades because the code does not say so; the owner can switch any of them on
 by changing one table row.
@@ -186,7 +187,7 @@ Outcome by visitor type (cross-set; R0 aside). ✓ = allowed, ✗ = blocked.
 | Walk only (40 grounded) | ✗ | ✓ | ✗ | ✓ | ✓ |
 | Fly only (12 sky) | ✗ | ✓ | ✓ | ✓ | ✓ |
 | Swim + Walk (Frog, Crocodile, Turtle) | ✓ | ✓ | ✗ | ✓ | ✓ |
-| Walk + Fly (Dragon, Dragon face) | ✗ | ✓ | ✓ | ✓ | ✓ |
+| Walk + Fly (Dragon, Griffin) | ✗ | ✓ | ✓ | ✓ | ✓ |
 
 (Swim+Fly would reach everything; no species has it unless Duck/Swan are upgraded.)
 
@@ -395,7 +396,7 @@ Each step is separately shippable; steps 1-3 touch no wire bytes.
 2. ~~May fliers visit water hosts~~ **Decided by owner 2026-11-08: only swimmers may visit water hosts (for example Duck and Swan), so fliers never do.** **Decided by owner 2026-11-08: yes, split the Water tank into a surface band and an underwater band.** Follow-up: the Water tank needs a layout change to show surface and sub-surface swimmers side by side (for example Penguin and Duck).
 3. Legacy DX hosts and unannounced visitors: allow as fish (my default, no regression) or deny?
 4. Which borderline animals get extra abilities: Seal (walk); Otter, Hippo, Duck, Swan, Penguin (swim); Lizard and Snake amphibious or land-only?
-5. Mythic homes: Dragon and Dragon face land+air, Phoenix air-only, Unicorn/Sauropod/T-Rex land. OK, or Phoenix land+air?
+5. Mythic homes: Dragon and Griffin land+air, Phoenix air-only, Unicorn/Sauropod/T-Rex land. OK, or Phoenix land+air?
 6. Wire: Phase 0 only for now, or go straight to the C1 token; must old Water/Air/Land test builds stay at full fidelity (REQ second line)?
 7. Picker: show contacts whose emoji hints "can't visit" greyed, hide them, or show normally?
 8. Should every species build recognise all emoji markers (my default), or only its own?

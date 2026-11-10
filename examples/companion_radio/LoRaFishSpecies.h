@@ -19,7 +19,7 @@ enum : uint16_t {
   Hedgehog=528, Koala=529, Panda=530, Sloth=531, Otter=532, Skunk=533, Badger=534, Hippo=535,
   Rhino=536, Camel=537, BactrianCamel=538, Bison=539,
   Frog=540, Crocodile=541, Lizard=542, Turtle=543, Snake=544,
-  Unicorn=545, Dragon=546, DragonFace=547, Phoenix=548, Sauropod=549, TRex=550
+  Unicorn=545, Dragon=546, Griffin=547, Phoenix=548, Sauropod=549, TRex=550
 };
 static constexpr uint8_t count=15;
 static constexpr uint8_t airCount=18;
@@ -59,7 +59,7 @@ enum Movement : uint8_t { Swim, FlyMotion, Flutter, Walk, Crawl };
 inline Movement movement(uint16_t id) {
   if(landKnown(id)) {
     if(id==Frog || id==Crocodile || id==Lizard || id==Turtle || id==Snake)return Crawl;
-    if(id==Dragon || id==DragonFace || id==Phoenix)return FlyMotion;
+    if(id==Dragon || id==Griffin || id==Phoenix)return FlyMotion;
     return Walk;
   }
   if(!airKnown(id))return Swim;
@@ -138,15 +138,15 @@ inline bool naturalIdle(uint16_t id) { return idleGroup(id)!=IdleNone; }
 // The "head down" picture costs NO extra art bytes: the sprite code shears the head columns of the
 // normal walking frame downwards (LoRaFishLandSprite). This table says, per Land animal, from which
 // mask column (0..31) the head/neck starts and how many mask rows (of 24) the nose drops by at the
-// right-hand edge; {0,0} = never sniffs (Koala and Sloth hang from a branch; crawlers, Dragon, Dragon
-// face and Phoenix have their own movement). Presentation only: nothing here is saved or sent.
+// right-hand edge; {0,0} = never sniffs (Koala and Sloth hang from a branch; crawlers, Dragon, Griffin
+// and Phoenix have their own movement). Presentation only: nothing here is saved or sent.
 struct SniffHead { uint8_t hx, drop; };
 static constexpr SniffHead sniffTable[landCount]={
   {19,5},{19,4},{18,8},{20,6},{22,3},{20,6},{21,5},{21,5},{19,5},{14,10},   // Dog Cat Horse Cow Elephant Pig Ram Sheep Goat Giraffe
   {14,4},{15,8},{17,7},{17,4},{18,4},{18,5},{20,4},{0,0},{14,5},{0,0},     // Kangaroo Llama Deer Mouse Hamster Rabbit Hedgehog Koala Panda Sloth
   {21,4},{20,5},{21,4},{19,5},{19,5},{19,8},{19,8},{19,4},                // Otter Skunk Badger Hippo Rhino Camel Bactrian Bison
   {0,0},{0,0},{0,0},{0,0},{0,0},                                            // Frog Crocodile Lizard Turtle Snake
-  {18,8},{0,0},{0,0},{0,0},{17,10},{17,5}                                   // Unicorn Dragon DragonFace Phoenix Sauropod TRex
+  {18,8},{0,0},{0,0},{0,0},{17,10},{17,5}                                   // Unicorn Dragon Griffin Phoenix Sauropod TRex
 };
 inline SniffHead sniffHead(uint16_t id) { return landKnown(id) ? sniffTable[id-Dog] : SniffHead{0,0}; }
 inline bool sniffer(uint16_t id) { return sniffHead(id).drop!=0; }
@@ -615,7 +615,7 @@ inline const char* lifeStage(uint16_t id, uint8_t stage) {
       case Panda: case Sloth: case Badger: return "CUB";
       case Frog: return "TADPOLE";
       case Crocodile: case Lizard: case Turtle: case Snake:
-      case Dragon: case DragonFace: case Phoenix: case Sauropod: case TRex: return "HATCHLING";
+      case Dragon: case Griffin: case Phoenix: case Sauropod: case TRex: return "HATCHLING";
       default: return "CALF"; // Cow, Elephant, Giraffe, Hippo, Rhino, camels, Bison
     }
   }
@@ -643,7 +643,7 @@ inline const char* label(uint16_t id) {
   static const char* const landNames[]={"Dog","Cat","Horse","Cow","Elephant","Pig","Ram","Sheep",
     "Goat","Giraffe","Kangaroo","Llama","Deer","Mouse","Hamster","Rabbit","Hedgehog","Koala",
     "Panda","Sloth","Otter","Skunk","Badger","Hippo","Rhino","Camel","Bactrian camel","Bison",
-    "Frog","Crocodile","Lizard","Turtle","Snake","Unicorn","Dragon","Dragon face","Phoenix",
+    "Frog","Crocodile","Lizard","Turtle","Snake","Unicorn","Dragon","Griffin","Phoenix",
     "Sauropod","T-Rex"};
   return waterKnown(id) ? names[id] : airKnown(id) ? airNames[id-Eagle] :
          landKnown(id) ? landNames[id-Dog] : "Unknown (fish)";

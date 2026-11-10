@@ -30,7 +30,7 @@ struct Canvas {
 static const char* const expectedNames[]={"Dog","Cat","Horse","Cow","Elephant","Pig","Ram","Sheep",
  "Goat","Giraffe","Kangaroo","Llama","Deer","Mouse","Hamster","Rabbit","Hedgehog","Koala","Panda",
  "Sloth","Otter","Skunk","Badger","Hippo","Rhino","Camel","Bactrian camel","Bison","Frog","Crocodile",
- "Lizard","Turtle","Snake","Unicorn","Dragon","Dragon face","Phoenix","Sauropod","T-Rex"};
+ "Lizard","Turtle","Snake","Unicorn","Dragon","Griffin","Phoenix","Sauropod","T-Rex"};
 int main() {
  static_assert(landCount==39,"owner list: 28 land + 5 amphibious + 6 mythic");
  static_assert(sizeof(LoRaFishLandArt::masks)==39*2*192,"Land ROM asset budget");
