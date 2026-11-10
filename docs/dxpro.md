@@ -1,6 +1,6 @@
 # DX-Pro edition
 
-One firmware with the Water (0-14), Air (256-273) and Land (512-550) species sets together.
+One firmware with the Water (0-14), Air (256-273) and Land (512-554) species sets together.
 Branch: `feat/dxpro-combined-edition`. Design source: `docs/creature-compatibility.md` section 5.
 
 ## What it is
