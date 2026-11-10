@@ -612,12 +612,13 @@ static uint32_t loRaFishScreenTimeoutMs() {
   const uint8_t setting=loRaFishIsSleeping() ? loRaFishTimeoutAsleepSetting : loRaFishTimeoutAwakeSetting;
   return loRaFishTimeoutValues[min((uint8_t)5,setting)];
 }
-// Display list rows. Pet colours and species are tester-firmware only (LORAGOTCHI_TESTER_FIRMWARE); pet setup
-// keeps its own colour and species choices. The menu index is a position among the visible rows only.
+// Display list rows. Pet colours and the plain pet species list are tester-firmware only (LORAGOTCHI_TESTER_FIRMWARE);
+// the DX-Pro Animal set row is always shown. Pet setup keeps its own colour and species choices. The menu index is a position among the visible rows only.
 static LoRaFishDisplayRows loRaFishDisplayRows() {
   LoRaFishDisplayRows rows;
   rows.colourDisplay = loRaFishColorDisplay;
   rows.speciesEdition = LORAGOTCHI_SPECIES_EDITION != 0;
+  rows.animalSet = LORAGOTCHI_DXPRO != 0;   // Animal set stays visible in normal DX-Pro builds
   rows.orientation = loRaFishOrientationSupported;
   rows.partial = loRaFishPartialSupported;
   rows.dimSlow = loRaFishDimSlowSupported;
@@ -3047,7 +3048,7 @@ static void drawLoRaFishDisplayMenu(DisplayDriver& display) {
       case LoRaFishDisplayRow::Theme: label = "Firmware theme"; break;
       case LoRaFishDisplayRow::Colour: label = loRaFishColorDisplay ? "Pet colours" : "Screen colour"; break;
       case LoRaFishDisplayRow::Rendering: label = "Game rendering"; break;
-      case LoRaFishDisplayRow::Species: label = "Pet species"; break;
+      case LoRaFishDisplayRow::Species: label = LORAGOTCHI_DXPRO ? "Animal set" : "Pet species"; break;
       case LoRaFishDisplayRow::Orientation: label = "Orientation"; break;
       case LoRaFishDisplayRow::DisplayUpdate: label = "Display update"; break;
       case LoRaFishDisplayRow::DimSlow: label = "Slow when dimmed"; break;
@@ -6390,7 +6391,7 @@ char UITask::handleLongPress(char c, bool isHold) {
         else { loRaFishPage = 15; openLoRaFishValue(LoRaFishSetting::MonoDisplayColour); }
         break;
       case LoRaFishDisplayRow::Species:
-        loRaFishPage = 15; openLoRaFishValue(LoRaFishSetting::Species); break;      // tester only
+        loRaFishPage = 15; openLoRaFishValue(LoRaFishSetting::Species); break;      // DX-Pro: Animal set (always); else tester only
       case LoRaFishDisplayRow::Rendering:
         loRaFishPage = 15; openLoRaFishValue(LoRaFishSetting::Rendering); break;
       case LoRaFishDisplayRow::Count: break;

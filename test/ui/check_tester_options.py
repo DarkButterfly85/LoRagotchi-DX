@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Options menu hides the pet colour and species rows unless LORAGOTCHI_TESTER_FIRMWARE is defined.
+"""Options menu hides the pet colour and plain pet species rows unless LORAGOTCHI_TESTER_FIRMWARE is defined.
+The DX-Pro ANIMAL SET row (step one of the species picker) is visible in every build.
 
 python3 test/ui/check_tester_options.py   (Python 3 and g++; no firmware build, no hardware)
 
@@ -46,16 +47,16 @@ int main() {
   const bool tester = false;
   static_assert(!kLoRaFishTesterFirmware, "gate must default to off");
 #endif
-  for (int mask = 0; mask < 32; ++mask) {
+  for (int mask = 0; mask < 64; ++mask) {
     LoRaFishDisplayRows rows;
     rows.colourDisplay = mask & 1; rows.speciesEdition = mask & 2;
-    rows.orientation = mask & 4; rows.partial = mask & 8; rows.dimSlow = mask & 16;
+    rows.orientation = mask & 4; rows.partial = mask & 8; rows.dimSlow = mask & 16; rows.animalSet = mask & 32;
     assert(rows.tester == tester);
     // Expected list in the legacy order, with the pet rows removed unless tester.
     std::vector<R> want = {R::Timeout, R::Brightness, R::Theme};
     if (!rows.colourDisplay || tester) want.push_back(R::Colour);   // mono "Screen colour" always stays
     want.push_back(R::Rendering);
-    if (rows.speciesEdition && tester) want.push_back(R::Species);
+    if (rows.speciesEdition && (rows.animalSet || tester)) want.push_back(R::Species);
     if (rows.orientation) want.push_back(R::Orientation);
     if (rows.partial) want.push_back(R::DisplayUpdate);
     if (rows.dimSlow) want.push_back(R::DimSlow);
@@ -66,7 +67,8 @@ int main() {
     }
     const bool petColoursHidden = rows.colourDisplay && !tester;
     assert(rows.available(R::Colour) == !petColoursHidden);
-    assert(rows.available(R::Species) == (rows.speciesEdition && tester));
+    assert(rows.available(R::Species) == (rows.speciesEdition && (rows.animalSet || tester)));
+    if (rows.speciesEdition && rows.animalSet) assert(rows.available(R::Species));   // ANIMAL SET never hidden
     if (!rows.available(R::Species)) assert(rows.index(R::Species) == 0);
     // Navigation as the menu does it: (value +/- 1) modulo count never reaches a hidden row.
     const unsigned n = rows.count();
@@ -76,7 +78,7 @@ int main() {
         assert(p < n);
         const R r = rows.at(p);
         assert(rows.available(r));
-        if (!tester) assert(r != R::Species);
+        if (!tester && !rows.animalSet) assert(r != R::Species);
         if (!tester && rows.colourDisplay) assert(r != R::Colour);
       }
     }
@@ -113,7 +115,7 @@ static void collectLabels(UITask& task) {
   }
 }
 static bool petKey(LoRaFishSetting k) {
-  return k == LoRaFishSetting::Species || k == LoRaFishSetting::SpeciesSet || k == LoRaFishSetting::Scales ||
+  return (!LORAGOTCHI_DXPRO && k == LoRaFishSetting::Species) || k == LoRaFishSetting::Scales ||
          k == LoRaFishSetting::Body || k == LoRaFishSetting::Eyes;
 }
 int main() {
@@ -129,13 +131,14 @@ int main() {
     loRaFishOrientationSupported = true; loRaFishPartialSupported = true; loRaFishDimSlowSupported = true;
     loRaFishScaleColor = 2; loRaFishColor = 3; loRaFishEyeColor = 4; loRaFishSpecies = 1;
     const auto scale = loRaFishScaleColor; const auto body = loRaFishColor; const auto eyes = loRaFishEyeColor; const auto species = loRaFishSpecies;
-    const bool petColourVisible = !colour || tester, speciesVisible = speciesEdition && tester;
+    const bool petColourVisible = !colour || tester, speciesVisible = speciesEdition && (tester || LORAGOTCHI_DXPRO);
     labels.clear(); collectLabels(task);
     assert(labels.count("Screen timeout") && labels.count("Brightness") && labels.count("Firmware theme"));
     assert(labels.count("Game rendering") && labels.count("Orientation") && labels.count("Display update") && labels.count("Slow when dimmed"));
     assert(labels.count("Pet colours") == (colour && tester));
     assert(labels.count("Screen colour") == !colour);          // mono screen colour is not a pet option
-    assert(labels.count("Pet species") == speciesVisible);
+    assert(labels.count(LORAGOTCHI_DXPRO ? "Animal set" : "Pet species") == speciesVisible);
+    assert(labels.count(LORAGOTCHI_DXPRO ? "Pet species" : "Animal set") == 0);
     const unsigned expected = 3 + petColourVisible + 1 + speciesVisible + 3;
     assert(loRaFishDisplayOptionCount() == expected);
     // Walk the list with the real Next key, open every row and come back to it.
@@ -151,7 +154,10 @@ int main() {
       assert(loRaFishPage != 12);
       if (loRaFishPage == 9) sawPetColours = true;
       if (loRaFishValuePicker.active()) {
-        if (loRaFishValuePicker.key() == LoRaFishSetting::Species) sawSpecies = true;
+        if (loRaFishValuePicker.key() == LoRaFishSetting::Species || loRaFishValuePicker.key() == LoRaFishSetting::SpeciesSet) {
+          sawSpecies = true;   // DX-Pro opens ANIMAL SET (step one); other species builds open the species list
+          assert(LORAGOTCHI_DXPRO ? loRaFishValuePicker.key() == LoRaFishSetting::SpeciesSet : loRaFishValuePicker.key() == LoRaFishSetting::Species);
+        }
         if (!tester) assert(!petKey(loRaFishValuePicker.key()));
       }
       task.handleDoubleClick(KEY_PREV);
@@ -182,7 +188,7 @@ int main() {
 #if LORAGOTCHI_SPECIES_EDITION
     loRaFishNeedsPetSetup = true; loRaFishPage = LORAFISH_PET_SETUP_PAGE; loRaFishPetSetupField = 0;
     task.handleLongPress(KEY_ENTER);
-    assert(loRaFishValuePicker.active() && (loRaFishValuePicker.key() == LoRaFishSetting::Species));
+    assert(loRaFishValuePicker.active() && (loRaFishValuePicker.key() == (LORAGOTCHI_DXPRO ? LoRaFishSetting::SpeciesSet : LoRaFishSetting::Species)));
     cancelLoRaFishValue(); loRaFishNeedsPetSetup = false; loRaFishPage = 0;
 #endif
   }
@@ -194,20 +200,23 @@ int main() {
 def part_b():
     import check_menu_navigation as f
     code = '\n'.join(f.parts[:-1]) + f.parts[-1].split('int main(){')[0] + B_MAIN
+    code = code.replace('class UITask;\n', 'class UITask;\nstatic uint8_t loRaFishProSet = 0;   // DX-Pro set chosen in picker step one\n', 1)
     with tempfile.TemporaryDirectory(prefix='tester-options-') as t:
         cpp = Path(t) / 'options.cpp'
         cpp.write_text(code)
-        for edition in ('0', '1'):                               # 0: DX (no species row), 1: species edition
+        for edition in ('0', '1', 'pro'):                               # 0: DX (no species row), 1: species edition
             for flagged in (False, True):
                 out = Path(t) / ('options-%s-%d' % (edition, flagged))
-                cmd = ['g++', '-std=c++17', '-w', '-DPIN_USER_BTN=0', '-DLORAGOTCHI_WATER_EDITION=' + edition,
+                cmd = ['g++', '-std=c++17', '-w', '-DPIN_USER_BTN=0', '-DLORAGOTCHI_WATER_EDITION=' + ('0' if edition == 'pro' else edition),
                        '-DLORAGOTCHI_AIR_EDITION=0', '-I', str(ROOT), '-I', str(ROOT / 'src'), str(cpp), '-o', str(out)]
+                if edition == 'pro':
+                    cmd.insert(2, '-DLORAGOTCHI_DXPRO=1')
                 if flagged:
                     cmd.insert(2, '-D%s=1' % FLAG)
                 run(cmd)
                 res = run([str(out)], capture_output=True, text=True)
                 assert res.stdout.strip().endswith('ok'), res.stdout
-    print('PASS B  real handlers: DX and species editions, mono and colour, with and without the flag')
+    print('PASS B  real handlers: DX, species and DX-Pro editions, mono and colour, with and without the flag')
 
 
 # ---- C: stored format and build flags -----------------------------------------------------------
