@@ -202,7 +202,7 @@ int main() {
    default:assert(g==IdleSwimmer && !steppedByDistance(id));++nSwim;
   }
  }
- assert(nGround==43 && nFly==14 && nSwim==12); // 36 Land + 7 Air walkers/crawlers; 11 Air + 3 Land flyers; 12 Water swimmers
+ assert(nGround==47 && nFly==14 && nSwim==12); // 40 Land + 7 Air walkers/crawlers; 11 Air + 3 Land flyers; 12 Water swimmers
  assert(idleGroup(Dog)==IdleGround && idleGroup(Worm)==IdleGround && idleGroup(Penguin)==IdleGround);
  assert(idleGroup(Eagle)==IdleFlyer && idleGroup(Butterfly)==IdleFlyer && idleGroup(Dragon)==IdleFlyer && idleGroup(Griffin)==IdleFlyer);
  assert(idleGroup(TropicalFish)==IdleSwimmer && idleGroup(Whale)==IdleSwimmer);
