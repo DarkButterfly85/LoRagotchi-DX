@@ -16,10 +16,11 @@ static_assert(sizeof(LoRaFishLandArt::masks)==LoRaFishSpecies::landCount*2*192,"
 namespace LoRaFishLandSprite {
 template<class Display, class Colour>
 inline void draw(Display& d,int x,int y,bool right,uint16_t id,uint8_t stage,
-                 uint32_t now,Colour body,Colour fins,Colour eyes,Colour background,bool noseDown=false) {
+                 uint32_t now,Colour body,Colour fins,Colour eyes,Colour background,bool noseDown=false,bool stepped=false) {
   if (!LoRaFishSpecies::landKnown(id)) return; // caller preserves legacy fish
   // Natural-idle animals step by distance walked, so a standing animal holds one still frame.
-  const unsigned phase=LoRaFishSpecies::steppedByDistance(id) ? (unsigned)(((x<0?-x:x)/5)&1) : (now/280U)&1U;
+  // stepped: a walk-fly animal (Griffin) on foot, see LoRaFishSpecies::steppedByPose; in the air it flaps on the clock.
+  const unsigned phase=(stepped || LoRaFishSpecies::steppedByDistance(id)) ? (unsigned)(((x<0?-x:x)/5)&1) : (now/280U)&1U;
   const unsigned width=stage==0?20:stage==1?26:32;
   const unsigned height=stage==0?15:stage==1?19:24;
   const uint8_t* mask=LoRaFishLandArt::masks[id-LoRaFishSpecies::Dog][phase];

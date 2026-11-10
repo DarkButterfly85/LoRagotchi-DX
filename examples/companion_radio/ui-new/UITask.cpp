@@ -2286,7 +2286,8 @@ static void drawFishSpriteForStage(DisplayDriver& d,int x,int y,bool right,uint8
 #if LORAGOTCHI_DXPRO
     if (LoRaFishSpecies::landKnown(species))
       LoRaFishLandSprite::draw(d,x,y,right,species,stage,animNow,
-          body,fins,eyes,UIColor::window_bkg,(pose&LoRaFishSpecies::PoseSniff)!=0);
+          body,fins,eyes,UIColor::window_bkg,(pose&LoRaFishSpecies::PoseSniff)!=0,
+          LoRaFishSpecies::steppedByPose(species,pose));
     else if (LoRaFishSpecies::airKnown(species))
       LoRaFishAirSprite::draw(d,x,y,right,species,stage,animNow,
           body,fins,eyes,UIColor::window_bkg);
@@ -2294,7 +2295,8 @@ static void drawFishSpriteForStage(DisplayDriver& d,int x,int y,bool right,uint8
 #elif LORAGOTCHI_LAND_EDITION
     if (LoRaFishSpecies::landKnown(species))
       LoRaFishLandSprite::draw(d,x,y,right,species,stage,animNow,
-          body,fins,eyes,UIColor::window_bkg,(pose&LoRaFishSpecies::PoseSniff)!=0);
+          body,fins,eyes,UIColor::window_bkg,(pose&LoRaFishSpecies::PoseSniff)!=0,
+          LoRaFishSpecies::steppedByPose(species,pose));
     else
 #elif LORAGOTCHI_AIR_EDITION
     if (LoRaFishSpecies::airKnown(species))
