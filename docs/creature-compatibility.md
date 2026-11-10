@@ -123,8 +123,12 @@ Lizard, Turtle, Snake Crawl; Dragon, Griffin, Phoenix FlyMotion; everything else
 | Phoenix | 548 | Land | air | fly | yes | R | mythic: code flies; sky home |
 | Sauropod | 549 | Land | land | walk | yes | R | listed as mythic by registry; extinct dinosaur, grounded |
 | T-Rex | 550 | Land | land | walk | yes | R | listed as mythic by registry; extinct dinosaur, grounded |
+| Wolf | 551 | Land | land | walk | yes | R | added after this design (draft art, colour first); walker, sniffs |
+| Fox | 552 | Land | land | walk | yes | R | added after this design (draft art); walker, sniffs |
+| Bear | 553 | Land | land | walk | yes | R | added after this design (draft art); walker, sniffs |
+| Kitsune | 554 | Land | land | walk | yes | R | added after this design (draft art); walker, sniffs; three tails drawn Body outline / Accent fill / Eyes tip |
 
-Totals: 72 species. Water-only swimmers 15; grounded 40 (36 walk + 4 crawl); sky 12;
+Totals (as designed; Land has since grown by Wolf, Fox, Bear and Kitsune, 551..554, all land-home walkers, so 76 species and the grounded count rises by 4): 72 species. Water-only swimmers 15; grounded 40 (36 walk + 4 crawl); sky 12;
 amphibious 3; land+sky 2. Mythic (as the registry groups them): 6.
 
 **Mythic choices (explicit).**

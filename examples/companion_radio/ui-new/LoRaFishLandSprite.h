@@ -8,8 +8,11 @@
 // RGB assets; max footprint is 32x24 pixels.
 // noseDown (sniff phase, LoRaFishSpecies::PoseSniff): the head-down picture is NOT stored art. The head
 // columns of the normal walking frame are sheared downwards at draw time using LoRaFishSpecies::sniffHead
-// (first head column + nose drop in mask rows), so the art stays at its 14976-byte budget. Same code on
+// (first head column + nose drop in mask rows), so no extra art is stored. Same code on
 // colour, mono and e-ink builds; it only changes which source row each column reads.
+// The art table must have exactly one 2-frame mask per registry entry (indexed by id-Dog). This is a roster
+// check, not a flash budget.
+static_assert(sizeof(LoRaFishLandArt::masks)==LoRaFishSpecies::landCount*2*192,"Land art rows match the Land roster");
 namespace LoRaFishLandSprite {
 template<class Display, class Colour>
 inline void draw(Display& d,int x,int y,bool right,uint16_t id,uint8_t stage,

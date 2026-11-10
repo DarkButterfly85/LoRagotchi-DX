@@ -97,7 +97,7 @@ workflow builds every board/edition. No workflow success implies a published
 release, hardware acceptance or permission to flash.
 
 Current source provides DX, Water (14 species), Air (18 animals) and an early Land
-scaffold (39 animals, draft art; see [Land](../LAND-EDITION.md)), not a new
+scaffold (43 animals, draft art; see [Land](../LAND-EDITION.md)), not a new
 firmware release. The shared source already selects these by build target.
 Future Water/Air product branding or distribution channels need a separate
 decision, not duplicate source-maintenance branches. Combined-habitat
