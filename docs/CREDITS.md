@@ -3,6 +3,10 @@
 LoRaGotchi-DX is built on MeshCore and on work by other people. This page
 lists who made what, so the credit stays with them.
 
+## Original author
+
+- **Robert Rayner (M0YNW)**, original LoRaGotchi author.
+
 ## MeshCore
 
 LoRaGotchi-DX is built on MeshCore firmware, copyright (c) 2025 Scott Powell /
@@ -45,7 +49,3 @@ Features taken from or inspired by ORION:
 
 The Nova dashboard sync in our fork (`lodestar_nova_alpha`) is also built on
 LODESTAR NOVA by Aries Thorne and Todd Steinhauer, with the same permission.
-
-## Other contributors
-
-- **Robert Rayner (M0YNW)**, original LoRaGotchi author.
