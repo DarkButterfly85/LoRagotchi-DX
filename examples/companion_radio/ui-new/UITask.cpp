@@ -682,12 +682,14 @@ static void openLoRaFishValue(LoRaFishSetting setting) {
 #if LORAGOTCHI_DXPRO
       // Asking for the species opens step one; step two is opened by selecting a set.
       loRaFishProSet = LoRaFishSpecies::setOf(loRaFishSpecies);
-      value = loRaFishProSet; count = LoRaFishSpecies::setCount;
+      // Four entries: Water, Air, Land and Mystery egg (last).
+      value = loRaFishProSet; count = LoRaFishSpecies::setCount + 1;
       loRaFishValuePicker.open(LoRaFishSetting::SpeciesSet, value, count);
       return;
 #elif LORAGOTCHI_SPECIES_EDITION
-      value = LoRaFishSpecies::selectionIndex(loRaFishSpecies);
-      count = LoRaFishSpecies::selectableCount + (loRaFishNeedsPetSetup ? 1 : 0);
+      // Mystery egg is the first entry of the list; animals follow it.
+      value = loRaFishMysterySelected ? 0 : LoRaFishSpecies::selectionIndex(loRaFishSpecies) + 1;
+      count = LoRaFishSpecies::selectableCount + 1;
 #endif
       break;
     case LoRaFishSetting::SpeciesSet:
@@ -735,22 +737,33 @@ static void selectLoRaFishValue() {
   switch (loRaFishValuePicker.key()) {
     case LoRaFishSetting::SpeciesSet:
 #if LORAGOTCHI_DXPRO
-      // Step one done: remember the set and open step two on it (current species if it lives there).
-      loRaFishProSet=value<LoRaFishSpecies::setCount ? value : 0;
+      if (value>=LoRaFishSpecies::setCount) {
+        // Mystery egg on the environment list: one seed picks an animal from any environment. Stored like any species.
+        loRaFishMysterySelected=true; ensureLoRaFishMysterySeed();
+        loRaFishSpecies=LoRaFishSpecies::anyMystery(loRaFishMysterySeed);
+        loRaFishProSet=LoRaFishSpecies::setOf(loRaFishSpecies);
+        break; // persisted below
+      }
+      // Step one done: remember the set and open step two on it. Mystery egg is the top entry; the current
+      // animal is preselected if it lives in this set.
+      loRaFishProSet=value;
       loRaFishValuePicker.open(LoRaFishSetting::Species,
-          LoRaFishSpecies::setOf(loRaFishSpecies)==loRaFishProSet ? LoRaFishSpecies::setSelectionIndex(loRaFishSpecies) : 0,
-          LoRaFishSpecies::setSize(loRaFishProSet) + (loRaFishNeedsPetSetup ? 1 : 0));
-#endif
+          LoRaFishSpecies::setOf(loRaFishSpecies)!=loRaFishProSet ? 1 :
+          loRaFishMysterySelected ? 0 : LoRaFishSpecies::setSelectionIndex(loRaFishSpecies) + 1,
+          LoRaFishSpecies::setSize(loRaFishProSet) + 1);
       return; // nothing to persist yet; the species picker is now active
+#else
+      return;
+#endif
     case LoRaFishSetting::Species:
 #if LORAGOTCHI_DXPRO
-      loRaFishMysterySelected=(value==LoRaFishSpecies::setSize(loRaFishProSet));
+      loRaFishMysterySelected=(value==0);   // top entry: Mystery egg
       if (loRaFishMysterySelected) { ensureLoRaFishMysterySeed(); loRaFishSpecies=LoRaFishSpecies::setMystery(loRaFishMysterySeed,loRaFishProSet); }
-      else loRaFishSpecies=LoRaFishSpecies::setSelectionId(loRaFishProSet,value);
+      else loRaFishSpecies=LoRaFishSpecies::setSelectionId(loRaFishProSet,value-1);
 #elif LORAGOTCHI_SPECIES_EDITION
-      loRaFishMysterySelected=(value==LoRaFishSpecies::selectableCount);
-      if (value==LoRaFishSpecies::selectableCount) { ensureLoRaFishMysterySeed(); loRaFishSpecies=LoRaFishSpecies::mystery(loRaFishMysterySeed); }
-      else loRaFishSpecies=LoRaFishSpecies::selectionId(value);
+      loRaFishMysterySelected=(value==0);   // top entry: Mystery egg
+      if (loRaFishMysterySelected) { ensureLoRaFishMysterySeed(); loRaFishSpecies=LoRaFishSpecies::mystery(loRaFishMysterySeed); }
+      else loRaFishSpecies=LoRaFishSpecies::selectionId(value-1);
 #endif
       break;
     case LoRaFishSetting::DisplayUpdate: loRaFishPartial = value; loRaFishPartialNeedsApply = true; break;
@@ -780,7 +793,7 @@ static void selectLoRaFishValue() {
 #endif
   // Identity is shared with DX/lifecycle; preserve immediate durability.
   const auto key = loRaFishValuePicker.key();
-  if (key == LoRaFishSetting::Species || key == LoRaFishSetting::Scales ||
+  if (key == LoRaFishSetting::Species || key == LoRaFishSetting::SpeciesSet || key == LoRaFishSetting::Scales ||
       key == LoRaFishSetting::Body || key == LoRaFishSetting::Eyes)
     saveLoRaFishSettings();
   else loRaFishSettingsPending = true;
@@ -2718,9 +2731,11 @@ static void drawLoRaFishValuePicker(DisplayDriver& display) {
     display.setColor(UIColor::primary_txt);
     for (int row = 0; row < visible && first + row < count; ++row) {
       const uint8_t item = first + row;
-      const char* name = setting == LoRaFishSetting::SpeciesSet ? LoRaFishSpecies::setLabel(item)
-          : item >= LoRaFishSpecies::setSize(loRaFishProSet) ? "Mystery egg"
-          : LoRaFishSpecies::label(LoRaFishSpecies::setSelectionId(loRaFishProSet, item));
+      // Environments: Water, Air, Land, then Mystery egg. Animals of an environment: Mystery egg first.
+      const char* name = setting == LoRaFishSetting::SpeciesSet
+          ? (item >= LoRaFishSpecies::setCount ? "Mystery egg" : LoRaFishSpecies::setLabel(item))
+          : item == 0 ? "Mystery egg"
+          : LoRaFishSpecies::label(LoRaFishSpecies::setSelectionId(loRaFishProSet, item - 1));
       char line[32];
       snprintf(line, sizeof(line), "%c %s", item == value ? '>' : ' ', name);
       display.setCursor(3, LoRaFishMenuLayout::rowYFor(display, row));
@@ -2734,11 +2749,11 @@ static void drawLoRaFishValuePicker(DisplayDriver& display) {
   const char* text = valueText;
   switch (setting) {
 #if LORAGOTCHI_DXPRO
-    case LoRaFishSetting::SpeciesSet: text = LoRaFishSpecies::setLabel(value); break;
-    case LoRaFishSetting::Species: text = value>=LoRaFishSpecies::setSize(loRaFishProSet) ? "Mystery egg" : LoRaFishSpecies::label(LoRaFishSpecies::setSelectionId(loRaFishProSet,value)); break;
+    case LoRaFishSetting::SpeciesSet: text = value>=LoRaFishSpecies::setCount ? "Mystery egg" : LoRaFishSpecies::setLabel(value); break;
+    case LoRaFishSetting::Species: text = value==0 ? "Mystery egg" : LoRaFishSpecies::label(LoRaFishSpecies::setSelectionId(loRaFishProSet,value-1)); break;
 #else
     case LoRaFishSetting::SpeciesSet: text = ""; break; // DX-Pro only
-    case LoRaFishSetting::Species: text = value==LoRaFishSpecies::selectableCount ? "Mystery egg" : LoRaFishSpecies::label(LoRaFishSpecies::selectionId(value)); break;
+    case LoRaFishSetting::Species: text = value==0 ? "Mystery egg" : LoRaFishSpecies::label(LoRaFishSpecies::selectionId(value-1)); break;
 #endif
     case LoRaFishSetting::Theme: text = loRaFishThemes[value].name; break;
     case LoRaFishSetting::Brightness: text = loRaFishBrightnessNames[value]; break;

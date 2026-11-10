@@ -126,8 +126,8 @@ physical T190 acceptance or a save-retention guarantee. See
 ## Tester firmware
 
 Adding `-DLORAGOTCHI_TESTER_FIRMWARE=1` to a build's flags compiles a tester firmware. It only adds the pet
-colour (Pet colours) and species (Pet species) rows back to **Options > Display**; normal builds leave the flag
-undefined and hide them. Pet setup still asks for the species and colours, and saved settings and pets are not
+colour (Pet colours) and plain species (Pet species) rows back to **Options > Display**; normal builds leave the flag
+undefined and hide them. The DX-Pro **Animal set** row is always shown. Pet setup still asks for the species and colours, and saved settings and pets are not
 changed in either case.
 
 ## Find the result; flashing is separate
