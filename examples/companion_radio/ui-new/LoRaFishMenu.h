@@ -32,7 +32,7 @@ public:
 };
 
 // Tester firmware gate. Normal builds leave LORAGOTCHI_TESTER_FIRMWARE undefined and the Options menu hides the pet
-// design rows (pet colours, species). Pet setup still offers the colour choice; stored values are never touched.
+// design rows (pet colours, and the plain pet species list). The DX-Pro Animal set row stays in every build. Pet setup still offers the colour choice; stored values are never touched.
 #if defined(LORAGOTCHI_TESTER_FIRMWARE)
 constexpr bool kLoRaFishTesterFirmware = true;
 #else
@@ -48,6 +48,7 @@ enum class LoRaFishDisplayRow : uint8_t {
 struct LoRaFishDisplayRows {
   bool colourDisplay = false;   // true: the Colour row is the pet colours; false: it is the mono screen colour
   bool speciesEdition = false;
+  bool animalSet = false;       // DX-Pro: the Animal set row (step one of the species picker) is a normal option
   bool orientation = false;
   bool partial = false;
   bool dimSlow = false;
@@ -55,7 +56,7 @@ struct LoRaFishDisplayRows {
   bool available(LoRaFishDisplayRow row) const {
     switch (row) {
       case LoRaFishDisplayRow::Colour: return !colourDisplay || tester;  // pet colours: tester only
-      case LoRaFishDisplayRow::Species: return speciesEdition && tester;
+      case LoRaFishDisplayRow::Species: return speciesEdition && (animalSet || tester);  // Animal set: always; plain species list: tester only
       case LoRaFishDisplayRow::Orientation: return orientation;
       case LoRaFishDisplayRow::DisplayUpdate: return partial;
       case LoRaFishDisplayRow::DimSlow: return dimSlow;

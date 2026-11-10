@@ -836,6 +836,12 @@ inline uint32_t mix(uint32_t x) { x^=x>>16; x*=0x7feb352dUL; x^=x>>15; x*=0x846c
 inline uint16_t mystery(uint32_t seed) { return (uint16_t)(selectionId((uint8_t)(mix(seed)%selectableCount))); }
 // Mystery egg inside a chosen set: the same formula a single-set build uses, so one seed gives one animal.
 inline uint16_t setMystery(uint32_t seed,uint8_t set) { return setSelectionId(set,(uint8_t)(mix(seed)%setSize(set))); }
+// DX-Pro step-one Mystery egg: one seed picks any animal from every environment (Water, Air, Land in order).
+inline uint16_t anyMystery(uint32_t seed) {
+  uint16_t i=(uint16_t)(mix(seed)%(uint16_t)(count+airCount+landCount));
+  for(uint8_t set=0;set<setCount;++set) { if(i<setSize(set)) return setSelectionId(set,(uint8_t)i); i-=setSize(set); }
+  return TropicalFish;
+}
 inline uint8_t mysteryColour(uint32_t seed,unsigned role) { return (uint8_t)(8+mix(seed+0x9e3779b9UL*(role+1))%240); }
 inline void encode(uint8_t* p,uint16_t local,uint16_t egg,uint32_t seed,bool setup) {
   memcpy(p,"SPC1",4); p[4]=local; p[5]=local>>8; p[6]=egg; p[7]=egg>>8;

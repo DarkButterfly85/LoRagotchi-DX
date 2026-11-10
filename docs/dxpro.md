@@ -13,9 +13,10 @@ Branch: `feat/dxpro-combined-edition`. Design source: `docs/creature-compatibili
 
 ## Menu
 
-Two steps. Choosing the species first opens **ANIMAL SET** (Water / Air / Land), then the species list of
-that set (with "Mystery egg" on a new pet). Only the species ID is stored; the set is derived from it.
-Mystery egg draws inside the chosen set with the same formula a single-set build uses.
+Two steps. **ANIMAL SET** (Options > Display, always shown) lists Water / Air / Land / Mystery egg. Picking an
+environment opens its animal list, which starts with "Mystery egg" and then the animals. Only the species ID is
+stored; the set is derived from it. Mystery egg inside an environment draws from that environment with the same
+formula a single-set build uses; the fourth, top-level Mystery egg draws from all three environments.
 Back cancels the whole choice.
 
 ## Behaviour

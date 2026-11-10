@@ -319,7 +319,7 @@ int main(){
     task.handleLongPress(KEY_ENTER);assert(b==loRaFishColor && sc==loRaFishScaleColor && e==loRaFishEyeColor);
     assert(seed==loRaFishMysterySeed && mystery==loRaFishSpecies);
     assert(loRaFishMysterySelected); // Mystery colours do not change provenance.
-    loRaFishValuePicker.open(LoRaFishSetting::Species,0,LoRaFishSpecies::selectableCount+1);
+    loRaFishValuePicker.open(LoRaFishSetting::Species,1,LoRaFishSpecies::selectableCount+1);   // position 0 is Mystery egg, animal i is position i+1
     for(unsigned i=0;i<LoRaFishSpecies::selectableCount;++i) {
       if(LoRaFishSpecies::selectionId(i)==mystery) break;
       loRaFishValuePicker.step();
