@@ -157,24 +157,34 @@ inline bool sniffer(uint16_t id) { return sniffHead(id).drop!=0; }
 inline bool idleMotionFor(uint16_t id,bool eink) { return !eink || sniffer(id); }
 // Ground animals step their legs by distance walked, so a standing animal holds one still frame.
 inline bool steppedByDistance(uint16_t id) { return idleGroup(id)==IdleGround; }
+// Walk-then-fly (Land Griffin only): it stays a FlyMotion animal (legacy drift on e-ink, habitatY, layout flags)
+// but its natural idle motion walks on the ground for a while, takes off, flies a few seconds and lands again.
+// On the ground (PoseGround) its legs step by distance walked like any Land walker; in the air the two
+// frames flap on the clock like the other flyers. Presentation only: nothing is saved or sent.
+inline bool walkFly(uint16_t id) { return id==Griffin; }
 // Pose bits reported to the call site (0 = legacy path was used; the call site keeps its old behaviour).
 enum : uint8_t {
   PoseIdle=1,    // the natural idle motion produced this position
   PoseLanded=2,  // flyer standing on the floor: the ONLY case in which a flap animation may pause
   PoseHover=4,   // swimmer hovering: slow tail/fin wobble, still moving
   PoseOwnsY=8,   // y was set by the motion; the call site must not overwrite it
-  PoseSniff=16   // Land walker with its nose down (sniff phase); the sprite draws the head-down picture
+  PoseSniff=16,  // Land walker with its nose down (sniff phase); the sprite draws the head-down picture
+  PoseGround=32  // walk-fly animal on the ground: legs step by distance walked (see steppedByPose)
 };
+inline bool steppedByPose(uint16_t id,uint8_t pose) {
+  return steppedByDistance(id) || (walkFly(id) && (pose&PoseGround)!=0);
+}
 // Clock handed to the sprite animation. Airborne: the real clock (never stops). Landed: frozen frame.
 // Hovering fish: half speed, a slow wobble that still moves.
 inline uint32_t animClock(uint8_t pose,uint32_t now) {
   return (pose&PoseLanded) ? 0U : (pose&PoseHover) ? now/2U : now;
 }
 namespace naturalidle {
-enum FlyPhase : uint8_t { FlyCruise, FlyTurn, FlyDescend, FlyPerch, FlyAscend };
+enum FlyPhase : uint8_t { FlyCruise, FlyTurn, FlyDescend, FlyPerch, FlyAscend, FlyGround };
 enum SwimPhase : uint8_t { SwimDrift, SwimHover };
 struct Slot {
   uint32_t rng, start, end, lookAt;
+  uint32_t groundEnd, landAt; // walk-fly: end of the ground spell / when to start the landing
   int32_t x0q, dq, spd;     // phase start x, distance moved, speed; units of 1/16 px inside the roam span
   int16_t span; uint16_t id;
   int16_t rq;               // flyer glide-turn radius, 1/16 px
@@ -202,7 +212,7 @@ inline void seed(Slot& s,uint16_t id,int span,bool seedGuest) {
   if(!s.rng)s.rng=1U;
   s.id=id; s.span=(int16_t)span; s.valid=true; s.edge=false; s.look=false; s.walking=false;
   s.sniff=false; s.resumed=false;
-  s.dq=0; s.rq=0; s.dip=0; s.ph=0;
+  s.dq=0; s.rq=0; s.dip=0; s.ph=0; s.groundEnd=0; s.landAt=0;
 }
 
 // ======== Ground group: stand / walk / look around ====================================================
@@ -363,6 +373,52 @@ inline void flyNext(Slot& s,uint32_t at,int32_t spanq,int32_t speedq,bool flutte
   if(pick<55U) {startTurn(s,at,spanq,speedq,flutter,pick>=45U);return;} // mid-air swoop and reverse
   startCruise(s,at,spanq,speedq,flutter);
 }
+// Draw-time geometry of the current flyer phase (shared by every flyer; pure function of the slot and the clock).
+inline void flyOutput(const Slot& s,uint32_t now,int32_t spanq,int& x,bool& right,int& y,int floorY,int airY,uint8_t& pose) {
+    const uint32_t u=fraction(s,now);
+  int32_t xq=s.x0q;
+  const int airborneY=airY>=0 ? airY : y; // caller's row for this instant (tall panels pass their own slow sway)
+  int outY=airborneY;
+  pose=PoseIdle|PoseOwnsY;
+  switch(s.ph) {
+    case FlyCruise: {
+      int32_t d=(int32_t)(((uint32_t)s.spd*(now-s.start))/1000U);
+      if(d>s.dq)d=s.dq;
+      xq+=s.dir*d; right=s.dir>0; break;
+    }
+    case FlyTurn:
+      xq+=s.dir*(int32_t)(((int64_t)s.rq*bump(u))/1024);
+      right=u<512U ? s.dir>0 : s.dir<0;
+    {
+      int dip=s.dip; // a swoop never dips below the floor, even when a tall panel's sway is already low
+      if(airborneY+dip>floorY)dip=floorY>airborneY ? floorY-airborneY : 0;
+      outY=airborneY+dip*bump(u)/1024; break;
+    }
+    case FlyDescend:
+      xq+=s.dir*(int32_t)(((int64_t)s.dq*smooth(u))/1024);
+      right=s.dir>0;
+      outY=airborneY+(floorY-airborneY)*smooth(u)/1024; break;
+    case FlyPerch:
+      right=(s.look && (int32_t)(now-s.lookAt)>=0) ? !s.faceRight : s.faceRight;
+      outY=floorY; pose|=PoseLanded; break;
+    case FlyGround: { // walk-fly animal on foot: stand / walk exactly like a Land walker, legs step by distance
+      if(s.walking) {
+        int32_t d=(int32_t)(((uint32_t)s.spd*(now-s.start))/1000U);
+        if(d>s.dq)d=s.dq;
+        xq+=s.dir*d; right=s.dir>0;
+      } else right=(s.look && (int32_t)(now-s.lookAt)>=0) ? !s.faceRight : s.faceRight;
+      outY=floorY; pose|=PoseLanded|PoseGround; break;
+    }
+    default: // FlyAscend
+      xq+=s.dir*(int32_t)(((int64_t)s.dq*smooth(u))/1024);
+      right=s.dir>0;
+      outY=floorY+(airborneY-floorY)*smooth(u)/1024; break;
+  }
+  if(xq<0)xq=0;
+  if(xq>spanq)xq=spanq;
+  x=20+(xq+8)/16; y=outY;
+}
+
 // y: in = airborne base row (wing bob from habitatY), out = row to draw. floorY = standing row.
 inline void positionFlyer(Slot& s,uint16_t id,uint8_t stage,int span,uint32_t now,bool seedGuest,
                           int& x,bool& right,int& y,int floorY,int airY,uint8_t& pose) {
@@ -392,40 +448,97 @@ inline void positionFlyer(Slot& s,uint16_t id,uint8_t stage,int span,uint32_t no
     flyFinish(s);
     flyNext(s,at,spanq,speedq,flutter,landOK);
   }
-  const uint32_t u=fraction(s,now);
-  int32_t xq=s.x0q;
-  const int airborneY=airY>=0 ? airY : y; // caller's row for this instant (tall panels pass their own slow sway)
-  int outY=airborneY;
-  pose=PoseIdle|PoseOwnsY;
-  switch(s.ph) {
-    case FlyCruise: {
-      int32_t d=(int32_t)(((uint32_t)s.spd*(now-s.start))/1000U);
-      if(d>s.dq)d=s.dq;
-      xq+=s.dir*d; right=s.dir>0; break;
-    }
-    case FlyTurn:
-      xq+=s.dir*(int32_t)(((int64_t)s.rq*bump(u))/1024);
-      right=u<512U ? s.dir>0 : s.dir<0;
-    {
-      int dip=s.dip; // a swoop never dips below the floor, even when a tall panel's sway is already low
-      if(airborneY+dip>floorY)dip=floorY>airborneY ? floorY-airborneY : 0;
-      outY=airborneY+dip*bump(u)/1024; break;
-    }
-    case FlyDescend:
-      xq+=s.dir*(int32_t)(((int64_t)s.dq*smooth(u))/1024);
-      right=s.dir>0;
-      outY=airborneY+(floorY-airborneY)*smooth(u)/1024; break;
-    case FlyPerch:
-      right=(s.look && (int32_t)(now-s.lookAt)>=0) ? !s.faceRight : s.faceRight;
-      outY=floorY; pose|=PoseLanded; break;
-    default: // FlyAscend
-      xq+=s.dir*(int32_t)(((int64_t)s.dq*smooth(u))/1024);
-      right=s.dir>0;
-      outY=floorY+(airborneY-floorY)*smooth(u)/1024; break;
+  flyOutput(s,now,spanq,x,right,y,floorY,airY,pose);
+}
+
+// ======== Walk-fly group (Land Griffin only): walk / take off / fly / land ==================================
+// Same closed-form, millis()-driven scheme as the two groups above (one random draw when a phase starts,
+// nothing accumulated per frame), so every frame rate samples the same path.
+//   Ground spell, 12-20 s: the Land walker gait (stand 1-3 s, walk 2-4.5 s, turn at the edge, look around; no sniff).
+//   Take-off at the end of a stand, only if the tank is at least 48 px of roam wide: climb 0.9-1.3 s.
+//   Flight: cruise legs of 1.2-2.4 s with glide-turns at the walls, 3.5-6 s from take-off to the start of the
+//           landing, so a whole flight (climb + cruise + descent) is about 4.5-7 s, a little longer if a wall turn
+//           has to come first.
+//   Landing: descent 0.9-1.3 s to the floor row, then the next ground spell.
+// Reported as PoseGround|PoseLanded while on foot (legs step by distance, the sprite clock may rest) and as an
+// ordinary airborne flyer in between (wings flap on the clock, never frozen).
+inline void startGroundSpell(Slot& s,uint32_t at,const Gait& g) {
+  s.ph=FlyGround; s.edge=false;
+  startStand(s,at,g);
+  s.groundEnd=at+roll(s,12000U,20000U);
+}
+// One cruise leg of the flight: like startCruise but short, and never past the time the landing is due.
+inline void startGlideLeg(Slot& s,uint32_t at,int32_t spanq,int32_t speedq) {
+  const int32_t reserve=speedq*17/40;
+  int32_t room=flyRoom(s,spanq)-reserve;
+  if(room<0)room=0;
+  uint32_t w=roll(s,1200U,2400U);
+  const int32_t left=(int32_t)(s.landAt-at);
+  if(left<400)w=400U; else if(w>(uint32_t)left)w=(uint32_t)left;
+  int32_t full=(int32_t)(((uint32_t)speedq*w)/1000U);
+  s.edge=full>=room;
+  if(s.edge) {full=room; w=((uint32_t)room*1000U+(uint32_t)speedq-1U)/(uint32_t)speedq;}
+  s.ph=FlyCruise; s.start=at; s.end=at+w; s.dq=full; s.spd=speedq;
+  s.faceRight=s.dir>0;
+}
+inline void walkFlyNext(Slot& s,uint32_t at,int32_t spanq,int32_t speedq,const Gait& g) {
+  const uint8_t was=s.ph;
+  if(was==FlyDescend) {startGroundSpell(s,at,g);return;}
+  const int32_t reserve=speedq*17/40;
+  const int32_t room=flyRoom(s,spanq);
+  const bool landDue=(int32_t)(at-s.landAt)>=0;
+  const bool landRoom=room>=176+reserve;
+  if(was==FlyAscend) {startGlideLeg(s,at,spanq,speedq);return;}
+  if(was==FlyTurn) {
+    if(landDue && landRoom)startDescend(s,at); else startGlideLeg(s,at,spanq,speedq);
+    return;
   }
-  if(xq<0)xq=0;
-  if(xq>spanq)xq=spanq;
-  x=20+(xq+8)/16; y=outY;
+  // A cruise leg just ended.
+  if(landDue) {
+    if(landRoom)startDescend(s,at); else startTurn(s,at,spanq,speedq,false,false); // turn away from the wall first
+    return;
+  }
+  if(s.edge || room<reserve+16) {startTurn(s,at,spanq,speedq,false,false);return;}
+  const uint32_t pick=roll(s,0U,99U);
+  if(pick<30U)startTurn(s,at,spanq,speedq,false,pick>=24U); else startGlideLeg(s,at,spanq,speedq);
+}
+inline void positionWalkFly(Slot& s,uint16_t id,uint8_t stage,int span,uint32_t now,bool seedGuest,
+                            int& x,bool& right,int& y,int floorY,int airY,uint8_t& pose) {
+  const int32_t spanq=span*16;
+  const Gait g=gaitFor(id);
+  const uint32_t walkPeriod=stage==0 ? g.period*3U/4U : stage>=3 ? g.period*5U/4U : g.period;
+  int32_t walkq=(int32_t)((uint32_t)span*32000U/walkPeriod);
+  if(walkq<1)walkq=1;
+  const uint32_t flyPeriod=stage==0 ? 6000U : stage>=3 ? 10000U : 8000U; // same pace as the other flyers
+  int32_t flyq=(int32_t)((uint32_t)span*32000U/flyPeriod);
+  if(flyq>1500)flyq=1500;
+  if(flyq<16)flyq=16;
+  const bool takeoffOK=span>=48;
+  const bool fresh=!s.valid || s.id!=id || s.span!=span || (int32_t)(now-s.start)<0;
+  if(fresh) {
+    seed(s,id,span,seedGuest);
+    s.x0q=(int32_t)roll(s,0U,(uint32_t)spanq); s.faceRight=roll(s,0U,1U)!=0; s.dir=s.faceRight ? 1 : -1;
+    startGroundSpell(s,now,g);
+  } else if((int32_t)(now-s.end)>8000) { // not drawn for a while: land where it was and rest
+    if(s.ph==FlyGround) {if(s.walking)s.x0q=walkEnd(s);} else flyFinish(s);
+    if(s.x0q<0)s.x0q=0;
+    if(s.x0q>spanq)s.x0q=spanq;
+    startGroundSpell(s,now,g);
+  }
+  for(uint8_t guard=0;guard<8 && (int32_t)(now-s.end)>=0;++guard) {
+    const uint32_t at=s.end;
+    if(s.ph==FlyGround) {
+      if(s.walking) {s.x0q=walkEnd(s); startStand(s,at,g);}
+      else if(takeoffOK && (int32_t)(at-s.groundEnd)>=0) {
+        startAscend(s,at,spanq,flyq);
+        s.landAt=at+roll(s,3500U,6000U);
+      } else startWalk(s,at,spanq,walkq,g);
+    } else {
+      flyFinish(s);
+      walkFlyNext(s,at,spanq,flyq,g);
+    }
+  }
+  flyOutput(s,now,spanq,x,right,y,floorY,airY,pose);
 }
 
 // ======== Swimmer group: drift / hover / slow turn =====================================================
@@ -519,7 +632,8 @@ inline void habitatPosition(uint16_t id,uint8_t stage,int width,uint32_t now,
         if(slot.sniff && slot.walking)p|=PoseSniff; // nose down: Land walkers only (sniffer())
       } else if(group==IdleFlyer) {
         y=habitatY(id,y,now+offset);
-        naturalidle::positionFlyer(slot,id,stage,span,now+offset,guest,x,right,y,floorY,airY,p);
+        if(walkFly(id))naturalidle::positionWalkFly(slot,id,stage,span,now+offset,guest,x,right,y,floorY,airY,p);
+        else naturalidle::positionFlyer(slot,id,stage,span,now+offset,guest,x,right,y,floorY,airY,p);
       } else {
         naturalidle::positionSwimmer(slot,id,stage,span,now+offset,guest,x,right,p);
       }
