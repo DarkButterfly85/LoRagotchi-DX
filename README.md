@@ -2,91 +2,39 @@
 > a larger single factory app (no OTA). App-only updates do not migrate tables.
 > Back up first; see [migration/data-loss risks](docs/SINGLE-APP-MIGRATION.md).
 
-# LoRaGotchi-DX — DX, Water and Air editions
+# LoRaGotchi-DX
 
-**Build from `main`, then select your board and DX, Water or Air edition.**
-Use the [single-source build guide and board/edition table](docs/BUILDING.md);
-old feature/fix branches are history, not separate build sources.
-
-Current product source candidate: **v1.1.0**, separate from underlying MeshCore
-**v1.18.0** and the **Water v1** species registry. This version was already chosen
-in the supplied in-progress source; it is not a claim that a v1.1.0 release exists.
-The splash now reads **DX v1.1.0**, **WATER v1.1.0** or **AIR v1.1.0** from one shared header.
-Historical v1.0 release notes remain historical.
+LoRaGotchi-DX is a virtual LoRa pet for MeshCore radios. Your pet lives on a
+small board, grows up, breeds, and visits other pets over the mesh. It is
+built on MeshCore and originally written by Robert Rayner (M0YNW).
 
 ## Editions
 
-- **DX** is the original fish-only edition. Existing LoRaFish/LoRaGotchi
-  environment names build DX; they do not change edition automatically.
-- **Water** contains 15 animals in total, including fish and Anglerfish. Select a `water_*`
-  build target. See [Water controls and compatibility](WATER-EDITION.md).
-- **Air** contains 18 animals. Select an `air_*` build target. See
-  [Air controls, saves and compatibility](AIR-EDITION.md).
-- **Land** is a future idea, not an available edition or build target.
+Each edition is a separate build target. Pick the board and the edition at
+build time; they share one source tree.
 
-All editions use the same `main` source; select the device and edition at build
-time. A target or successful build is not a claim of physical hardware acceptance.
+| Edition | What it is | Animals | Build targets |
+| --- | --- | --- | --- |
+| **DX** | The original fish-only pet, with DX travel between tanks | Fish | `Heltec_T190_LoRaGotchi_DX_ble` and the DX environments in [the board matrix](docs/BUILDING.md#board-and-edition-selection) |
+| **Water** | Underwater and surface tanks | 15 | `water_*`, see [WATER-EDITION.md](WATER-EDITION.md) |
+| **Air** | Sky habitat with flyers and birds | 18 | `air_*`, see [AIR-EDITION.md](AIR-EDITION.md) |
+| **Land** | Ground animals with natural idle motion and a nose-down sniff | 43 | see [LAND-EDITION.md](LAND-EDITION.md) |
 
-LoRaGotchi is a virtual LoRa fish built on MeshCore, originally by M0YNW,
-with contributor work retained in this repository.
+Land is available on the `orion` branch, not yet on `main`. A build target or a
+successful compile is not a claim of physical hardware acceptance; see the
+testing notes in [docs/BUILDING.md](docs/BUILDING.md).
 
-For setup, controls, menus, pet behavior, and DX travel, see [Getting Started](Getting_Started.md).
+For setup, controls, menus, pet behaviour and DX travel, see
+[Getting Started](Getting_Started.md).
 
-## Historical v1.0 highlights
-- LoRaGotchi virtual-pet aquarium and evolution/gameplay
-- DX fish visiting using the LFG1 protocol
-    - LFG1 protocol upgraded to include colour information
-    - Improved the visiting and eating animations
-    - Send, acknowledge, commit, arrival confirmation and recall/return flow
-    - Host and visiting fish can coexist and swim independently
-    - Visiting fish keeps its own evolution stage
-    - A fish away from it's own tank will no longer poop in it's own tank
-    - Travel is locked while the local fish is asleep
-    - DX session state is cleared on reboot as a recovery mechanism
-- LoRaGotchi / M0YNW boot branding
-- MeshCore remains the underlying radio/mesh transport
-- Buzzer support
-- Colour screen support
-- Higher/Lower game - 5 rounds; each correct guess adds 1 Happy (max +5 per game)
+## Documentation
 
-## Testing features:
-- Emoji-safe names and fish-marked DX discovery
-    - Fish markers 🐟 🐠 🐡 🦈 render as `><>`; unsupported Unicode renders as spaces
-    - The DX picker lists only saved companion contacts with a fish marker in their name
-    - Dismissible boot reminder for unmarked names; no automatic renaming
-- LoRagotchi-local flash and display savings
-    - Five-minute passive-counter checkpoints; immediate care/lifecycle/settings saves
-    - Identical-record suppression and bounded retries after failed file writes
-    - Shared five-second battery display cache using MeshCore's existing readings
-    - Unchanged static menus skip redraws; dimmed animation keeps its normal cadence
-    - Shared MeshCore, radio, board power configuration and save formats unchanged
-- Lifecycle improvements, basic fish-colour DNA, breeding & self-fertilization
-    - Your fish now has generations > everyone starts with a 1st gen fish. old-age death no longer ends the LoRagotchi game
-    - Your game will ask for what colour your fish should start as. breeding can evolve the fish.
-- happiness re-balance
-    - RF interactions count toward meals, without a direct Happy bonus
-    - +3 Happy per ten-event meal, limited to one meal per hour; no queued backlog
-    - -1 Happy per 30 awake minutes, plus -1 per waste piece at the same interval
-    - Scheduled sleep, eggs and Memorial pause decay; turning the screen off does not
-    - Cleaning stays +3; new generations start at 80; Happy stays between 0 and 100
-- M2 Partition change - dropped 2nd app partition in favour of a larger primary app partition.
-    - alleviates flash from 95.5% to about 42%, in line with other nodes.
-    - retained NVS, Filesystem and Coredump partitions.
-    - Disables OTA updates (not used or planned)
-- M5Stack CardPuter
-    - Updated graphics and keyboard controls for the menu
-- LilyGo T-Deck
-    - Framebuffer for the display.
-    - Touchscreen
- 
-  
-## T190 Water and Air (experimental colour)
-
-On `fix/pet-followup-20261106`, build `water_heltec_t190_ble` or
-`air_heltec_t190_ble`; DX remains `Heltec_T190_LoRaGotchi_DX_ble`.
-See [T190 commands and hosted selector](docs/BUILDING.md#t190-colour-edition-builds).
-These are colour pet targets, not the stock companion-radio environment.
-Fixed Age label, now displays appropriate labels for chosen pet species.
+- [Getting Started](Getting_Started.md): setup, controls and menus
+- [Building and board matrix](docs/BUILDING.md): exact build names and outputs
+- [Feature history and testing notes](docs/HISTORY.md): what changed and when
+- [Credits](docs/CREDITS.md): who made what
+- [Licence](LICENSE) and [NOTICE](NOTICE)
+""
 
 ## Boards and edition targets
 
