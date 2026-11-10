@@ -15,10 +15,11 @@ build time; they share one source tree.
 
 | Edition | What it is | Animals | Build targets |
 | --- | --- | --- | --- |
-| **DX** | The original fish-only pet, with DX travel between tanks | Fish | `Heltec_T190_LoRaGotchi_DX_ble` and the DX environments in [the board matrix](docs/BUILDING.md#board-and-edition-selection) |
+| **DX** | The original fish-only pet, with DX travel between tanks | Fish | The existing LoRaFish/LoRaGotchi DX environments, see [the board matrix](docs/BUILDING.md#board-and-edition-selection) |
 | **Water** | Underwater and surface tanks | 15 | `water_*`, see [WATER-EDITION.md](WATER-EDITION.md) |
 | **Air** | Sky habitat with flyers and birds | 18 | `air_*`, see [AIR-EDITION.md](AIR-EDITION.md) |
-| **Land** | Ground animals with natural idle motion and a nose-down sniff | 43 | see [LAND-EDITION.md](LAND-EDITION.md) |
+| **Land** | Ground animals with natural idle motion and a nose-down sniff | 43 | `land_*`, see [LAND-EDITION.md](LAND-EDITION.md) |
+| **DX-Pro** | One firmware with the Water, Air and Land animal sets together (combined DX + Water + Air + Land) | Water, Air and Land sets | `dxpro_<board>`, for example `dxpro_heltec_v3_ble`; see [DX-Pro](docs/dxpro.md) and [the board matrix](docs/BUILDING.md#board-and-edition-selection) |
 
 Land is available on the `orion` branch, not yet on `main`. A build target or a
 successful compile is not a claim of physical hardware acceptance; see the
@@ -34,7 +35,6 @@ For setup, controls, menus, pet behaviour and DX travel, see
 - [Feature history and testing notes](docs/HISTORY.md): what changed and when
 - [Credits](docs/CREDITS.md): who made what
 - [Licence](LICENSE) and [NOTICE](NOTICE)
-""
 
 ## Boards and edition targets
 
