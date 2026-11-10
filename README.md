@@ -21,7 +21,7 @@ build time; they share one source tree.
 | **Land** | Ground animals with natural idle motion and a nose-down sniff | 43 | `land_*`, see [LAND-EDITION.md](LAND-EDITION.md) |
 | **DX-Pro** | One firmware with the Water, Air and Land animal sets together (combined DX + Water + Air + Land) | Water, Air and Land sets | `dxpro_<board>`, for example `dxpro_heltec_v3_ble`; see [DX-Pro](docs/dxpro.md) and [the board matrix](docs/BUILDING.md#board-and-edition-selection) |
 
-Land is available on the `orion` branch, not yet on `main`. A build target or a
+Land and DX-Pro are available on the `orion` branch, not yet on `main`. A build target or a
 successful compile is not a claim of physical hardware acceptance; see the
 testing notes in [docs/BUILDING.md](docs/BUILDING.md).
 
@@ -37,17 +37,6 @@ For setup, controls, menus, pet behaviour and DX travel, see
 - [Credits](docs/CREDITS.md): who made what
 - [Licence](LICENSE) and [NOTICE](NOTICE)
 
-## Boards and edition targets
-
-Use the [complete board/edition matrix](docs/BUILDING.md#board-and-edition-selection)
-for the exact, case-sensitive DX, Water, Air, Land and DX-Pro environment names
-and BIN/UF2 output. It covers Heltec V3, V4 OLED, T096 and T114, ThinkNode M2,
-M5Stack Cardputer, T-Deck BLE/USB, Wio Tracker L1/L1-1W, RAK4631/4630, T-Beam 1W,
-and Station G2/G3 ESP32. Select the exact radio, display and board variant;
-V4 OLED is not V4 TFT, and L1 is not L1-1W. Which boards are experimental or
-untested on hardware is listed in
-[Compatibility and test status](docs/BUILDING.md#compatibility-and-test-status).
-
 ## Build and install
 
 1. **Get the source.** Install Git and
@@ -61,9 +50,13 @@ untested on hardware is listed in
    ```
 
 2. **Choose the board and edition** from the
-   [board/edition matrix](docs/BUILDING.md#board-and-edition-selection), then run
-   **one** command for it. Heltec V3 examples are below. Do not run an unqualified
-   `pio run`, which selects unrelated upstream targets.
+   [board/edition matrix](docs/BUILDING.md#board-and-edition-selection) (exact,
+   case-sensitive names and BIN/UF2 output), then run **one** command for it.
+   Select the exact radio, display and board variant: V4 OLED is not V4 TFT, and
+   L1 is not L1-1W. Which boards are experimental or untested on hardware is in
+   [Compatibility and test status](docs/BUILDING.md#compatibility-and-test-status).
+   Heltec V3 examples are below. Do not run an unqualified `pio run`, which
+   selects unrelated upstream targets.
 
    ```sh
    pio run -e Heltec_v3_LoRaFish_companion_ble -j 1  # DX
@@ -102,19 +95,3 @@ See [`NOTICE`](NOTICE) for attribution details.
 ## License
 
 MIT. See [`LICENSE`](LICENSE).
-
-## Air edition build targets
-
-Use the existing GitHub firmware-build policy; do not run every inherited target.
-The manual Air owner workflow selects these environments and their DX/Water
-controls after host checks (publication/CI permission is still required):
-
-- air_heltec_v3_ble — ESP32 application BIN
-- air_heltec_v4_oled_ble — ESP32 application BIN
-- air_heltec_t096_ble — nRF52 create_uf2
-
-Additional aliases mirror Water: air_thinknode_m2_ble, air_m5stack_cardputer,
-air_heltec_t114_ble, air_lilygo_tdeck_ble, air_lilygo_tdeck_usb,
-air_rak4631_ble and air_rak4630_ble. They inherit unchanged hardware, RF and memory
-profiles, not a hardware acceptance claim. Details and remaining gates:
-[AIR-EDITION.md](AIR-EDITION.md).

@@ -218,3 +218,25 @@ Future Water/Air product branding or distribution channels need a separate
 decision, not duplicate source-maintenance branches. Combined-habitat
 products remain future work. See [Water](../WATER-EDITION.md) and
 [Air](../AIR-EDITION.md) for saves, adoption and negotiated visiting fallbacks.
+
+## Air edition build targets
+
+Use the existing GitHub firmware-build policy; do not run every inherited target.
+The manual Air owner workflow selects these environments and their DX/Water
+controls after host checks (publication/CI permission is still required):
+
+- air_heltec_v3_ble — ESP32 application BIN
+- air_heltec_v4_oled_ble — ESP32 application BIN
+- air_heltec_t096_ble — nRF52 create_uf2
+
+Additional aliases mirror Water: air_thinknode_m2_ble, air_m5stack_cardputer,
+air_heltec_t114_ble, air_lilygo_tdeck_ble, air_lilygo_tdeck_usb,
+air_rak4631_ble and air_rak4630_ble. They inherit unchanged hardware, RF and memory
+profiles, not a hardware acceptance claim. Details and remaining gates:
+[AIR-EDITION.md](../AIR-EDITION.md).
+
+Note: this list predates the later Air aliases. The `air_*` environments in
+[the Air definitions](../variants/loragotchi_air/platformio.ini) now also include
+`air_wio_tracker_l1_ble`, `air_wio_tracker_l1_1w_ble`, `air_heltec_t190_ble`,
+`air_lilygo_tbeam_1w_ble`, `air_station_g2_ble` and `air_station_g3_esp32_ble`;
+the [board matrix](#board-and-edition-selection) lists every current name.
