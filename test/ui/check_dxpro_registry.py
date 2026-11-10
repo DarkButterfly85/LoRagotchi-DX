@@ -18,7 +18,7 @@ code=r'''
 #include "examples/companion_radio/ui-new/LoRaFishText.h"
 using namespace LoRaFishSpecies;
 int main() {
- // Three disjoint registries, 72 species, unique IDs and unique names, nothing else known.
+ // Three disjoint registries, 76 species, unique IDs and unique names, nothing else known.
  static_assert(count==15 && airCount==18 && landCount==43,"registry sizes");
  static_assert(Eagle==256 && Dog==512 && Kitsune==512+landCount-1 && Bug==256+airCount-1,"stable ID blocks");
  std::set<unsigned> ids;std::set<std::string> names;unsigned total=0;
@@ -28,14 +28,14 @@ int main() {
   assert((int)w+(int)a+(int)l<=1); // no ID is in two registries
   if(known(id)){++total;ids.insert(id);names.insert(label(id));assert(strcmp(label(id),"Unknown (fish)"));}
  }
- assert(total==72 && ids.size()==72 && names.size()==72);
+ assert(total==76 && ids.size()==76 && names.size()==76);
  // Visibility per build: DX-Pro owns all three, a single edition owns only its own.
  for(unsigned id=0;id<65536;++id) {
   const bool w=id<15,a=id>=256&&id<=273,l=id>=512&&id<=554;
   const bool expect=LORAGOTCHI_DXPRO ? (w||a||l) : LORAGOTCHI_LAND_EDITION ? l : LORAGOTCHI_AIR_EDITION ? a : w;
   assert(editionKnown(id)==expect);
  }
- // Sets: sizes, derivation from the ID, and a lossless set -> species -> ID -> set round trip, all 72 once.
+ // Sets: sizes, derivation from the ID, and a lossless set -> species -> ID -> set round trip, all 76 once.
  static_assert(setCount==3,"Water, Air, Land");
  assert(setSize(0)==15 && setSize(1)==18 && setSize(2)==43);
  assert(!strcmp(setLabel(0),"Water") && !strcmp(setLabel(1),"Air") && !strcmp(setLabel(2),"Land"));
@@ -86,8 +86,8 @@ with tempfile.TemporaryDirectory(prefix='dxpro-registry-') as t:
   subprocess.run(['g++','-std=c++17','-Wall','-Wextra','-Werror','-fsanitize=address,undefined','-I',str(ROOT),'-I',str(ROOT/'src'),
     *flags,str(p/'test.cpp'),'-o',exe],check=True)
   out=subprocess.run([exe],check=True,capture_output=True,text=True).stdout.strip()
-  assert out==name+' species=72',out
-  print('PASS',build,'build sees',{'DXPRO':'Water+Air+Land (72)','DX':'Water registry only','WATER':'Water registry only','AIR':'Air registry only','LAND':'Land registry only'}[build])
+  assert out==name+' species=76',out
+  print('PASS',build,'build sees',{'DXPRO':'Water+Air+Land (76)','DX':'Water registry only','WATER':'Water registry only','AIR':'Air registry only','LAND':'Land registry only'}[build])
 # DX-Pro and a single edition together is a configuration error.
 for other in ('WATER','AIR','LAND'):
  r=subprocess.run(['g++','-std=c++17','-fsyntax-only','-DLORAGOTCHI_DXPRO=1','-DLORAGOTCHI_%s_EDITION=1'%other,
@@ -104,4 +104,4 @@ assert mesh.count('S1|L1')==1 and mesh.count('S1|A1')==1 # no new wire suffix
 for f in ('LoRaFishSpecies.h','ui-new/LoRaFishMenu.h'):
  src=(ROOT/'examples/companion_radio'/f).read_text()
  assert not re.search(r'ESP32|ARDUINO_|nrf52|NRF52|PIN_|DISPLAY_CLASS',src),f # registry/menu data has no board or chip assumptions
-print('PASS DX-Pro: three registries, 72 unique IDs, set-then-species menu reaches every species once, wire strings unchanged, single editions unchanged')
+print('PASS DX-Pro: three registries, 76 unique IDs, set-then-species menu reaches every species once, wire strings unchanged, single editions unchanged')
