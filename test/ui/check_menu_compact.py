@@ -261,7 +261,7 @@ if __name__=='__main__':
         (p/'draw.cpp').write_text(build_draw_source())
         for sound in [False,True]:
           for pro in [False,True]:
-            cmd=['g++','-std=c++17','-w','-DPIN_USER_BTN=0','-I'+str(ROOT),'-I'+str(ROOT/'src'),str(p/'draw.cpp'),'-o',str(p/'draw')]
+            cmd=['g++','-std=c++17','-w','-DPIN_USER_BTN=0','-DLORAGOTCHI_TESTER_FIRMWARE=1','-I'+str(ROOT),'-I'+str(ROOT/'src'),str(p/'draw.cpp'),'-o',str(p/'draw')]
             if sound: cmd.append('-DPIN_BUZZER=6')
             if pro: cmd.append('-DLORAGOTCHI_DXPRO=1')
             run(cmd);run([str(p/'draw')])

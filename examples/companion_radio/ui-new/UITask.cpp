@@ -612,12 +612,29 @@ static uint32_t loRaFishScreenTimeoutMs() {
   const uint8_t setting=loRaFishIsSleeping() ? loRaFishTimeoutAsleepSetting : loRaFishTimeoutAwakeSetting;
   return loRaFishTimeoutValues[min((uint8_t)5,setting)];
 }
+// Display list rows. Pet colours and species are tester-firmware only (LORAGOTCHI_TESTER_FIRMWARE); pet setup
+// keeps its own colour and species choices. The menu index is a position among the visible rows only.
+static LoRaFishDisplayRows loRaFishDisplayRows() {
+  LoRaFishDisplayRows rows;
+  rows.colourDisplay = loRaFishColorDisplay;
+  rows.speciesEdition = LORAGOTCHI_SPECIES_EDITION != 0;
+  rows.orientation = loRaFishOrientationSupported;
+  rows.partial = loRaFishPartialSupported;
+  rows.dimSlow = loRaFishDimSlowSupported;
+  return rows;
+}
 static uint8_t loRaFishDisplayOptionCount() {
-  return 5 + (LORAGOTCHI_SPECIES_EDITION ? 1 : 0) + loRaFishOrientationSupported + loRaFishPartialSupported + loRaFishDimSlowSupported;
+  return loRaFishDisplayRows().count();
+}
+static LoRaFishDisplayRow loRaFishDisplayRowAt(uint8_t position) {
+  return loRaFishDisplayRows().at(position);
+}
+static uint8_t loRaFishDisplayRowIndex(LoRaFishDisplayRow row) {
+  return loRaFishDisplayRows().index(row);
 }
 // Slow animation when dimmed: the optional last Display row.
 static uint8_t loRaFishDimSlowOptionIndex() {
-  return 5 + (LORAGOTCHI_SPECIES_EDITION ? 1 : 0) + loRaFishOrientationSupported + loRaFishPartialSupported;
+  return loRaFishDisplayRowIndex(LoRaFishDisplayRow::DimSlow);
 }
 static bool loRaFishDimSlowActive() {
   return loRaFishDimSlowSupported && loRaFishDimSlow != 0 && loRaFishScreenDimmed;
@@ -3016,8 +3033,6 @@ static void drawLoRaFishMenuLabel(DisplayDriver& display, int y, bool selected, 
 }
 
 static void drawLoRaFishDisplayMenu(DisplayDriver& display) {
-  static const char* monoLabels[] = {"Screen timeout", "Brightness", "Firmware theme", "Screen colour", "Game rendering", "Pet species"};
-  static const char* colorLabels[] = {"Screen timeout", "Brightness", "Firmware theme", "Pet colours", "Game rendering", "Pet species"};
   const uint8_t count = loRaFishDisplayOptionCount();
   const int visible = LoRaFishMenuLayout::rowsFor(display);
   const int first = LoRaFishMenuLayout::first(loRaFishDisplayOption, count, visible);
@@ -3025,11 +3040,20 @@ static void drawLoRaFishDisplayMenu(DisplayDriver& display) {
   display.setColor(UIColor::primary_txt);
   for (int row = 0; row < visible && first + row < count; ++row) {
     const uint8_t option = first + row;
-    drawLoRaFishMenuLabel(display, LoRaFishMenuLayout::rowYFor(display, row), option == loRaFishDisplayOption,
-        (loRaFishDimSlowSupported && option == loRaFishDimSlowOptionIndex()) ? "Slow when dimmed" :
-        (loRaFishPartialSupported && option == 5 + (LORAGOTCHI_SPECIES_EDITION ? 1 : 0) + loRaFishOrientationSupported) ? "Display update" :
-        (loRaFishOrientationSupported && option == 5 + (LORAGOTCHI_SPECIES_EDITION ? 1 : 0)) ? "Orientation" :
-        (loRaFishColorDisplay ? colorLabels[option] : monoLabels[option]));
+    const char* label = "";
+    switch (loRaFishDisplayRowAt(option)) {
+      case LoRaFishDisplayRow::Timeout: label = "Screen timeout"; break;
+      case LoRaFishDisplayRow::Brightness: label = "Brightness"; break;
+      case LoRaFishDisplayRow::Theme: label = "Firmware theme"; break;
+      case LoRaFishDisplayRow::Colour: label = loRaFishColorDisplay ? "Pet colours" : "Screen colour"; break;
+      case LoRaFishDisplayRow::Rendering: label = "Game rendering"; break;
+      case LoRaFishDisplayRow::Species: label = "Pet species"; break;
+      case LoRaFishDisplayRow::Orientation: label = "Orientation"; break;
+      case LoRaFishDisplayRow::DisplayUpdate: label = "Display update"; break;
+      case LoRaFishDisplayRow::DimSlow: label = "Slow when dimmed"; break;
+      case LoRaFishDisplayRow::Count: break;
+    }
+    drawLoRaFishMenuLabel(display, LoRaFishMenuLayout::rowYFor(display, row), option == loRaFishDisplayOption, label);
   }
   drawLoRaFishMenuHint(display, true);
 }
@@ -6344,33 +6368,32 @@ char UITask::handleLongPress(char c, bool isHold) {
   }
 #endif
   if (loRaFishPage == 12) {
-    if (loRaFishDimSlowSupported && loRaFishDisplayOption == loRaFishDimSlowOptionIndex()) {
-      loRaFishPage = 15; openLoRaFishValue(LoRaFishSetting::DimSlow);
-    } else if (loRaFishPartialSupported && loRaFishDisplayOption == 5 + (LORAGOTCHI_SPECIES_EDITION ? 1 : 0) + loRaFishOrientationSupported) {
-      loRaFishPage = 15; openLoRaFishValue(LoRaFishSetting::DisplayUpdate);
-    } else if (loRaFishOrientationSupported && loRaFishDisplayOption == 5 + (LORAGOTCHI_SPECIES_EDITION ? 1 : 0)) {
-      loRaFishPage = 15;
-      openLoRaFishValue(LoRaFishSetting::Orientation);
-    } else if (loRaFishDisplayOption == 0) {
-      loRaFishTimeoutField = 0;
-      loRaFishPage = 11;
-    } else if (loRaFishDisplayOption == 1) {
-      loRaFishPage = 13;
-      openLoRaFishValue(LoRaFishSetting::Brightness);
-    } else if (loRaFishDisplayOption == 2) {
-      loRaFishPage = 8;
-      openLoRaFishValue(LoRaFishSetting::Theme);
-    } else if (loRaFishDisplayOption == 3 && loRaFishColorDisplay) {
-      loRaFishColorField = 0;
-      loRaFishPage = 9;
-    } else if (loRaFishDisplayOption == 3) {
-      loRaFishPage = 15;
-      openLoRaFishValue(LoRaFishSetting::MonoDisplayColour);
-    } else if (LORAGOTCHI_SPECIES_EDITION && loRaFishDisplayOption == 5) {
-      loRaFishPage = 15; openLoRaFishValue(LoRaFishSetting::Species);
-    } else if (loRaFishDisplayOption == 4) {
-      loRaFishPage = 15;
-      openLoRaFishValue(LoRaFishSetting::Rendering);
+    // A stale index (past the visible rows) selects nothing and is pulled back to the first row.
+    if (loRaFishDisplayOption >= loRaFishDisplayOptionCount()) {
+      loRaFishDisplayOption = 0; _next_refresh = 0; return 0;
+    }
+    switch (loRaFishDisplayRowAt(loRaFishDisplayOption)) {
+      case LoRaFishDisplayRow::DimSlow:
+        loRaFishPage = 15; openLoRaFishValue(LoRaFishSetting::DimSlow); break;
+      case LoRaFishDisplayRow::DisplayUpdate:
+        loRaFishPage = 15; openLoRaFishValue(LoRaFishSetting::DisplayUpdate); break;
+      case LoRaFishDisplayRow::Orientation:
+        loRaFishPage = 15; openLoRaFishValue(LoRaFishSetting::Orientation); break;
+      case LoRaFishDisplayRow::Timeout:
+        loRaFishTimeoutField = 0; loRaFishPage = 11; break;
+      case LoRaFishDisplayRow::Brightness:
+        loRaFishPage = 13; openLoRaFishValue(LoRaFishSetting::Brightness); break;
+      case LoRaFishDisplayRow::Theme:
+        loRaFishPage = 8; openLoRaFishValue(LoRaFishSetting::Theme); break;
+      case LoRaFishDisplayRow::Colour:
+        if (loRaFishColorDisplay) { loRaFishColorField = 0; loRaFishPage = 9; }   // pet colours (tester only)
+        else { loRaFishPage = 15; openLoRaFishValue(LoRaFishSetting::MonoDisplayColour); }
+        break;
+      case LoRaFishDisplayRow::Species:
+        loRaFishPage = 15; openLoRaFishValue(LoRaFishSetting::Species); break;      // tester only
+      case LoRaFishDisplayRow::Rendering:
+        loRaFishPage = 15; openLoRaFishValue(LoRaFishSetting::Rendering); break;
+      case LoRaFishDisplayRow::Count: break;
     }
     _next_refresh = 0;
     return 0;
@@ -6539,14 +6562,26 @@ char UITask::handleDoubleClick(char c, bool oneButtonDirection) {
     case 12: returnToLoRaFishOptions(LoRaFishOption::Display); break;
     case 14: returnToLoRaFishOptions(LoRaFishOption::Sound); break;
     case 16: returnToLoRaFishOptions(LoRaFishOption::Guess); break;
-    case 8: loRaFishDisplayOption = 2; loRaFishPage = 12; break;
+    case 8: loRaFishDisplayOption = loRaFishDisplayRowIndex(LoRaFishDisplayRow::Theme); loRaFishPage = 12; break;
     case 9: if (loRaFishNeedsPetSetup) loRaFishPage=LORAFISH_PET_SETUP_PAGE;
-      else {loRaFishDisplayOption=3;loRaFishPage=12;} break;
+      else {loRaFishDisplayOption=loRaFishDisplayRowIndex(LoRaFishDisplayRow::Colour);loRaFishPage=12;} break;
     case LORAFISH_PET_SETUP_PAGE: break;
-    case 11: loRaFishDisplayOption = 0; loRaFishPage = 12; break;
-    case 13: loRaFishDisplayOption = 1; loRaFishPage = 12; break;
-    case 15: if (loRaFishValuePicker.key() == LoRaFishSetting::DimSlow) { loRaFishDisplayOption = loRaFishDimSlowOptionIndex(); loRaFishPage = 12; break; }
-             loRaFishDisplayOption = loRaFishColorDisplay ? 4 : (loRaFishValuePicker.key() == LoRaFishSetting::MonoDisplayColour ? 3 : 4); loRaFishPage = 12; break;
+    case 11: loRaFishDisplayOption = loRaFishDisplayRowIndex(LoRaFishDisplayRow::Timeout); loRaFishPage = 12; break;
+    case 13: loRaFishDisplayOption = loRaFishDisplayRowIndex(LoRaFishDisplayRow::Brightness); loRaFishPage = 12; break;
+    case 15: {
+      // Back from a Display picker returns to the row that opened it (an index into the visible rows).
+      LoRaFishDisplayRow row = LoRaFishDisplayRow::Rendering;
+      switch (loRaFishValuePicker.key()) {
+        case LoRaFishSetting::DimSlow: row = LoRaFishDisplayRow::DimSlow; break;
+        case LoRaFishSetting::DisplayUpdate: row = LoRaFishDisplayRow::DisplayUpdate; break;
+        case LoRaFishSetting::Orientation: row = LoRaFishDisplayRow::Orientation; break;
+        case LoRaFishSetting::MonoDisplayColour: row = LoRaFishDisplayRow::Colour; break;
+        case LoRaFishSetting::Species:
+        case LoRaFishSetting::SpeciesSet: row = LoRaFishDisplayRow::Species; break;
+        default: break;
+      }
+      loRaFishDisplayOption = loRaFishDisplayRowIndex(row); loRaFishPage = 12; break;
+    }
     default: loRaFishPage = 0; loRaFishOption = LoRaFishOption::Advert; break;
   }
   _next_refresh = 0;

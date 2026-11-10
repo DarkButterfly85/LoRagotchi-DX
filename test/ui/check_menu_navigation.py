@@ -195,7 +195,7 @@ parts=[pre]+[declaration(name) for name in names]
 parts += [block('struct LoRaFishThemePalette')+';',declaration('loRaFishThemes'),
  'static constexpr uint8_t LORAFISH_COLOR_THEME_COUNT=4,LORAFISH_COLOR_ALLELE_COUNT=7;',
  source[source.index('static constexpr bool loRaFishHasSound'):source.index('#endif',source.index('static constexpr bool loRaFishHasSound'))+len('#endif')]]
-for name in ['static void beginLoRaFishChannelNotice(', 'static bool dismissLoRaFishNotice(', 'static void drawLoRaFishChannelNotice(', 'static void beginLoRaFishNameNotice(', 'static const char* loRaFishDisplayName(', 'static const char* loRaFishProtocolName(', 'static uint8_t loRaFishThemeCount(', 'static uint8_t loRaFishDisplayOptionCount(', 'static uint8_t loRaFishDimSlowOptionIndex(',
+for name in ['static void beginLoRaFishChannelNotice(', 'static bool dismissLoRaFishNotice(', 'static void drawLoRaFishChannelNotice(', 'static void beginLoRaFishNameNotice(', 'static const char* loRaFishDisplayName(', 'static const char* loRaFishProtocolName(', 'static uint8_t loRaFishThemeCount(', 'static LoRaFishDisplayRows loRaFishDisplayRows(', 'static uint8_t loRaFishDisplayOptionCount(', 'static LoRaFishDisplayRow loRaFishDisplayRowAt(', 'static uint8_t loRaFishDisplayRowIndex(', 'static uint8_t loRaFishDimSlowOptionIndex(',
  'static uint8_t loRaFishOptionCount(', 'static void returnToLoRaFishOptions(',
  'static void serviceLoRaFishSettingsMenu(', 'static void cancelLoRaFishValue(', 'static void openLoRaFishValue(', 'static void ensureLoRaFishMysterySeed(', 'static void chooseLoRaFishMysteryColours(', 'static void selectLoRaFishValue(',
  'static void loRaFishFormatUtcOffset(', 'static void drawLoRaFishHeader(',
@@ -617,7 +617,7 @@ if __name__ == '__main__':
         cpp=Path(temporary)/'menu-host-check.cpp';cpp.write_text('\n'.join(parts))
         for sound in [False,True]:
             out=Path(temporary)/f'menu-host-check-{int(sound)}'
-            cmd=['g++','-std=c++17','-DPIN_USER_BTN=0','-DLORAGOTCHI_WATER_EDITION='+os.environ.get('LORAGOTCHI_TEST_EDITION','0'),'-DLORAGOTCHI_AIR_EDITION='+os.environ.get('LORAGOTCHI_TEST_AIR','0'),'-I',str(root),'-I',str(root/'src'),str(cpp),'-o',str(out)]
+            cmd=['g++','-std=c++17','-DPIN_USER_BTN=0','-DLORAGOTCHI_TESTER_FIRMWARE=1','-DLORAGOTCHI_WATER_EDITION='+os.environ.get('LORAGOTCHI_TEST_EDITION','0'),'-DLORAGOTCHI_AIR_EDITION='+os.environ.get('LORAGOTCHI_TEST_AIR','0'),'-I',str(root),'-I',str(root/'src'),str(cpp),'-o',str(out)]
             if sound:cmd+=['-DPIN_BUZZER=6']
             subprocess.run(cmd,check=True)
             subprocess.run([str(out)],check=True)

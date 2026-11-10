@@ -40,7 +40,8 @@ assert re.search(r'SpeciesSet,[^\n]*\n\s*DimSlow', MENU)
 assert '"SLOW WHEN DIM"' in UI and UI.count('LoRaFishSetting::DimSlow') >= 4
 assert '"Slow when dimmed"' in UI
 # Display menu row exists only when supported, appended after the existing rows
-assert re.search(r'loRaFishPartialSupported \+ loRaFishDimSlowSupported;', UI)
+assert 'rows.dimSlow = loRaFishDimSlowSupported;' in UI
+assert re.search(r'DisplayUpdate, DimSlow, Count', MENU) or re.search(r'DisplayUpdate,\s*DimSlow,\s*Count', MENU)
 
 # ---- settings format: one optional tail, size 106 -> 112 ----------------
 assert 'LORAFISH_SETTINGS_SIZE = 112;' in UI

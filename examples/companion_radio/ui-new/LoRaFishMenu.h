@@ -31,6 +31,64 @@ public:
   }
 };
 
+// Tester firmware gate. Normal builds leave LORAGOTCHI_TESTER_FIRMWARE undefined and the Options menu hides the pet
+// design rows (pet colours, species). Pet setup still offers the colour choice; stored values are never touched.
+#if defined(LORAGOTCHI_TESTER_FIRMWARE)
+constexpr bool kLoRaFishTesterFirmware = true;
+#else
+constexpr bool kLoRaFishTesterFirmware = false;
+#endif
+
+// Stable identities for the Display list. The menu index is the position among the rows that are available, so
+// hidden rows never leave a gap and up/down navigation (a modulo over count()) cannot land on them.
+enum class LoRaFishDisplayRow : uint8_t {
+  Timeout, Brightness, Theme, Colour, Rendering, Species, Orientation, DisplayUpdate, DimSlow, Count
+};
+
+struct LoRaFishDisplayRows {
+  bool colourDisplay = false;   // true: the Colour row is the pet colours; false: it is the mono screen colour
+  bool speciesEdition = false;
+  bool orientation = false;
+  bool partial = false;
+  bool dimSlow = false;
+  bool tester = kLoRaFishTesterFirmware;
+  bool available(LoRaFishDisplayRow row) const {
+    switch (row) {
+      case LoRaFishDisplayRow::Colour: return !colourDisplay || tester;  // pet colours: tester only
+      case LoRaFishDisplayRow::Species: return speciesEdition && tester;
+      case LoRaFishDisplayRow::Orientation: return orientation;
+      case LoRaFishDisplayRow::DisplayUpdate: return partial;
+      case LoRaFishDisplayRow::DimSlow: return dimSlow;
+      case LoRaFishDisplayRow::Count: return false;
+      default: return true;
+    }
+  }
+  uint8_t count() const {
+    uint8_t n = 0;
+    for (uint8_t i = 0; i < static_cast<uint8_t>(LoRaFishDisplayRow::Count); ++i)
+      n += available(static_cast<LoRaFishDisplayRow>(i));
+    return n;
+  }
+  LoRaFishDisplayRow at(uint8_t position) const {
+    for (uint8_t i = 0; i < static_cast<uint8_t>(LoRaFishDisplayRow::Count); ++i) {
+      const auto row = static_cast<LoRaFishDisplayRow>(i);
+      if (available(row) && position-- == 0) return row;
+    }
+    return LoRaFishDisplayRow::Timeout;
+  }
+  // Position of a row in the visible list; 0 when that row is hidden.
+  uint8_t index(LoRaFishDisplayRow row) const {
+    uint8_t position = 0;
+    for (uint8_t i = 0; i < static_cast<uint8_t>(LoRaFishDisplayRow::Count); ++i) {
+      const auto candidate = static_cast<LoRaFishDisplayRow>(i);
+      if (!available(candidate)) continue;
+      if (candidate == row) return position;
+      ++position;
+    }
+    return 0;
+  }
+};
+
 enum class LoRaFishSetting : uint8_t {
   Theme, Brightness, Rendering, Scales, Body, Eyes, SleepHour, WakeHour, UtcOffset,
   TimeoutAwake, TimeoutAsleep, DimAfter, Volume, WakeSound, SleepSound, MessageSound, MonoDisplayColour, Species, Orientation, DisplayUpdate,
