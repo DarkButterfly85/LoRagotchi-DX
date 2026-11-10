@@ -33,7 +33,7 @@ static const char* const expectedNames[]={"Dog","Cat","Horse","Cow","Elephant","
  "Lizard","Turtle","Snake","Unicorn","Dragon","Griffin","Phoenix","Sauropod","T-Rex"};
 int main() {
  static_assert(landCount==39,"owner list: 28 land + 5 amphibious + 6 mythic");
- static_assert(sizeof(LoRaFishLandArt::masks)==39*2*192,"Land ROM asset budget");
+ static_assert(sizeof(LoRaFishLandArt::masks)==landCount*2*192,"one 2-frame mask per Land species");
  static_assert(savedSize==18,"save tail must not grow");
  static_assert(Dog==512 && TRex==512+landCount-1,"stable contiguous Land block");
  assert(sizeof(expectedNames)/sizeof(*expectedNames)==landCount);

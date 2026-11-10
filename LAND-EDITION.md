@@ -38,7 +38,7 @@ docs/number_allocations.md table covers MeshCore group data types, not species I
   so it adds **no** art bytes. It is also shown on e-ink (different frames, not more frames; no
   sparkle). Presentation only: no save-file or radio change.
 - **Art:** tools/land/generate_sprites.py writes ui-new/LoRaFishLandArt.h
-  (39 x 2 frames x 192 bytes = 14976 bytes ROM). All 39 sprites are draft.
+  (2 frames x 192 bytes per species; no fixed size cap, a static_assert only checks one mask per roster entry). All sprites are draft.
 - **Discovery:** the Land animal emoji (except Phoenix, which has no single
   emoji) are discovery hints in Land builds only; shown as [L] on small displays.
 
