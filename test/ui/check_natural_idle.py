@@ -181,13 +181,14 @@ int main() {
    assert(idleMotionFor(id,false));                              // everything but e-ink
    assert(idleMotionFor(id,true)==want);                         // e-ink: only the sniffing Land walkers
   }
-  assert(n==29);
+  assert(n==33);                                                // 29 original walkers + Wolf, Fox, Bear, Kitsune
+  for(uint16_t id:{Wolf,Fox,Bear,Kitsune})assert(movement(id)==Walk && sniffer(id) && idleMotionFor(id,true));
   for(uint16_t id:{Penguin,Flamingo,Worm,Eagle,Dragon,Griffin,Phoenix,Frog,Snake,Koala,Sloth,TropicalFish,Crab})assert(!sniffer(id) && !idleMotionFor(id,true));
   // E-ink: a Land walker gets the natural motion (incl. sniff) through the call-site rule; an Air walker keeps the legacy drift.
   S d=at(Dog,2,5000,0,128,idleMotionFor(Dog,true));assert(d.pose&PoseIdle);
   S p=at(Penguin,2,5000,0,128,idleMotionFor(Penguin,true));assert(p.pose==0);
   // The head-down picture: every sniffer, every stage, both facings; frame stays inside the art table.
-  for(uint16_t id=Dog;id<=TRex;++id)if(sniffer(id))for(uint8_t stage=0;stage<4;++stage)for(bool right:{true,false})checkSniffSprite(id,stage,right);
+  for(uint16_t id=Dog;id<=Kitsune;++id)if(sniffer(id))for(uint8_t stage=0;stage<4;++stage)for(bool right:{true,false})checkSniffSprite(id,stage,right);
   static_assert(sizeof(LoRaFishLandArt::masks)==landCount*2*192,"one 2-frame mask per Land species");
  }
  // ---- group table -------------------------------------------------------------------------------------

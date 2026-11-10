@@ -50,7 +50,7 @@ inline bool isAirMarker(uint32_t code) {
 #endif
 }
 // Land build discovery hints: the emoji for the Land species (Phoenix has no
-// single-codepoint emoji and is intentionally not a marker). Never proof of habitat.
+// single-codepoint emoji and is intentionally not a marker; Kitsune uses the fox emoji). Never proof of habitat.
 inline bool isLandMarker(uint32_t code) {
 #if LORAGOTCHI_HAS_LAND
   switch(code) {
@@ -60,7 +60,8 @@ inline bool isLandMarker(uint32_t code) {
     case 0x1F43C: case 0x1F9A5: case 0x1F9A6: case 0x1F9A8: case 0x1F9A1: case 0x1F99B:
     case 0x1F98F: case 0x1F42A: case 0x1F42B: case 0x1F9AC: case 0x1F438: case 0x1F40A:
     case 0x1F98E: case 0x1F422: case 0x1F40D: case 0x1F984: case 0x1F409: case 0x1F432:
-    case 0x1F995: case 0x1F996:return true;
+    case 0x1F995: case 0x1F996:
+    case 0x1F43A: case 0x1F98A: case 0x1F43B:return true; // wolf, fox, bear (Kitsune shares the fox)
     default:return false;
   }
 #else

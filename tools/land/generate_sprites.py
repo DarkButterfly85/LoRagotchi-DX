@@ -17,7 +17,7 @@ NAMES = ['Dog', 'Cat', 'Horse', 'Cow', 'Elephant', 'Pig', 'Ram', 'Sheep', 'Goat'
          'Kangaroo', 'Llama', 'Deer', 'Mouse', 'Hamster', 'Rabbit', 'Hedgehog', 'Koala', 'Panda',
          'Sloth', 'Otter', 'Skunk', 'Badger', 'Hippo', 'Rhino', 'Camel', 'Bactrian camel', 'Bison',
          'Frog', 'Crocodile', 'Lizard', 'Turtle', 'Snake', 'Unicorn', 'Dragon', 'Griffin',
-         'Phoenix', 'Sauropod', 'T-Rex']
+         'Phoenix', 'Sauropod', 'T-Rex', 'Wolf', 'Fox', 'Bear', 'Kitsune']
 BASE_ID = 512
 
 
@@ -230,6 +230,36 @@ def frame(species, p):
         for x in (23, 25, 27, 29): line([(x, 10), (x, 12)], 2)
         line([(19, 12), (22, 14)], 2); poly([(6, 9), (0, 14), (7, 15)]); dot(23, 6)
         rect((9, 19, 12 + p, 22)); rect((14, 19, 17 - p, 22))
+    elif species == 39:  # Wolf: long snout, upright ears, pale chest/muzzle, bushy hanging tail
+        oval((4, 9, 22, 18)); oval((10, 16, 18, 19), 2)                       # body, pale belly
+        poly([(19, 12), (24, 13), (21, 18)], 2)                              # chest ruff
+        oval((19, 5, 27, 13))                                                # head
+        poly([(25, 8), (31, 11), (31, 13), (25, 13)]); line([(26, 13), (30, 13)], 2)  # long muzzle
+        poly([(20, 6), (20, 1), (23, 5)]); poly([(23, 5), (25, 1), (26, 6)]) # upright ears
+        dot(21, 3, 2); dot(25, 3, 2); dot(25, 8); dot(31, 11)                # ear tips, eye, nose
+        poly([(5, 10), (1 - p, 13), (0, 20), (3 - p, 21), (4, 16), (6, 14)]); dot(1, 20, 2)  # tail
+        legs([8, 11, 17, 20], 16, 22)
+    elif species == 40:  # Fox: slim, tall ears, white cheek/socks, big tail with pale tip
+        oval((6, 11, 21, 17)); oval((19, 7, 26, 14))                         # body, head
+        poly([(25, 9), (31, 12), (25, 13)]); poly([(21, 12), (27, 14), (22, 15)], 2)  # snout, white cheek
+        poly([(19, 8), (20, 2), (23, 7)]); poly([(23, 7), (26, 2), (26, 8)]) # tall ears
+        dot(20, 4, 2); dot(25, 4, 2); dot(23, 9); dot(31, 12)
+        poly([(8, 13), (3, 8), (0, 11 + p), (1, 17), (7, 17)])               # big tail
+        poly([(0, 11 + p), (1, 16), (3, 14), (3, 10)], 2)                    # pale tail tip
+        legs([9, 12, 18, 20], 16, 22, 2, 1, 2)
+    elif species == 41:  # Bear: stocky, round ears, pale muzzle, short tail, heavy legs
+        oval((2, 7, 22, 20)); oval((17, 6, 28, 16))                          # body, head
+        oval((18, 3, 22, 7)); oval((24, 3, 28, 7)); dot(20, 5, 2); dot(26, 5, 2)  # round ears
+        oval((25, 10, 30, 15), 2); dot(29, 11); dot(23, 9)                   # muzzle, nose, eye
+        oval((0, 10, 3, 13)); legs([5, 9, 16, 19], 17, 23, 3, 1, 2)
+    elif species == 42:  # Kitsune: fox with three fanned tails (tails: Body outline, Accent fill, Eyes tip)
+        for q, pts in ((p, [(10, 11), (6, 7), (3, 4 + p)]), (0, [(9, 14), (5, 14), (3, 13)]),
+                       (-p, [(10, 16), (6, 19), (3, 20 - p)])):
+            line(pts, 1, 7); line(pts, 2, 5); rect((pts[-1][0], pts[-1][1], pts[-1][0] + 1, pts[-1][1] + 1), 3)
+        oval((9, 11, 23, 17)); oval((20, 7, 27, 14))                         # body, head
+        poly([(26, 9), (31, 12), (26, 13)]); poly([(22, 12), (28, 14), (23, 15)], 2)  # snout, cheek
+        poly([(20, 8), (21, 2), (24, 7)]); poly([(24, 7), (27, 2), (27, 8)]); dot(21, 4, 2); dot(26, 4, 2)
+        dot(24, 9); dot(31, 12); dot(23, 8, 3); legs([12, 15, 19, 21], 16, 22, 2, 1, 2)
     return im
 
 

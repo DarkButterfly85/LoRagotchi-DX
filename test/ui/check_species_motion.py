@@ -54,7 +54,7 @@ int main() {
   assert(p.y==habitatY(id,39,now+2700));
  }
  // Land animals share the Air walk/crawl/fly model: grounded or airborne, always inside the tank.
- for(uint16_t id=Dog;id<=TRex;++id)for(uint8_t stage=0;stage<4;++stage)
+ for(uint16_t id=Dog;id<=Kitsune;++id)for(uint8_t stage=0;stage<4;++stage)
  for(int width:{128,160,240})for(uint32_t now=0;now<40000;now+=113) {
   auto p=at(id,stage,now,2700,width);
   assert(p.x>=20 && p.x<=width-20);
@@ -63,6 +63,7 @@ int main() {
   if(kind==Walk || kind==Crawl)assert(p.y==37);
  }
  assert(movement(Dog)==Walk && movement(Snake)==Crawl && movement(Dragon)==FlyMotion && movement(Griffin)==FlyMotion);
+ for(uint16_t id:{Wolf,Fox,Bear,Kitsune})assert(movement(id)==Walk);
 }
 '''
 with tempfile.TemporaryDirectory(prefix='dx-motion-') as tmp:

@@ -4,7 +4,7 @@
 #include <string.h>
 #include "LoRaGotchiVersion.h"
 
-// Shared registry: Water 0..14, Air 256..273, Land 512..550; 15..255, 274..511 and 551+ reserved.
+// Shared registry: Water 0..14, Air 256..273, Land 512..554; 15..255, 274..511 and 555+ reserved.
 // IDs are permanent protocol identities, not menu positions.
 namespace LoRaFishSpecies {
 enum : uint16_t {
@@ -13,20 +13,21 @@ enum : uint16_t {
   Eagle=256, Bird=257, Owl=258, Duck=259, Swan=260, Penguin=261, Parrot=262,
   Flamingo=263, Peacock=264, Turkey=265, Rooster=266, Dove=267, Bat=268,
   Honeybee=269, Butterfly=270, Fly=271, Worm=272, Bug=273,
-  // Land: ground mammals 512..539, amphibious/reptiles 540..544, mythic 545..550.
+  // Land: ground mammals 512..539, amphibious/reptiles 540..544, mythic 545..550, later additions 551..554 (appended; no ID is renumbered).
   Dog=512, Cat=513, Horse=514, Cow=515, Elephant=516, Pig=517, Ram=518, Sheep=519, Goat=520,
   Giraffe=521, Kangaroo=522, Llama=523, Deer=524, Mouse=525, Hamster=526, Rabbit=527,
   Hedgehog=528, Koala=529, Panda=530, Sloth=531, Otter=532, Skunk=533, Badger=534, Hippo=535,
   Rhino=536, Camel=537, BactrianCamel=538, Bison=539,
   Frog=540, Crocodile=541, Lizard=542, Turtle=543, Snake=544,
-  Unicorn=545, Dragon=546, Griffin=547, Phoenix=548, Sauropod=549, TRex=550
+  Unicorn=545, Dragon=546, Griffin=547, Phoenix=548, Sauropod=549, TRex=550,
+  Wolf=551, Fox=552, Bear=553, Kitsune=554
 };
 static constexpr uint8_t count=15;
 static constexpr uint8_t airCount=18;
-static constexpr uint8_t landCount=39;
+static constexpr uint8_t landCount=43;
 inline bool waterKnown(uint16_t id) { return id<count; }
 inline bool airKnown(uint16_t id) { return id>=Eagle && id<=Bug; }
-inline bool landKnown(uint16_t id) { return id>=Dog && id<=TRex; }
+inline bool landKnown(uint16_t id) { return id>=Dog && id<=Kitsune; }
 inline bool known(uint16_t id) { return waterKnown(id) || airKnown(id) || landKnown(id); }
 // Known AND belongs to this build's habitat (Land build: Land IDs; Air build: Air IDs; otherwise Water IDs).
 inline bool editionKnown(uint16_t id) {
@@ -146,7 +147,8 @@ static constexpr SniffHead sniffTable[landCount]={
   {14,4},{15,8},{17,7},{17,4},{18,4},{18,5},{20,4},{0,0},{14,5},{0,0},     // Kangaroo Llama Deer Mouse Hamster Rabbit Hedgehog Koala Panda Sloth
   {21,4},{20,5},{21,4},{19,5},{19,5},{19,8},{19,8},{19,4},                // Otter Skunk Badger Hippo Rhino Camel Bactrian Bison
   {0,0},{0,0},{0,0},{0,0},{0,0},                                            // Frog Crocodile Lizard Turtle Snake
-  {18,8},{0,0},{0,0},{0,0},{17,10},{17,5}                                   // Unicorn Dragon Griffin Phoenix Sauropod TRex
+  {18,8},{0,0},{0,0},{0,0},{17,10},{17,5},                                  // Unicorn Dragon Griffin Phoenix Sauropod TRex
+  {19,6},{19,5},{17,6},{20,5}                                               // Wolf Fox Bear Kitsune (walkers)
 };
 inline SniffHead sniffHead(uint16_t id) { return landKnown(id) ? sniffTable[id-Dog] : SniffHead{0,0}; }
 inline bool sniffer(uint16_t id) { return sniffHead(id).drop!=0; }
@@ -602,8 +604,8 @@ inline const char* lifeStage(uint16_t id, uint8_t stage) {
   }
   if (landKnown(id)) {
     switch (id) {
-      case Dog: case Otter: case Mouse: case Hamster: return "PUP";
-      case Cat: case Rabbit: case Skunk: return "KIT";
+      case Dog: case Otter: case Mouse: case Hamster: case Wolf: return "PUP";
+      case Cat: case Rabbit: case Skunk: case Fox: case Kitsune: return "KIT";
       case Horse: case Unicorn: return "FOAL";
       case Pig: return "PIGLET";
       case Ram: case Sheep: return "LAMB";
@@ -612,7 +614,7 @@ inline const char* lifeStage(uint16_t id, uint8_t stage) {
       case Llama: return "CRIA";
       case Deer: return "FAWN";
       case Hedgehog: return "HOGLET";
-      case Panda: case Sloth: case Badger: return "CUB";
+      case Panda: case Sloth: case Badger: case Bear: return "CUB";
       case Frog: return "TADPOLE";
       case Crocodile: case Lizard: case Turtle: case Snake:
       case Dragon: case Griffin: case Phoenix: case Sauropod: case TRex: return "HATCHLING";
@@ -644,7 +646,7 @@ inline const char* label(uint16_t id) {
     "Goat","Giraffe","Kangaroo","Llama","Deer","Mouse","Hamster","Rabbit","Hedgehog","Koala",
     "Panda","Sloth","Otter","Skunk","Badger","Hippo","Rhino","Camel","Bactrian camel","Bison",
     "Frog","Crocodile","Lizard","Turtle","Snake","Unicorn","Dragon","Griffin","Phoenix",
-    "Sauropod","T-Rex"};
+    "Sauropod","T-Rex","Wolf","Fox","Bear","Kitsune"};
   return waterKnown(id) ? names[id] : airKnown(id) ? airNames[id-Eagle] :
          landKnown(id) ? landNames[id-Dog] : "Unknown (fish)";
 }
