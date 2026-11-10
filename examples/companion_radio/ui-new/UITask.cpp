@@ -2154,8 +2154,12 @@ static void drawCardputerTankDepth(DisplayDriver& d) {
 }
 #endif
 
+// pose = LoRaFishSpecies::Pose* bits from habitatPosition. Only a LANDED flyer gets a frozen wing frame;
+// a hovering fish wobbles at half speed; everything else (every airborne flyer) keeps the live clock.
 static void drawFishSpriteForStage(DisplayDriver& d,int x,int y,bool right,uint8_t stage,
-                                  const LoRaFishAppearance& appearance,uint16_t species=0) {
+                                  const LoRaFishAppearance& appearance,uint16_t species=0,uint8_t pose=0) {
+  const uint32_t animNow=LoRaFishSpecies::animClock(pose,(uint32_t)millis());
+  (void)animNow; // unused by builds without the species sprites
 #if LORAGOTCHI_SPECIES_EDITION
   species=LoRaFishSpecies::renderId(species);
 #if LORAGOTCHI_DXPRO
@@ -2181,24 +2185,24 @@ static void drawFishSpriteForStage(DisplayDriver& d,int x,int y,bool right,uint8
     }
 #if LORAGOTCHI_DXPRO
     if (LoRaFishSpecies::landKnown(species))
-      LoRaFishLandSprite::draw(d,x,y,right,species,stage,(uint32_t)millis(),
+      LoRaFishLandSprite::draw(d,x,y,right,species,stage,animNow,
           body,fins,eyes,UIColor::window_bkg);
     else if (LoRaFishSpecies::airKnown(species))
-      LoRaFishAirSprite::draw(d,x,y,right,species,stage,(uint32_t)millis(),
+      LoRaFishAirSprite::draw(d,x,y,right,species,stage,animNow,
           body,fins,eyes,UIColor::window_bkg);
     else
 #elif LORAGOTCHI_LAND_EDITION
     if (LoRaFishSpecies::landKnown(species))
-      LoRaFishLandSprite::draw(d,x,y,right,species,stage,(uint32_t)millis(),
+      LoRaFishLandSprite::draw(d,x,y,right,species,stage,animNow,
           body,fins,eyes,UIColor::window_bkg);
     else
 #elif LORAGOTCHI_AIR_EDITION
     if (LoRaFishSpecies::airKnown(species))
-      LoRaFishAirSprite::draw(d,x,y,right,species,stage,(uint32_t)millis(),
+      LoRaFishAirSprite::draw(d,x,y,right,species,stage,animNow,
           body,fins,eyes,UIColor::window_bkg);
     else
 #endif
-    LoRaFishWaterSprite::draw(d,x,y,right,species,stage,(uint32_t)millis(),
+    LoRaFishWaterSprite::draw(d,x,y,right,species,stage,animNow,
         body,fins,eyes,UIColor::window_bkg);
     d.setColor(UIColor::primary_txt); return;
   }
@@ -2311,11 +2315,11 @@ static bool loRaFishDrawTravelAnimation(DisplayDriver& display,
 }
 
 static void drawFishSprite(DisplayDriver& d,int x,int y,bool right,
-                           const LoRaFishAppearance& appearance) {
-  drawFishSpriteForStage(d,x,y,right,fish.evolution,appearance,loRaFishSpecies);
+                           const LoRaFishAppearance& appearance,uint8_t pose=0) {
+  drawFishSpriteForStage(d,x,y,right,fish.evolution,appearance,loRaFishSpecies,pose);
 }
 
-static void drawHomeFishSprite(DisplayDriver& display,int x,int y,bool right) {
+static void drawHomeFishSprite(DisplayDriver& display,int x,int y,bool right,uint8_t pose=0) {
   if (loragotchiDXReturnedFromMonochrome) {
     loragotchiDXReturnedFromMonochrome=false;
     loRaFishReturnShakeUntil=millis()+2400UL;
@@ -2327,7 +2331,7 @@ static void drawHomeFishSprite(DisplayDriver& display,int x,int y,bool right) {
     if ((phase/180UL)&1UL) appearance.body=0xFF;
     x += ((phase/70UL)&1UL) ? 2 : -2;
   }
-  drawFishSprite(display,x,y,right,appearance);
+  drawFishSprite(display,x,y,right,appearance,pose);
 }
 
 static void drawLoRaFishHeader(DisplayDriver& display, const char* title,
@@ -3737,13 +3741,23 @@ static void drawLoRaFishAquarium(DisplayDriver& display, UITask* task) {
 
   int x=0, y=0;
   bool right=true;
+  uint8_t pose=0; // LoRaFishSpecies::Pose* bits; 0 = legacy motion (e-ink, crab/snail/jellyfish, Water builds)
+#ifdef LORAGOTCHI_NATIVE_UI
+  const int idleFloorY=h>64 ? 42 : 37; // row a landing flyer settles on (42 maps to the tall-panel floor)
+  const int idleAirY=h>64 ? 30+(int)(11*sinf(millis()/5100.0f)) : -1; // tall panels: the flyer keeps its slow vertical sway
+#else
+  const int idleFloorY=37;
+  const int idleAirY=-1; // -1 = the species' own wing-bob row
+#endif
   loRaFishNaturalPosition(w,x,y,right);
+  // !isEink(): e-ink keeps its existing drift (never frozen); the Efficient 1 FPS mode just samples the
+  // same clock-driven path once a second, so it needs no special case here.
   if (LORAGOTCHI_ANIMAL_EDITION || LoRaFishSpecies::waterMotion(loRaFishSpecies))
-    LoRaFishSpecies::habitatPosition(loRaFishSpecies,fish.evolution,w,(uint32_t)millis(),0,x,y,right,!display.isEink());
+    LoRaFishSpecies::habitatPosition(loRaFishSpecies,fish.evolution,w,(uint32_t)millis(),0,x,y,right,!display.isEink(),&pose,idleFloorY,idleAirY);
 
   const int bodyOffset=LoRaFishLayout::bodyOffset(h);
 #ifdef LORAGOTCHI_NATIVE_UI
-  if (h>64 && (!LoRaFishSpecies::waterMotion(loRaFishSpecies) || loRaFishSpecies==LoRaFishSpecies::Jellyfish))
+  if (h>64 && !(pose&LoRaFishSpecies::PoseOwnsY) && (!LoRaFishSpecies::waterMotion(loRaFishSpecies) || loRaFishSpecies==LoRaFishSpecies::Jellyfish))
     y=30+(int)(11*sinf(millis()/5100.0f));
 #endif
 #if LORAGOTCHI_WATER_EDITION || LORAGOTCHI_DXPRO
@@ -3826,7 +3840,7 @@ static void drawLoRaFishAquarium(DisplayDriver& display, UITask* task) {
       display.setCursor(min(w-4,sleepX+12), max(17,sleepY-11)); display.print("z");
       display.setCursor(min(w-4,sleepX+19), max(12,sleepY-16)); display.print("Z");
     } else if (!homeTraveling && !loRaFishHomeTravelAnimation.active) {
-      drawHomeFishSprite(display,x,y,right);
+      drawHomeFishSprite(display,x,y,right,loRaFishFeeding ? 0 : pose); // a feeding animal is never frozen
 #if defined(LORAFISH_FISH_WANDER) && defined(LORAFISH_TALL_TANK)
       if (!loRaFishFeeding && !LoRaFishSpecies::waterMotion(loRaFishSpecies)) {
         int wx, wy; bool wright; LoRaFishWanderInfo info;
@@ -3853,13 +3867,21 @@ static void drawLoRaFishAquarium(DisplayDriver& display, UITask* task) {
   else if(guestStage==1) guestPeriod=6500UL;
   else if(guestStage>=3) guestPeriod=11000UL;
   int gx=0,gy=0; bool gright=true;
+  uint8_t gpose=0;
+#ifdef LORAGOTCHI_NATIVE_UI
+  const int guestFloorY=h>64 ? 42 : 37;
+  const int guestAirY=h>64 ? 30+(int)(11*sinf((millis()+4300)/5700.0f)) : -1;
+#else
+  const int guestFloorY=37;
+  const int guestAirY=-1;
+#endif
   loRaFishNaturalPositionForStage(w,guestStage,guestPeriod/2,gx,gy,gright);
   const uint16_t guestMotionSpecies=guestPresent ? loragotchiDXGuest.species :
       loRaFishGuestTravelAnimation.species;
   if (LORAGOTCHI_ANIMAL_EDITION || LoRaFishSpecies::waterMotion(guestMotionSpecies))
-    LoRaFishSpecies::habitatPosition(guestMotionSpecies,guestStage,w,(uint32_t)millis(),2700,gx,gy,gright,!display.isEink());
+    LoRaFishSpecies::habitatPosition(guestMotionSpecies,guestStage,w,(uint32_t)millis(),2700,gx,gy,gright,!display.isEink(),&gpose,guestFloorY,guestAirY);
 #ifdef LORAGOTCHI_NATIVE_UI
-  if (h>64 && (!LoRaFishSpecies::waterMotion(guestMotionSpecies) || guestMotionSpecies==LoRaFishSpecies::Jellyfish))
+  if (h>64 && !(gpose&LoRaFishSpecies::PoseOwnsY) && (!LoRaFishSpecies::waterMotion(guestMotionSpecies) || guestMotionSpecies==LoRaFishSpecies::Jellyfish))
     gy=30+(int)(11*sinf((millis()+4300)/5700.0f));
 #endif
 #if LORAGOTCHI_WATER_EDITION || LORAGOTCHI_DXPRO
@@ -3877,7 +3899,7 @@ static void drawLoRaFishAquarium(DisplayDriver& display, UITask* task) {
         loRaFishGuestTravelAnimation.entering &&
         loRaFishDrawTravelAnimation(display,loRaFishGuestTravelAnimation);
     if (!guestEntering && !loRaFishGuestTravelAnimation.active)
-      drawFishSpriteForStage(display,gx,gy,gright,loragotchiDXGuest.stage,loRaFishGuestRenderAppearance(),loragotchiDXGuest.species);
+      drawFishSpriteForStage(display,gx,gy,gright,loragotchiDXGuest.stage,loRaFishGuestRenderAppearance(),loragotchiDXGuest.species,gpose);
     if (!loRaFishGuestTravelAnimation.active) {
       display.setColor(UIColor::secondary_txt);
       drawLoRaFishName(display,27,loragotchiDXGuest.guestName,sizeof(loragotchiDXGuest.guestName));

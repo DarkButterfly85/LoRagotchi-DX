@@ -12,7 +12,7 @@ inline void draw(Display& d,int x,int y,bool right,uint16_t id,uint8_t stage,
                  uint32_t now,Colour body,Colour fins,Colour eyes,Colour background) {
   if (!LoRaFishSpecies::landKnown(id)) return; // caller preserves legacy fish
   // Natural-idle animals step by distance walked, so a standing animal holds one still frame.
-  const unsigned phase=LoRaFishSpecies::naturalIdle(id) ? (unsigned)(((x<0?-x:x)/5)&1) : (now/280U)&1U;
+  const unsigned phase=LoRaFishSpecies::steppedByDistance(id) ? (unsigned)(((x<0?-x:x)/5)&1) : (now/280U)&1U;
   const unsigned width=stage==0?20:stage==1?26:32;
   const unsigned height=stage==0?15:stage==1?19:24;
   const uint8_t* mask=LoRaFishLandArt::masks[id-LoRaFishSpecies::Dog][phase];

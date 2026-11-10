@@ -54,8 +54,8 @@ int main() {
  }
  for(unsigned now:{0U,0x7fffffffU,0xffffffffU}) {
   int x=77,y=38;bool right=false;
-  LoRaFishSpecies::habitatPosition(0,2,128,now,2700,x,y,right);
-  assert(x==77 && y==38 && !right); // old fish path untouched
+  LoRaFishSpecies::habitatPosition(0,2,128,now,2700,x,y,right,false);
+  assert(x==77 && y==38 && !right); // old fish path untouched (legacy / e-ink path; check_natural_idle.py covers the DX-Pro swimmer)
  }
  puts("PASS 18 exact Air markers through actual picker, malformed/name negatives, 65536 registry boundaries, menu bounds, mystery and ground paths");
 }

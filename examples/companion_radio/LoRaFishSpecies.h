@@ -108,41 +108,101 @@ inline void waterPosition(uint16_t id,uint8_t stage,int width,uint32_t now,
                  : 30+(int)(6U*(pulse-600U)/1800U);
   }
 }
-// ---- Natural idle motion (pilot: Dog, the canine of the Land set) --------------------------------
-// Replaces the fixed-speed triangle wave with a stand / walk / look-around cycle. Presentation only:
-// nothing here is saved, sent or compared across devices. No heap, no per-frame allocation, no
+// ---- Natural idle motion (all animals) -----------------------------------------------------------
+// Replaces the fixed-speed triangle wave with a short cycle of phases per animal group. Presentation
+// only: nothing here is saved, sent or compared across devices. No heap, no per-frame allocation, no
 // per-frame randomness: a random number is drawn only when a phase STARTS, and positions inside a
-// phase are a closed-form function of millis(), so the result is identical however often it is drawn.
+// phase are a closed-form function of millis(), so the result is identical however often it is drawn
+// (30 fps, 10 fps or the Efficient 1 FPS mode all see the same path; they only sample it).
 // Two slots exist: 0 = the home animal (offset 0), 1 = a visitor (offset != 0), each with its own seed.
-inline bool naturalIdle(uint16_t id) { return id==Dog; }
+//
+//   Ground (Walk and Crawl kinds, all sets): stand, walk, turn at the edge, look around.
+//   Flyers (FlyMotion and Flutter kinds):    cruise, glide-turn (swoop), optional landing; wings keep
+//                                            flapping the whole time they are airborne and stop ONLY
+//                                            while landed on the floor.
+//   Swimmers (fish, Swim kind):              drift, hover with a slow tail wobble, slow turn at the
+//                                            edge. They never stop: gills need moving water.
+// Crab, snail and jellyfish (waterMotion) keep their existing Water paths, unchanged.
+enum IdleGroup : uint8_t { IdleNone, IdleGround, IdleFlyer, IdleSwimmer };
+inline IdleGroup idleGroup(uint16_t id) {
+  if(!known(id) || waterMotion(id))return IdleNone;
+  switch(movement(id)) {
+    case Walk: case Crawl:return IdleGround;
+    case FlyMotion: case Flutter:return IdleFlyer;
+    default:return IdleSwimmer;
+  }
+}
+inline bool naturalIdle(uint16_t id) { return idleGroup(id)!=IdleNone; }
+// Ground animals step their legs by distance walked, so a standing animal holds one still frame.
+inline bool steppedByDistance(uint16_t id) { return idleGroup(id)==IdleGround; }
+// Pose bits reported to the call site (0 = legacy path was used; the call site keeps its old behaviour).
+enum : uint8_t {
+  PoseIdle=1,    // the natural idle motion produced this position
+  PoseLanded=2,  // flyer standing on the floor: the ONLY case in which a flap animation may pause
+  PoseHover=4,   // swimmer hovering: slow tail/fin wobble, still moving
+  PoseOwnsY=8    // y was set by the motion; the call site must not overwrite it
+};
+// Clock handed to the sprite animation. Airborne: the real clock (never stops). Landed: frozen frame.
+// Hovering fish: half speed, a slow wobble that still moves.
+inline uint32_t animClock(uint8_t pose,uint32_t now) {
+  return (pose&PoseLanded) ? 0U : (pose&PoseHover) ? now/2U : now;
+}
 namespace naturalidle {
+enum FlyPhase : uint8_t { FlyCruise, FlyTurn, FlyDescend, FlyPerch, FlyAscend };
+enum SwimPhase : uint8_t { SwimDrift, SwimHover };
 struct Slot {
   uint32_t rng, start, end, lookAt;
-  int32_t x0q, dq, spd;     // phase start x, walk distance, walk speed; units of 1/16 px inside the roam span
+  int32_t x0q, dq, spd;     // phase start x, distance moved, speed; units of 1/16 px inside the roam span
   int16_t span; uint16_t id;
-  int8_t dir;               // walk direction, +1 right / -1 left
+  int16_t rq;               // flyer glide-turn radius, 1/16 px
+  int8_t dir;               // direction of travel, +1 right / -1 left
+  int8_t dip;               // flyer: rows the animal swoops down in the middle of a turn
+  uint8_t ph;               // flyer / swimmer phase (FlyPhase / SwimPhase)
   bool valid, walking, faceRight, look, edge;
 };
 inline uint32_t roll(Slot& s,uint32_t lo,uint32_t hi) {
   s.rng^=s.rng<<13; s.rng^=s.rng>>17; s.rng^=s.rng<<5; // xorshift32
   return lo+s.rng%(hi-lo+1U);
 }
+// Fixed-point easing, u in 0..1024. smooth = smoothstep, bump = 0 -> 1 -> 0 parabola.
+inline int32_t smooth(uint32_t u) { return (int32_t)(u*u*(3U*1024U-2U*u)/(1024U*1024U)); }
+inline int32_t bump(uint32_t u) { return (int32_t)(4U*u*(1024U-u)/1024U); }
+inline uint32_t fraction(const Slot& s,uint32_t now) { // 0..1024 through the current phase
+  const uint32_t len=s.end-s.start;
+  if(!len)return 1024U;
+  const uint32_t e=now-s.start;
+  return e>=len ? 1024U : e*1024U/len;
+}
+inline void seed(Slot& s,uint16_t id,int span,bool seedGuest) {
+  s.rng=((uint32_t)id*2654435761U)^(seedGuest ? 0x9E3779B9U : 0x7F4A7C15U);
+  if(!s.rng)s.rng=1U;
+  s.id=id; s.span=(int16_t)span; s.valid=true; s.edge=false; s.look=false; s.walking=false;
+  s.dq=0; s.rq=0; s.dip=0; s.ph=0;
+}
+
+// ======== Ground group: stand / walk / look around ====================================================
+struct Gait { uint16_t standLo,standHi,edgeLo,edgeHi,walkLo,walkHi,period; };
+// Walk is the pilot gait (Dog). Crawl is the same cycle, slower, with longer pauses.
+inline Gait gaitFor(uint16_t id) {
+  return movement(id)==Crawl ? Gait{1500U,4500U,2000U,3500U,1800U,4000U,16000U}
+                             : Gait{1000U,3000U,1400U,2600U,2000U,4500U,10000U};
+}
 // Stand about 1-3 s. After an edge turn, or sometimes at random, look around: the animal faces the
 // other way part-way through the pause and then walks the way it is looking.
-inline void startStand(Slot& s,uint32_t at) {
-  const uint32_t d=s.edge ? roll(s,1400U,2600U) : roll(s,1000U,3000U);
+inline void startStand(Slot& s,uint32_t at,const Gait& g) {
+  const uint32_t d=s.edge ? roll(s,g.edgeLo,g.edgeHi) : roll(s,g.standLo,g.standHi);
   s.walking=false; s.start=at; s.end=at+d;
-  s.look=s.edge || (d>=1800U && roll(s,0U,99U)<40U);
+  s.look=s.edge || (d>=g.standLo+800U && roll(s,0U,99U)<40U);
   s.lookAt=at+d*45U/100U;
 }
 // Walk about 2-4.5 s, cut short at the screen edge (then the next pause is a forced turn-around).
-inline void startWalk(Slot& s,uint32_t at,int32_t spanq,int32_t speedq) {
+inline void startWalk(Slot& s,uint32_t at,int32_t spanq,int32_t speedq,const Gait& g) {
   s.dir=s.look ? (s.faceRight ? -1 : 1) : (roll(s,0U,1U) ? 1 : -1);
   const int32_t margin=spanq/4<160 ? spanq/4 : 160; // never start a walk into a wall within 10 px
   if(s.x0q<margin)s.dir=1;
   else if(s.x0q>spanq-margin)s.dir=-1;
   s.faceRight=s.dir>0;
-  uint32_t w=roll(s,2000U,4500U);
+  uint32_t w=roll(s,g.walkLo,g.walkHi);
   int32_t full=(int32_t)(((uint32_t)speedq*w)/1000U);
   const int32_t room=s.dir>0 ? spanq-s.x0q : s.x0q;
   s.edge=full>=room;
@@ -152,24 +212,23 @@ inline void startWalk(Slot& s,uint32_t at,int32_t spanq,int32_t speedq) {
 inline int32_t walkEnd(const Slot& s) { return s.x0q+s.dir*s.dq; }
 inline void position(Slot& s,uint16_t id,uint8_t stage,int span,uint32_t now,bool seedGuest,int& x,bool& right) {
   const int32_t spanq=span*16;
-  const uint32_t period=stage==0 ? 7500U : stage>=3 ? 12500U : 10000U; // same pace as the old drift
+  const Gait g=gaitFor(id);
+  const uint32_t period=stage==0 ? g.period*3U/4U : stage>=3 ? g.period*5U/4U : g.period; // pace of the old drift
   int32_t speedq=(int32_t)((uint32_t)span*32000U/period);
   if(speedq<1)speedq=1;
   const bool fresh=!s.valid || s.id!=id || s.span!=span || (int32_t)(now-s.start)<0;
   if(fresh) {
-    s.rng=((uint32_t)id*2654435761U)^(seedGuest ? 0x9E3779B9U : 0x7F4A7C15U);
-    if(!s.rng)s.rng=1U;
-    s.id=id; s.span=(int16_t)span; s.valid=true; s.edge=false;
+    seed(s,id,span,seedGuest);
     s.x0q=(int32_t)roll(s,0U,(uint32_t)spanq); s.faceRight=roll(s,0U,1U)!=0;
-    startStand(s,now);
+    startStand(s,now,g);
   } else if((int32_t)(now-s.end)>8000) { // not drawn for a while (screen off / other page): rest where it was
     if(s.walking)s.x0q=walkEnd(s);
-    s.edge=false; startStand(s,now);
+    s.edge=false; startStand(s,now,g);
   }
   for(uint8_t guard=0;guard<8 && (int32_t)(now-s.end)>=0;++guard) {
     const uint32_t at=s.end;
-    if(s.walking) {s.x0q=walkEnd(s); startStand(s,at);}
-    else startWalk(s,at,spanq,speedq);
+    if(s.walking) {s.x0q=walkEnd(s); startStand(s,at,g);}
+    else startWalk(s,at,spanq,speedq,g);
   }
   int32_t xq=s.x0q;
   if(s.walking) {
@@ -184,22 +243,245 @@ inline void position(Slot& s,uint16_t id,uint8_t stage,int span,uint32_t now,boo
   if(xq>spanq)xq=spanq;
   x=20+(xq+8)/16;
 }
+
+// ======== Flyer group: cruise / glide-turn / landing ==================================================
+// Wings are never touched here: the sprite keeps flapping from the real clock in every phase except
+// FlyPerch (standing on the floor), which is reported as PoseLanded.
+inline int32_t flyRoom(const Slot& s,int32_t spanq) { return s.dir>0 ? spanq-s.x0q : s.x0q; }
+// Straight flight. It is cut short one turn-radius before the wall, so the glide-turn always fits.
+inline void startCruise(Slot& s,uint32_t at,int32_t spanq,int32_t speedq,bool flutter) {
+  const int32_t reserve=speedq*17/40; // largest glide-turn radius (1.7 s turn at cruise speed / 4)
+  int32_t room=flyRoom(s,spanq)-reserve;
+  if(room<0)room=0;
+  uint32_t w=flutter ? roll(s,700U,1800U) : roll(s,1800U,4200U);
+  int32_t full=(int32_t)(((uint32_t)speedq*w)/1000U);
+  s.edge=full>=room;
+  if(s.edge) {full=room; w=((uint32_t)room*1000U+(uint32_t)speedq-1U)/(uint32_t)speedq;}
+  s.ph=FlyCruise; s.start=at; s.end=at+w; s.dq=full; s.spd=speedq;
+  s.faceRight=s.dir>0;
 }
-// Home/visitor hook; other Water and all existing Air paths stay exact.
-// idleMotion=false (e-ink call sites) keeps the legacy drift: e-ink gets no new animation.
+// Glide-turn: the animal keeps its speed, banks out and swoops down a few rows, and comes back the
+// other way. x = x0 + dir*R*bump(u), R = v*T/4 so the entry and exit speed equal the cruise speed.
+inline void startTurn(Slot& s,uint32_t at,int32_t spanq,int32_t speedq,bool flutter,bool big) {
+  const uint32_t t=flutter ? roll(s,600U,900U) : roll(s,1100U,1700U);
+  s.ph=FlyTurn; s.start=at; s.end=at+t; s.dq=0; s.spd=speedq;
+  int32_t r=(int32_t)(((uint32_t)speedq*t)/4000U);
+  const int32_t room=flyRoom(s,spanq); // never bank out past the wall, even when a flight starts next to one
+  if(r>room)r=room;
+  s.rq=(int16_t)r;
+  s.dip=(int8_t)(flutter ? 2 : big ? 5 : 3);
+  s.faceRight=s.dir>0; // facing flips half-way, at the top of the bank
+}
+inline void startDescend(Slot& s,uint32_t at) {
+  const uint32_t t=roll(s,900U,1300U);
+  s.ph=FlyDescend; s.start=at; s.end=at+t; s.dq=(int32_t)roll(s,112U,176U); s.faceRight=s.dir>0;
+}
+inline void startPerch(Slot& s,uint32_t at) {
+  const uint32_t t=roll(s,1500U,3500U);
+  s.ph=FlyPerch; s.start=at; s.end=at+t; s.dq=0; s.look=roll(s,0U,99U)<50U; s.lookAt=at+t*45U/100U;
+}
+inline void startAscend(Slot& s,uint32_t at,int32_t spanq,int32_t speedq) {
+  // Take off the way the animal is looking, unless the wall is too close for the climb-out.
+  bool face=s.faceRight;
+  if(s.look)face=!face;
+  s.dir=face ? 1 : -1;
+  if(flyRoom(s,spanq)<176+speedq*17/40+16)s.dir=(spanq-s.x0q>s.x0q) ? 1 : -1;
+  s.faceRight=s.dir>0;
+  const uint32_t t=roll(s,900U,1300U);
+  s.ph=FlyAscend; s.start=at; s.end=at+t; s.dq=(int32_t)roll(s,112U,176U);
+}
+// Geometry at the end of the current phase (also used to resume after a long gap).
+inline void flyFinish(Slot& s) {
+  switch(s.ph) {
+    case FlyCruise: case FlyDescend: case FlyAscend:s.x0q+=s.dir*s.dq;break;
+    case FlyTurn:s.dir=(int8_t)-s.dir; s.faceRight=s.dir>0;break;
+    default:break;
+  }
+}
+inline void flyNext(Slot& s,uint32_t at,int32_t spanq,int32_t speedq,bool flutter,bool landOK) {
+  const uint8_t was=s.ph;
+  if(was==FlyDescend) {startPerch(s,at);return;}
+  if(was==FlyPerch) {startAscend(s,at,spanq,speedq);return;}
+  const int32_t reserve=speedq*17/40;
+  if(was==FlyTurn || was==FlyAscend) {
+    // Just turned away from a wall (or took off): plenty of room ahead, so sometimes settle for a rest.
+    if(was==FlyTurn && landOK && roll(s,0U,99U)<30U && flyRoom(s,spanq)>=176+reserve) {startDescend(s,at);return;}
+    startCruise(s,at,spanq,speedq,flutter);return;
+  }
+  // A cruise just ended.
+  const int32_t room=flyRoom(s,spanq);
+  if(s.edge || room<reserve+16) {startTurn(s,at,spanq,speedq,flutter,roll(s,0U,99U)<20U);return;}
+  const uint32_t pick=roll(s,0U,99U);
+  if(landOK && pick<30U && room>=176+reserve) {startDescend(s,at);return;}
+  if(pick<55U) {startTurn(s,at,spanq,speedq,flutter,pick>=45U);return;} // mid-air swoop and reverse
+  startCruise(s,at,spanq,speedq,flutter);
+}
+// y: in = airborne base row (wing bob from habitatY), out = row to draw. floorY = standing row.
+inline void positionFlyer(Slot& s,uint16_t id,uint8_t stage,int span,uint32_t now,bool seedGuest,
+                          int& x,bool& right,int& y,int floorY,int airY,uint8_t& pose) {
+  const int32_t spanq=span*16;
+  const bool flutter=movement(id)==Flutter;
+  const uint32_t base=flutter ? 4200U : 8000U;
+  const uint32_t period=stage==0 ? base*3U/4U : stage>=3 ? base*5U/4U : base;
+  int32_t speedq=(int32_t)((uint32_t)span*32000U/period);
+  if(speedq>1500)speedq=1500; // ~94 px/s: wide panels glide at the same speed instead of streaking
+  if(speedq<16)speedq=16;
+  const bool landOK=span>=48;
+  const bool fresh=!s.valid || s.id!=id || s.span!=span || (int32_t)(now-s.start)<0;
+  if(fresh) {
+    seed(s,id,span,seedGuest);
+    s.x0q=(int32_t)roll(s,0U,(uint32_t)spanq); s.dir=roll(s,0U,1U) ? 1 : -1;
+    if(flyRoom(s,spanq)<spanq/2)s.dir=(int8_t)-s.dir; // first flight heads for the roomier side
+    startCruise(s,now,spanq,speedq,flutter);
+  } else if((int32_t)(now-s.end)>8000) { // not drawn for a while: carry on from where it was
+    const bool grounded=s.ph==FlyDescend || s.ph==FlyPerch;
+    flyFinish(s);
+    if(s.x0q<0)s.x0q=0;
+    if(s.x0q>spanq)s.x0q=spanq;
+    if(grounded) startPerch(s,now); else startCruise(s,now,spanq,speedq,flutter);
+  }
+  for(uint8_t guard=0;guard<8 && (int32_t)(now-s.end)>=0;++guard) {
+    const uint32_t at=s.end;
+    flyFinish(s);
+    flyNext(s,at,spanq,speedq,flutter,landOK);
+  }
+  const uint32_t u=fraction(s,now);
+  int32_t xq=s.x0q;
+  const int airborneY=airY>=0 ? airY : y; // caller's row for this instant (tall panels pass their own slow sway)
+  int outY=airborneY;
+  pose=PoseIdle|PoseOwnsY;
+  switch(s.ph) {
+    case FlyCruise: {
+      int32_t d=(int32_t)(((uint32_t)s.spd*(now-s.start))/1000U);
+      if(d>s.dq)d=s.dq;
+      xq+=s.dir*d; right=s.dir>0; break;
+    }
+    case FlyTurn:
+      xq+=s.dir*(int32_t)(((int64_t)s.rq*bump(u))/1024);
+      right=u<512U ? s.dir>0 : s.dir<0;
+    {
+      int dip=s.dip; // a swoop never dips below the floor, even when a tall panel's sway is already low
+      if(airborneY+dip>floorY)dip=floorY>airborneY ? floorY-airborneY : 0;
+      outY=airborneY+dip*bump(u)/1024; break;
+    }
+    case FlyDescend:
+      xq+=s.dir*(int32_t)(((int64_t)s.dq*smooth(u))/1024);
+      right=s.dir>0;
+      outY=airborneY+(floorY-airborneY)*smooth(u)/1024; break;
+    case FlyPerch:
+      right=(s.look && (int32_t)(now-s.lookAt)>=0) ? !s.faceRight : s.faceRight;
+      outY=floorY; pose|=PoseLanded; break;
+    default: // FlyAscend
+      xq+=s.dir*(int32_t)(((int64_t)s.dq*smooth(u))/1024);
+      right=s.dir>0;
+      outY=floorY+(airborneY-floorY)*smooth(u)/1024; break;
+  }
+  if(xq<0)xq=0;
+  if(xq>spanq)xq=spanq;
+  x=20+(xq+8)/16; y=outY;
+}
+
+// ======== Swimmer group: drift / hover / slow turn =====================================================
+// A segment moves a distance D over a time T with a gentle ease: x = x0 + dir*D*(u + smooth(u))/2.
+// Blending in a straight line keeps at least half the average speed at the ends, so a fish slows
+// down at the edge and while turning, but never comes to a stop.
+inline int32_t swimRoom(const Slot& s,int32_t spanq) { return s.dir>0 ? spanq-s.x0q : s.x0q; }
+inline void startDrift(Slot& s,uint32_t at,int32_t spanq,int32_t speedq) {
+  uint32_t t=roll(s,3000U,6000U);
+  int32_t full=(int32_t)(((uint32_t)speedq*t)/1000U);
+  const int32_t room=swimRoom(s,spanq);
+  s.edge=full>=room;
+  if(s.edge) {full=room; t=((uint32_t)room*1000U+(uint32_t)speedq-1U)/(uint32_t)speedq;}
+  s.ph=SwimDrift; s.start=at; s.end=at+t; s.dq=full; s.faceRight=s.dir>0;
+}
+// Hover: a short, slow, tail-wobbling pause. With turn=true the animal swings round first (facing
+// flips as the hover starts, at nearly its slowest) and eases away from the wall.
+inline void startHover(Slot& s,uint32_t at,int32_t spanq,bool turn) {
+  if(turn)s.dir=(int8_t)-s.dir;
+  int32_t full=(int32_t)roll(s,112U,192U);
+  const int32_t room=swimRoom(s,spanq);
+  if(full>room)full=room;
+  s.ph=SwimHover; s.start=at; s.end=at+roll(s,1500U,2800U); s.dq=full; s.faceRight=s.dir>0; s.edge=false;
+}
+inline void swimNext(Slot& s,uint32_t at,int32_t spanq,int32_t speedq) {
+  const bool hovered=s.ph==SwimHover;
+  const bool atWall=s.edge; // the drift that just ended ran into the edge
+  // Too close to a wall to drift usefully: swing round and ease away.
+  if(!hovered && (atWall || swimRoom(s,spanq)<160)) {startHover(s,at,spanq,true);return;}
+  const uint32_t pick=roll(s,0U,99U);
+  if(!hovered && pick<30U) {startHover(s,at,spanq,pick<10U);return;} // mid-tank pause, sometimes a turn
+  if(swimRoom(s,spanq)<160) {startHover(s,at,spanq,true);return;}
+  startDrift(s,at,spanq,speedq);
+}
+inline void positionSwimmer(Slot& s,uint16_t id,uint8_t stage,int span,uint32_t now,bool seedGuest,
+                            int& x,bool& right,uint8_t& pose) {
+  const int32_t spanq=span*16;
+  // Gentle drift: half the pace of the old swim (legacy period 8000 -> 16000 at adult stage).
+  const uint32_t period=stage==0 ? 12000U : stage>=3 ? 20000U : 16000U;
+  int32_t speedq=(int32_t)((uint32_t)span*32000U/period);
+  if(speedq<16)speedq=16;
+  const bool fresh=!s.valid || s.id!=id || s.span!=span || (int32_t)(now-s.start)<0;
+  if(fresh) {
+    seed(s,id,span,seedGuest);
+    s.x0q=(int32_t)roll(s,0U,(uint32_t)spanq); s.dir=roll(s,0U,1U) ? 1 : -1;
+    startDrift(s,now,spanq,speedq);
+  } else if((int32_t)(now-s.end)>8000) { // not drawn for a while: carry on from where it was
+    s.x0q+=s.dir*s.dq;
+    if(s.x0q<0)s.x0q=0;
+    if(s.x0q>spanq)s.x0q=spanq;
+    s.edge=false; startHover(s,now,spanq,false);
+  }
+  for(uint8_t guard=0;guard<8 && (int32_t)(now-s.end)>=0;++guard) {
+    const uint32_t at=s.end;
+    s.x0q+=s.dir*s.dq;
+    swimNext(s,at,spanq,speedq);
+  }
+  const uint32_t u=fraction(s,now);
+  int32_t xq=s.x0q+s.dir*(int32_t)(((int64_t)s.dq*((int32_t)u+smooth(u)))/2048);
+  if(xq<0)xq=0;
+  if(xq>spanq)xq=spanq;
+  x=20+(xq+8)/16; right=s.dir>0;
+  pose=PoseIdle; // y stays with the caller's own fish bob
+  if(s.ph==SwimHover)pose|=PoseHover;
+}
+}
+// Home/visitor hook; crab, snail, jellyfish and all legacy paths stay exact.
+// idleMotion=false (e-ink call sites) keeps the legacy drift: e-ink gets no new animation and no freeze.
+// The Efficient 1 FPS mode needs no special case: it only redraws less often, and every position
+// above is a pure function of the clock, so the same motion is simply sampled once a second.
+// pose (optional) reports PoseIdle/PoseLanded/PoseHover/PoseOwnsY; floorY is the row a flyer lands on;
+// airY (>=0) replaces the flyer's cruising row (tall native panels sway it slowly; -1 = habitatY wing bob).
 inline void habitatPosition(uint16_t id,uint8_t stage,int width,uint32_t now,
-                            uint32_t offset,int& x,int& y,bool& right,bool idleMotion=true) {
+                            uint32_t offset,int& x,int& y,bool& right,bool idleMotion=true,
+                            uint8_t* pose=nullptr,int floorY=37,int airY=-1) {
+  uint8_t p=0;
+  if(pose)*pose=0;
   if(waterMotion(id)) {waterPosition(id,stage,width,now,offset,x,y,right);return;}
-  if(!airKnown(id) && !landKnown(id))return;
-  const Movement kind=movement(id);
-  if(idleMotion && naturalIdle(id)) {
+  const IdleGroup group=idleMotion ? idleGroup(id) : IdleNone;
+  if(group!=IdleNone) {
     static naturalidle::Slot slots[2]; // home, visitor: static storage only
+    naturalidle::Slot& slot=slots[offset!=0 ? 1 : 0];
     const int span=width>40 ? width-40 : 1;
-    if(span>=16) naturalidle::position(slots[offset!=0 ? 1 : 0],id,stage,span,now+offset,offset!=0,x,right);
-    else x=20; // tank too narrow to roam
-    y=habitatY(id,y,now+offset);
+    if(span>=16) {
+      const bool guest=offset!=0;
+      if(group==IdleGround) {
+        naturalidle::position(slot,id,stage,span,now+offset,guest,x,right);
+        y=habitatY(id,y,now+offset); p=PoseIdle;
+      } else if(group==IdleFlyer) {
+        y=habitatY(id,y,now+offset);
+        naturalidle::positionFlyer(slot,id,stage,span,now+offset,guest,x,right,y,floorY,airY,p);
+      } else {
+        naturalidle::positionSwimmer(slot,id,stage,span,now+offset,guest,x,right,p);
+      }
+    } else {
+      x=20; // tank too narrow to roam
+      if(group!=IdleSwimmer)y=habitatY(id,y,now+offset);
+    }
+    if(pose)*pose=p;
     return;
   }
+  if(!airKnown(id) && !landKnown(id))return;
+  const Movement kind=movement(id);
   uint32_t period=kind==Crawl ? 16000U : kind==Walk ? 10000U : kind==Flutter ? 4200U : 8000U;
   if(stage==0)period=period*3U/4U;
   else if(stage>=3)period=period*5U/4U;
