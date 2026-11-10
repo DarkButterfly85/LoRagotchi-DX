@@ -24,6 +24,9 @@
 #define LORAGOTCHI_SPECIES_EDITION (LORAGOTCHI_WATER_EDITION || LORAGOTCHI_AIR_EDITION || LORAGOTCHI_LAND_EDITION || LORAGOTCHI_DXPRO)
 // Editions whose pets live on the ground or in the air: shared habitat motion model.
 #define LORAGOTCHI_ANIMAL_EDITION (LORAGOTCHI_AIR_EDITION || LORAGOTCHI_LAND_EDITION || LORAGOTCHI_DXPRO)
+// Builds that run the shared habitat motion (natural idle motion) for the home and visiting animal:
+// Air, Land, DX-Pro and the standalone Water build. Plain DX (single legacy fish) keeps its patrol.
+#define LORAGOTCHI_HABITAT_MOTION (LORAGOTCHI_ANIMAL_EDITION || LORAGOTCHI_WATER_EDITION)
 // Which sprite sets and discovery markers a build carries (DX-Pro carries all of them).
 #define LORAGOTCHI_HAS_AIR (LORAGOTCHI_AIR_EDITION || LORAGOTCHI_DXPRO)
 #define LORAGOTCHI_HAS_LAND (LORAGOTCHI_LAND_EDITION || LORAGOTCHI_DXPRO)

@@ -10,8 +10,10 @@ source=r'''
 #include "examples/companion_radio/LoRaFishSpecies.h"
 using namespace LoRaFishSpecies;
 struct P {int x=71,y=39;bool r=false;};
+// idleMotion=false is the legacy drift (e-ink call sites); the natural idle motion of every group is covered
+// by check_natural_idle.py.
 P at(uint16_t id,uint8_t stage,uint32_t now,uint32_t offset=0,int width=128) {
- P p;habitatPosition(id,stage,width,now,offset,p.x,p.y,p.r);return p;
+ P p;habitatPosition(id,stage,width,now,offset,p.x,p.y,p.r,false);return p;
 }
 int main() {
  for(uint16_t id:{(uint16_t)ShellDweller,(uint16_t)Crab,(uint16_t)Jellyfish})
@@ -75,7 +77,7 @@ ui=(ROOT/'examples/companion_radio/ui-new/UITask.cpp').read_text()
 assert 'habitatPosition(loRaFishSpecies,fish.evolution' in ui
 assert 'guestMotionSpecies=guestPresent ? loragotchiDXGuest.species :' in ui
 assert 'habitatPosition(guestMotionSpecies,guestStage' in ui
-assert 'LORAGOTCHI_ANIMAL_EDITION || LoRaFishSpecies::waterMotion(guestMotionSpecies)' in ui
+assert 'LORAGOTCHI_HABITAT_MOTION || LoRaFishSpecies::waterMotion(guestMotionSpecies)' in ui
 assert ui.index('habitatPosition(loRaFishSpecies') < ui.index('const int foodX=w/2+18;')
 assert 'const int homeTargetY=localSleeping ? 38+bodyOffset : y;' in ui
 assert 'const int bodyOffset=LoRaFishLayout::bodyOffset(h);' in ui

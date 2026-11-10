@@ -34,7 +34,8 @@ public:
 enum class LoRaFishSetting : uint8_t {
   Theme, Brightness, Rendering, Scales, Body, Eyes, SleepHour, WakeHour, UtcOffset,
   TimeoutAwake, TimeoutAsleep, DimAfter, Volume, WakeSound, SleepSound, MessageSound, MonoDisplayColour, Species, Orientation, DisplayUpdate,
-  SpeciesSet // DX-Pro only: step one of the set-then-species menu (appended so existing values keep their numbers)
+  SpeciesSet, // DX-Pro only: step one of the set-then-species menu (appended so existing values keep their numbers)
+  DimSlow // Slow animation when dimmed (appended; Off/On)
 };
 
 // Browsing is a draft: only Select produces a value to persist. Back cancels it.

@@ -566,6 +566,8 @@ static const uint32_t loRaFishAlwaysOnDimValues[] = {15000UL,30000UL,60000UL};
 static const char* loRaFishAlwaysOnDimNames[] = {"15s","30s","60s"};
 static unsigned long loRaFishLastActivityMs = 0;
 static bool loRaFishScreenDimmed = false;
+static uint8_t loRaFishDimSlow = 0;            // 0 = Off (default), 1 = one redraw per second while dimmed
+static bool loRaFishDimSlowSupported = false;  // set at start-up: only panels whose brightness really dims, never e-ink
 static bool loRaFishBrightnessNeedsApply = false;
 static bool loRaFishPartialSupported = false;
 static uint8_t loRaFishPartial = 0;
@@ -611,7 +613,14 @@ static uint32_t loRaFishScreenTimeoutMs() {
   return loRaFishTimeoutValues[min((uint8_t)5,setting)];
 }
 static uint8_t loRaFishDisplayOptionCount() {
+  return 5 + (LORAGOTCHI_SPECIES_EDITION ? 1 : 0) + loRaFishOrientationSupported + loRaFishPartialSupported + loRaFishDimSlowSupported;
+}
+// Slow animation when dimmed: the optional last Display row.
+static uint8_t loRaFishDimSlowOptionIndex() {
   return 5 + (LORAGOTCHI_SPECIES_EDITION ? 1 : 0) + loRaFishOrientationSupported + loRaFishPartialSupported;
+}
+static bool loRaFishDimSlowActive() {
+  return loRaFishDimSlowSupported && loRaFishDimSlow != 0 && loRaFishScreenDimmed;
 }
 static bool loRaFishCanBreed() {
 #ifdef LORAFISH_UI
@@ -668,6 +677,7 @@ static void openLoRaFishValue(LoRaFishSetting setting) {
     case LoRaFishSetting::Theme: value = loRaFishTheme; count = loRaFishThemeCount(); break;
     case LoRaFishSetting::DisplayUpdate: value = loRaFishPartial; count = loRaFishPartialSupported ? 2 : 0; break;
     case LoRaFishSetting::Orientation: value = loRaFishOrientation; count = loRaFishOrientationSupported ? 2 : 0; break;
+    case LoRaFishSetting::DimSlow: value = loRaFishDimSlow; count = loRaFishDimSlowSupported ? 2 : 0; break;
     case LoRaFishSetting::Brightness: value = loRaFishBrightnessSetting; count = 4; break;
     case LoRaFishSetting::Rendering: value = loRaFishSimulationMode; count = 3; break;
     case LoRaFishSetting::Scales: value = LoRaFishColour::fallback(loRaFishScaleColor); count = LORAFISH_COLOR_ALLELE_COUNT; break;
@@ -727,6 +737,7 @@ static void selectLoRaFishValue() {
       break;
     case LoRaFishSetting::DisplayUpdate: loRaFishPartial = value; loRaFishPartialNeedsApply = true; break;
     case LoRaFishSetting::Orientation: loRaFishOrientation = value; loRaFishOrientationNeedsApply = true; break;
+    case LoRaFishSetting::DimSlow: loRaFishDimSlow = value ? 1 : 0; break;
     case LoRaFishSetting::Theme: loRaFishTheme = value; applyLoRaFishTheme(); break;
     case LoRaFishSetting::Brightness:
       loRaFishBrightnessSetting = value; loRaFishBrightnessNeedsApply = true; break;
@@ -1097,7 +1108,7 @@ static const char* fishStageName() {
 // legacy readers keep the nearest-palette values in the original prefix.
 // ORI1 follows species without repurposing any existing settings byte.
 static constexpr uint32_t LORAFISH_AQUARIUM_SETTINGS_MAGIC = 0x31555141UL; // "AQU1"
-static constexpr size_t LORAFISH_SETTINGS_SIZE = 106;
+static constexpr size_t LORAFISH_SETTINGS_SIZE = 112;
 static constexpr uint32_t LORAFISH_CHECKPOINT_MS = 5UL * 60000UL;
 static constexpr uint32_t LORAFISH_SAVE_RETRY_MS = 5000UL;
 static uint8_t lastWrittenLoRaFishSettings[LORAFISH_SETTINGS_SIZE];
@@ -1146,6 +1157,7 @@ static void encodeLoRaFishSettings(uint8_t* data) {
   data[102]=1; data[103]=0;
   const uint16_t artCRC=LoRaFishSpecies::checksum(data+90,14);
   data[104]=artCRC; data[105]=artCRC>>8;
+  memcpy(data+106,"DIM1",4); data[110]=loRaFishDimSlow ? 1 : 0; data[111]=0; // optional tail; absent in older saves = Off
 }
 
 static const char* loRaFishRecordKey(const char* path) {
@@ -1296,6 +1308,7 @@ static void serviceLoRaFishSettingsMenu(bool visible) {
 static void loadLoRaFishSettings() {
   loRaFishOrientation = 0;
   loRaFishPartial = 0;
+  loRaFishDimSlow = 0;
   loRaFishSettingsPending = false;
   // Only a genuinely fresh game starts with the edition default. Established
   // legacy DAT saves still default to fish when SPC1 is absent/corrupt.
@@ -1440,7 +1453,8 @@ static void loadLoRaFishSettings() {
     uint8_t update[6] = {};
     if (f.read(update, sizeof(update)) == sizeof(update) && !memcmp(update, "UPD1", 4) && update[4] < 2 && update[5] == 0) loRaFishPartial = update[4];
     uint8_t art[16]={};
-    if(f.read(art,sizeof(art))==sizeof(art) && !memcmp(art,"ART1",4) &&
+    const bool hasArt=f.read(art,sizeof(art))==sizeof(art);
+    if(hasArt && !memcmp(art,"ART1",4) &&
         art[4]<=1 && art[5]<=1 && LoRaFishColour::valid(art[10]) &&
         LoRaFishColour::valid(art[11]) && art[12]==1 && art[13]==0 &&
         LoRaFishSpecies::checksum(art,14)==(uint16_t)(art[14]|art[15]<<8)) {
@@ -1448,6 +1462,9 @@ static void loadLoRaFishSettings() {
       for(unsigned i=0;i<4;++i) loRaFishMemorialKey|=(uint32_t)art[6+i]<<(8*i);
       loRaFishMemorialBody=art[10]; loRaFishMemorialScales=art[11];
     }
+    uint8_t dimSlow[6] = {};
+    if (hasArt && f.read(dimSlow, sizeof(dimSlow)) == sizeof(dimSlow) && !memcmp(dimSlow, "DIM1", 4) &&
+        dimSlow[4] < 2 && dimSlow[5] == 0) loRaFishDimSlow = dimSlow[4];
     if (!LORAGOTCHI_SPECIES_EDITION) loRaFishNeedsPetSetup=false;
     if (loRaFishNeedsPetSetup && !loRaFishAdoptionEligible) loRaFishPage=LORAFISH_PET_SETUP_PAGE;
     lastWrittenLoRaFishHappiness = loRaFishHappiness;
@@ -2237,8 +2254,12 @@ static void drawCardputerTankDepth(DisplayDriver& d) {
 }
 #endif
 
+// pose = LoRaFishSpecies::Pose* bits from habitatPosition. Only a LANDED flyer gets a frozen wing frame;
+// a hovering fish wobbles at half speed; everything else (every airborne flyer) keeps the live clock.
 static void drawFishSpriteForStage(DisplayDriver& d,int x,int y,bool right,uint8_t stage,
-                                  const LoRaFishAppearance& appearance,uint16_t species=0) {
+                                  const LoRaFishAppearance& appearance,uint16_t species=0,uint8_t pose=0) {
+  const uint32_t animNow=LoRaFishSpecies::animClock(pose,(uint32_t)millis());
+  (void)animNow; // unused by builds without the species sprites
 #if LORAGOTCHI_SPECIES_EDITION
   species=LoRaFishSpecies::renderId(species);
 #if LORAGOTCHI_DXPRO
@@ -2264,24 +2285,24 @@ static void drawFishSpriteForStage(DisplayDriver& d,int x,int y,bool right,uint8
     }
 #if LORAGOTCHI_DXPRO
     if (LoRaFishSpecies::landKnown(species))
-      LoRaFishLandSprite::draw(d,x,y,right,species,stage,(uint32_t)millis(),
+      LoRaFishLandSprite::draw(d,x,y,right,species,stage,animNow,
           body,fins,eyes,UIColor::window_bkg);
     else if (LoRaFishSpecies::airKnown(species))
-      LoRaFishAirSprite::draw(d,x,y,right,species,stage,(uint32_t)millis(),
+      LoRaFishAirSprite::draw(d,x,y,right,species,stage,animNow,
           body,fins,eyes,UIColor::window_bkg);
     else
 #elif LORAGOTCHI_LAND_EDITION
     if (LoRaFishSpecies::landKnown(species))
-      LoRaFishLandSprite::draw(d,x,y,right,species,stage,(uint32_t)millis(),
+      LoRaFishLandSprite::draw(d,x,y,right,species,stage,animNow,
           body,fins,eyes,UIColor::window_bkg);
     else
 #elif LORAGOTCHI_AIR_EDITION
     if (LoRaFishSpecies::airKnown(species))
-      LoRaFishAirSprite::draw(d,x,y,right,species,stage,(uint32_t)millis(),
+      LoRaFishAirSprite::draw(d,x,y,right,species,stage,animNow,
           body,fins,eyes,UIColor::window_bkg);
     else
 #endif
-    LoRaFishWaterSprite::draw(d,x,y,right,species,stage,(uint32_t)millis(),
+    LoRaFishWaterSprite::draw(d,x,y,right,species,stage,animNow,
         body,fins,eyes,UIColor::window_bkg);
     d.setColor(UIColor::primary_txt); return;
   }
@@ -2394,11 +2415,11 @@ static bool loRaFishDrawTravelAnimation(DisplayDriver& display,
 }
 
 static void drawFishSprite(DisplayDriver& d,int x,int y,bool right,
-                           const LoRaFishAppearance& appearance) {
-  drawFishSpriteForStage(d,x,y,right,fish.evolution,appearance,loRaFishSpecies);
+                           const LoRaFishAppearance& appearance,uint8_t pose=0) {
+  drawFishSpriteForStage(d,x,y,right,fish.evolution,appearance,loRaFishSpecies,pose);
 }
 
-static void drawHomeFishSprite(DisplayDriver& display,int x,int y,bool right) {
+static void drawHomeFishSprite(DisplayDriver& display,int x,int y,bool right,uint8_t pose=0) {
   if (loragotchiDXReturnedFromMonochrome) {
     loragotchiDXReturnedFromMonochrome=false;
     loRaFishReturnShakeUntil=millis()+2400UL;
@@ -2410,7 +2431,7 @@ static void drawHomeFishSprite(DisplayDriver& display,int x,int y,bool right) {
     if ((phase/180UL)&1UL) appearance.body=0xFF;
     x += ((phase/70UL)&1UL) ? 2 : -2;
   }
-  drawFishSprite(display,x,y,right,appearance);
+  drawFishSprite(display,x,y,right,appearance,pose);
 }
 
 static void drawLoRaFishHeader(DisplayDriver& display, const char* title,
@@ -2665,7 +2686,7 @@ static void drawLoRaFishValuePicker(DisplayDriver& display) {
   static const char* titles[] = {"FIRMWARE THEME", "BRIGHTNESS", "GAME RENDERING",
       "SCALES", "BODY / BORDER", "EYES", "SLEEP HOUR", "WAKE HOUR", "UTC OFFSET",
       "AWAKE TIMEOUT", "ASLEEP TIMEOUT", "DIM AFTER", "VOLUME", "WAKE ALARM",
-      "SLEEP CUE", "MESSAGE TONE", "SCREEN COLOUR", "SPECIES", "ORIENTATION", "DISPLAY UPDATE", "ANIMAL SET"};
+      "SLEEP CUE", "MESSAGE TONE", "SCREEN COLOUR", "SPECIES", "ORIENTATION", "DISPLAY UPDATE", "ANIMAL SET", "SLOW WHEN DIM"};
 #if LORAGOTCHI_DXPRO
   if (setting == LoRaFishSetting::SpeciesSet || setting == LoRaFishSetting::Species) {
     // Both DX-Pro steps are lists (3 sets, then up to 39 animals). They use the same compact rows as every
@@ -2703,6 +2724,7 @@ static void drawLoRaFishValuePicker(DisplayDriver& display) {
     case LoRaFishSetting::Brightness: text = loRaFishBrightnessNames[value]; break;
     case LoRaFishSetting::DisplayUpdate: text = value ? "Partial" : "Full"; break;
     case LoRaFishSetting::Orientation: text = value ? "180 degrees" : "0 degrees"; break;
+    case LoRaFishSetting::DimSlow: text = value ? "On" : "Off"; break;
     case LoRaFishSetting::Rendering: text = value==2 ? "Efficient 1 FPS" : value==1 ? "Simulation" : "Smooth"; break;
     case LoRaFishSetting::Scales:
     case LoRaFishSetting::Body:
@@ -3002,6 +3024,7 @@ static void drawLoRaFishDisplayMenu(DisplayDriver& display) {
   for (int row = 0; row < visible && first + row < count; ++row) {
     const uint8_t option = first + row;
     drawLoRaFishMenuLabel(display, LoRaFishMenuLayout::rowYFor(display, row), option == loRaFishDisplayOption,
+        (loRaFishDimSlowSupported && option == loRaFishDimSlowOptionIndex()) ? "Slow when dimmed" :
         (loRaFishPartialSupported && option == 5 + (LORAGOTCHI_SPECIES_EDITION ? 1 : 0) + loRaFishOrientationSupported) ? "Display update" :
         (loRaFishOrientationSupported && option == 5 + (LORAGOTCHI_SPECIES_EDITION ? 1 : 0)) ? "Orientation" :
         (loRaFishColorDisplay ? colorLabels[option] : monoLabels[option]));
@@ -4040,13 +4063,23 @@ static void drawLoRaFishAquarium(DisplayDriver& display, UITask* task) {
 
   int x=0, y=0;
   bool right=true;
+  uint8_t pose=0; // LoRaFishSpecies::Pose* bits; 0 = legacy motion (e-ink, crab/snail/jellyfish, plain DX)
+#ifdef LORAGOTCHI_NATIVE_UI
+  const int idleFloorY=h>64 ? 42 : 37; // row a landing flyer settles on (42 maps to the tall-panel floor)
+  const int idleAirY=h>64 ? 30+(int)(11*sinf(millis()/5100.0f)) : -1; // tall panels: the flyer keeps its slow vertical sway
+#else
+  const int idleFloorY=37;
+  const int idleAirY=-1; // -1 = the species' own wing-bob row
+#endif
   loRaFishNaturalPosition(w,x,y,right);
-  if (LORAGOTCHI_ANIMAL_EDITION || LoRaFishSpecies::waterMotion(loRaFishSpecies))
-    LoRaFishSpecies::habitatPosition(loRaFishSpecies,fish.evolution,w,(uint32_t)millis(),0,x,y,right);
+  // !isEink(): e-ink keeps its existing drift (never frozen); the Efficient 1 FPS mode just samples the
+  // same clock-driven path once a second, so it needs no special case here.
+  if (LORAGOTCHI_HABITAT_MOTION || LoRaFishSpecies::waterMotion(loRaFishSpecies))
+    LoRaFishSpecies::habitatPosition(loRaFishSpecies,fish.evolution,w,(uint32_t)millis(),0,x,y,right,!display.isEink(),&pose,idleFloorY,idleAirY);
 
   const int bodyOffset=LoRaFishLayout::bodyOffset(h);
 #ifdef LORAGOTCHI_NATIVE_UI
-  if (h>64 && (!LoRaFishSpecies::waterMotion(loRaFishSpecies) || loRaFishSpecies==LoRaFishSpecies::Jellyfish))
+  if (h>64 && !(pose&LoRaFishSpecies::PoseOwnsY) && (!LoRaFishSpecies::waterMotion(loRaFishSpecies) || loRaFishSpecies==LoRaFishSpecies::Jellyfish))
     y=30+(int)(11*sinf(millis()/5100.0f));
 #endif
 #if LORAGOTCHI_WATER_EDITION || LORAGOTCHI_DXPRO
@@ -4129,7 +4162,7 @@ static void drawLoRaFishAquarium(DisplayDriver& display, UITask* task) {
       display.setCursor(min(w-4,sleepX+12), max(17,sleepY-11)); display.print("z");
       display.setCursor(min(w-4,sleepX+19), max(12,sleepY-16)); display.print("Z");
     } else if (!homeTraveling && !loRaFishHomeTravelAnimation.active) {
-      drawHomeFishSprite(display,x,y,right);
+      drawHomeFishSprite(display,x,y,right,loRaFishFeeding ? 0 : pose); // a feeding animal is never frozen
       if (fish.ageMinutes>=LORAFISH_EGG_MINUTES && fish.ageMinutes<LORAFISH_LIFESPAN_MINUTES)
         drawLoRaFishMeshSparkle(display,x,y,!loragotchiDXGuest.present && !loRaFishGuestTravelAnimation.active);   // awake, living pet only
 #if defined(LORAFISH_FISH_WANDER) && defined(LORAFISH_TALL_TANK)
@@ -4158,13 +4191,21 @@ static void drawLoRaFishAquarium(DisplayDriver& display, UITask* task) {
   else if(guestStage==1) guestPeriod=6500UL;
   else if(guestStage>=3) guestPeriod=11000UL;
   int gx=0,gy=0; bool gright=true;
+  uint8_t gpose=0;
+#ifdef LORAGOTCHI_NATIVE_UI
+  const int guestFloorY=h>64 ? 42 : 37;
+  const int guestAirY=h>64 ? 30+(int)(11*sinf((millis()+4300)/5700.0f)) : -1;
+#else
+  const int guestFloorY=37;
+  const int guestAirY=-1;
+#endif
   loRaFishNaturalPositionForStage(w,guestStage,guestPeriod/2,gx,gy,gright);
   const uint16_t guestMotionSpecies=guestPresent ? loragotchiDXGuest.species :
       loRaFishGuestTravelAnimation.species;
-  if (LORAGOTCHI_ANIMAL_EDITION || LoRaFishSpecies::waterMotion(guestMotionSpecies))
-    LoRaFishSpecies::habitatPosition(guestMotionSpecies,guestStage,w,(uint32_t)millis(),2700,gx,gy,gright);
+  if (LORAGOTCHI_HABITAT_MOTION || LoRaFishSpecies::waterMotion(guestMotionSpecies))
+    LoRaFishSpecies::habitatPosition(guestMotionSpecies,guestStage,w,(uint32_t)millis(),2700,gx,gy,gright,!display.isEink(),&gpose,guestFloorY,guestAirY);
 #ifdef LORAGOTCHI_NATIVE_UI
-  if (h>64 && (!LoRaFishSpecies::waterMotion(guestMotionSpecies) || guestMotionSpecies==LoRaFishSpecies::Jellyfish))
+  if (h>64 && !(gpose&LoRaFishSpecies::PoseOwnsY) && (!LoRaFishSpecies::waterMotion(guestMotionSpecies) || guestMotionSpecies==LoRaFishSpecies::Jellyfish))
     gy=30+(int)(11*sinf((millis()+4300)/5700.0f));
 #endif
 #if LORAGOTCHI_WATER_EDITION || LORAGOTCHI_DXPRO
@@ -4182,7 +4223,7 @@ static void drawLoRaFishAquarium(DisplayDriver& display, UITask* task) {
         loRaFishGuestTravelAnimation.entering &&
         loRaFishDrawTravelAnimation(display,loRaFishGuestTravelAnimation);
     if (!guestEntering && !loRaFishGuestTravelAnimation.active)
-      drawFishSpriteForStage(display,gx,gy,gright,loragotchiDXGuest.stage,loRaFishGuestRenderAppearance(),loragotchiDXGuest.species);
+      drawFishSpriteForStage(display,gx,gy,gright,loragotchiDXGuest.stage,loRaFishGuestRenderAppearance(),loragotchiDXGuest.species,gpose);
     if (!loRaFishGuestTravelAnimation.active) {
       display.setColor(UIColor::secondary_txt);
       drawLoRaFishName(display,27,loragotchiDXGuest.guestName,sizeof(loragotchiDXGuest.guestName));
@@ -4771,6 +4812,9 @@ public:
     // Static pages (menus, stats, pairing) only need an occasional redraw; button
     // presses reset _next_refresh in checkDisplayOn(), so they stay responsive.
     if (loRaFishPage == 0) {
+      // Optional battery saver: while the screen is dimmed, redraw the pet once per second.
+      // Never set on e-ink or on panels where dimming does nothing (see loRaFishDimSlowSupported).
+      if (loRaFishDimSlowActive()) return 1000;
 #if defined(LORAFISH_CARDPUTER_25D) && !defined(LORAFISH_25D_10FPS)
       // Cardputer LCD uses a framebuffer; 100 ms = only 10 FPS and makes
       // the pixel-stepped fish appear jerky. Target ~30 FPS on this board only.
@@ -5378,6 +5422,7 @@ void UITask::begin(DisplayDriver* display, SensorManager* sensors, NodePrefs* no
   loRaFishOrientationSupported = display && display->supportsOrientation();
   loRaFishColorDisplay = display && display->supportsColor();
   loRaFishEinkDisplay = display && display->isEink();
+  loRaFishDimSlowSupported = display && display->supportsBrightness() && !display->isEink();
   loadLoRaFish();
   loadLoRaFishSettings();
   loadLoRaFishEggReceipt();
@@ -6296,7 +6341,9 @@ char UITask::handleLongPress(char c, bool isHold) {
   }
 #endif
   if (loRaFishPage == 12) {
-    if (loRaFishPartialSupported && loRaFishDisplayOption == 5 + (LORAGOTCHI_SPECIES_EDITION ? 1 : 0) + loRaFishOrientationSupported) {
+    if (loRaFishDimSlowSupported && loRaFishDisplayOption == loRaFishDimSlowOptionIndex()) {
+      loRaFishPage = 15; openLoRaFishValue(LoRaFishSetting::DimSlow);
+    } else if (loRaFishPartialSupported && loRaFishDisplayOption == 5 + (LORAGOTCHI_SPECIES_EDITION ? 1 : 0) + loRaFishOrientationSupported) {
       loRaFishPage = 15; openLoRaFishValue(LoRaFishSetting::DisplayUpdate);
     } else if (loRaFishOrientationSupported && loRaFishDisplayOption == 5 + (LORAGOTCHI_SPECIES_EDITION ? 1 : 0)) {
       loRaFishPage = 15;
@@ -6495,7 +6542,8 @@ char UITask::handleDoubleClick(char c, bool oneButtonDirection) {
     case LORAFISH_PET_SETUP_PAGE: break;
     case 11: loRaFishDisplayOption = 0; loRaFishPage = 12; break;
     case 13: loRaFishDisplayOption = 1; loRaFishPage = 12; break;
-    case 15: loRaFishDisplayOption = loRaFishColorDisplay ? 4 : (loRaFishValuePicker.key() == LoRaFishSetting::MonoDisplayColour ? 3 : 4); loRaFishPage = 12; break;
+    case 15: if (loRaFishValuePicker.key() == LoRaFishSetting::DimSlow) { loRaFishDisplayOption = loRaFishDimSlowOptionIndex(); loRaFishPage = 12; break; }
+             loRaFishDisplayOption = loRaFishColorDisplay ? 4 : (loRaFishValuePicker.key() == LoRaFishSetting::MonoDisplayColour ? 3 : 4); loRaFishPage = 12; break;
     default: loRaFishPage = 0; loRaFishOption = LoRaFishOption::Advert; break;
   }
   _next_refresh = 0;

@@ -29,11 +29,19 @@ int main(int argc,char** argv) {
       }
       if(!mode && !theme && appearance.body==4) {
         if(phase==0)firstHash=r.hash();
+        else if(LoRaFishSpecies::steppedByDistance(species)) {
+          // Walkers (Penguin, Flamingo...) step their legs by distance walked, so a standing one holds a frame
+          // and a 5 px step must change the leg frame.
+          DisplayDriver b;drawFishSpriteForStage(b,37,20,true,stage,appearance,species);
+          bool differs=false;
+          for(int y=0;y<40;++y)for(int x=1;x<58;++x)if(r.at(x,y)!=b.at(x+5,y))differs=true;
+          assert(differs);
+        }
         else {if(firstHash==r.hash())fprintf(stderr,"No animation species=%u stage=%u\n",species,stage);assert(firstHash!=r.hash());}
       }
       if(!mode && !theme && appearance.body==4 && stage==2) {
         if(phase==0)signatures[index]=r.hash();
-        else if(species)assert(signatures[index]!=r.hash()); // shape, not movement-only animation
+        else if(species && !LoRaFishSpecies::steppedByDistance(species))assert(signatures[index]!=r.hash()); // shape, not movement-only animation
       }
       ++checks;
     }

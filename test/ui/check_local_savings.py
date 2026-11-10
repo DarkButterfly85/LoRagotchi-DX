@@ -80,10 +80,10 @@ loRaFishChannelNotice loRaFishNameNotice loRaFishMonoDisplayNotice loRaFishStati
 loRaFishTimeField loRaFishTimeoutField loRaFishSoundField loRaFishValuePicker
 loRaFishResetConfirmation loRaFishAdvertMenu loRaFishScreenDimmed
 loRaFishPartialSupported loRaFishPartialNeedsApply loRaFishOrientationNeedsApply loRaFishBrightnessNeedsApply loRaFishTimeoutSleepStateKnown loRaFishTimeoutSleepState
-loRaFishLastActivityMs loRaFishAlwaysOnDimValues loRaFishBrightnessValues
+loRaFishLastActivityMs loRaFishAlwaysOnDimValues loRaFishBrightnessValues loRaFishDimSlowSupported
 LORAFISH_RESET_CONFIRM_PAGE LORAFISH_DX_CONTACT_PAGE LORAFISH_RANGE_PAGE'''.split():
     source += '\n' + declaration(name)
-for marker in ['static uint16_t loRaFishDisplayBattery(', 'static bool shouldRenderLoRaFish(',
+for marker in ['static uint16_t loRaFishDisplayBattery(', 'static bool shouldRenderLoRaFish(', 'static bool loRaFishDimSlowActive(',
                'static void applyLoRaFishBrightness(']:
     source += '\n' + block(marker)
 # Actual HomeScreen render cadence, with only pixel drawing mocked.
