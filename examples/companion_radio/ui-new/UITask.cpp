@@ -558,6 +558,8 @@ static const uint32_t loRaFishAlwaysOnDimValues[] = {15000UL,30000UL,60000UL};
 static const char* loRaFishAlwaysOnDimNames[] = {"15s","30s","60s"};
 static unsigned long loRaFishLastActivityMs = 0;
 static bool loRaFishScreenDimmed = false;
+static uint8_t loRaFishDimSlow = 0;            // 0 = Off (default), 1 = one redraw per second while dimmed
+static bool loRaFishDimSlowSupported = false;  // set at start-up: only panels whose brightness really dims, never e-ink
 static bool loRaFishBrightnessNeedsApply = false;
 static bool loRaFishPartialSupported = false;
 static uint8_t loRaFishPartial = 0;
@@ -603,7 +605,14 @@ static uint32_t loRaFishScreenTimeoutMs() {
   return loRaFishTimeoutValues[min((uint8_t)5,setting)];
 }
 static uint8_t loRaFishDisplayOptionCount() {
+  return 5 + (LORAGOTCHI_SPECIES_EDITION ? 1 : 0) + loRaFishOrientationSupported + loRaFishPartialSupported + loRaFishDimSlowSupported;
+}
+// Slow animation when dimmed: the optional last Display row.
+static uint8_t loRaFishDimSlowOptionIndex() {
   return 5 + (LORAGOTCHI_SPECIES_EDITION ? 1 : 0) + loRaFishOrientationSupported + loRaFishPartialSupported;
+}
+static bool loRaFishDimSlowActive() {
+  return loRaFishDimSlowSupported && loRaFishDimSlow != 0 && loRaFishScreenDimmed;
 }
 static bool loRaFishCanBreed() {
 #ifdef LORAFISH_UI
@@ -660,6 +669,7 @@ static void openLoRaFishValue(LoRaFishSetting setting) {
     case LoRaFishSetting::Theme: value = loRaFishTheme; count = loRaFishThemeCount(); break;
     case LoRaFishSetting::DisplayUpdate: value = loRaFishPartial; count = loRaFishPartialSupported ? 2 : 0; break;
     case LoRaFishSetting::Orientation: value = loRaFishOrientation; count = loRaFishOrientationSupported ? 2 : 0; break;
+    case LoRaFishSetting::DimSlow: value = loRaFishDimSlow; count = loRaFishDimSlowSupported ? 2 : 0; break;
     case LoRaFishSetting::Brightness: value = loRaFishBrightnessSetting; count = 4; break;
     case LoRaFishSetting::Rendering: value = loRaFishSimulationMode; count = 3; break;
     case LoRaFishSetting::Scales: value = LoRaFishColour::fallback(loRaFishScaleColor); count = LORAFISH_COLOR_ALLELE_COUNT; break;
@@ -719,6 +729,7 @@ static void selectLoRaFishValue() {
       break;
     case LoRaFishSetting::DisplayUpdate: loRaFishPartial = value; loRaFishPartialNeedsApply = true; break;
     case LoRaFishSetting::Orientation: loRaFishOrientation = value; loRaFishOrientationNeedsApply = true; break;
+    case LoRaFishSetting::DimSlow: loRaFishDimSlow = value ? 1 : 0; break;
     case LoRaFishSetting::Theme: loRaFishTheme = value; applyLoRaFishTheme(); break;
     case LoRaFishSetting::Brightness:
       loRaFishBrightnessSetting = value; loRaFishBrightnessNeedsApply = true; break;
@@ -1089,7 +1100,7 @@ static const char* fishStageName() {
 // legacy readers keep the nearest-palette values in the original prefix.
 // ORI1 follows species without repurposing any existing settings byte.
 static constexpr uint32_t LORAFISH_AQUARIUM_SETTINGS_MAGIC = 0x31555141UL; // "AQU1"
-static constexpr size_t LORAFISH_SETTINGS_SIZE = 106;
+static constexpr size_t LORAFISH_SETTINGS_SIZE = 112;
 static constexpr uint32_t LORAFISH_CHECKPOINT_MS = 5UL * 60000UL;
 static constexpr uint32_t LORAFISH_SAVE_RETRY_MS = 5000UL;
 static uint8_t lastWrittenLoRaFishSettings[LORAFISH_SETTINGS_SIZE];
@@ -1138,6 +1149,7 @@ static void encodeLoRaFishSettings(uint8_t* data) {
   data[102]=1; data[103]=0;
   const uint16_t artCRC=LoRaFishSpecies::checksum(data+90,14);
   data[104]=artCRC; data[105]=artCRC>>8;
+  memcpy(data+106,"DIM1",4); data[110]=loRaFishDimSlow ? 1 : 0; data[111]=0; // optional tail; absent in older saves = Off
 }
 
 static const char* loRaFishRecordKey(const char* path) {
@@ -1208,6 +1220,7 @@ static void serviceLoRaFishSettingsMenu(bool visible) {
 static void loadLoRaFishSettings() {
   loRaFishOrientation = 0;
   loRaFishPartial = 0;
+  loRaFishDimSlow = 0;
   loRaFishSettingsPending = false;
   // Only a genuinely fresh game starts with the edition default. Established
   // legacy DAT saves still default to fish when SPC1 is absent/corrupt.
@@ -1352,7 +1365,8 @@ static void loadLoRaFishSettings() {
     uint8_t update[6] = {};
     if (f.read(update, sizeof(update)) == sizeof(update) && !memcmp(update, "UPD1", 4) && update[4] < 2 && update[5] == 0) loRaFishPartial = update[4];
     uint8_t art[16]={};
-    if(f.read(art,sizeof(art))==sizeof(art) && !memcmp(art,"ART1",4) &&
+    const bool hasArt=f.read(art,sizeof(art))==sizeof(art);
+    if(hasArt && !memcmp(art,"ART1",4) &&
         art[4]<=1 && art[5]<=1 && LoRaFishColour::valid(art[10]) &&
         LoRaFishColour::valid(art[11]) && art[12]==1 && art[13]==0 &&
         LoRaFishSpecies::checksum(art,14)==(uint16_t)(art[14]|art[15]<<8)) {
@@ -1360,6 +1374,9 @@ static void loadLoRaFishSettings() {
       for(unsigned i=0;i<4;++i) loRaFishMemorialKey|=(uint32_t)art[6+i]<<(8*i);
       loRaFishMemorialBody=art[10]; loRaFishMemorialScales=art[11];
     }
+    uint8_t dimSlow[6] = {};
+    if (hasArt && f.read(dimSlow, sizeof(dimSlow)) == sizeof(dimSlow) && !memcmp(dimSlow, "DIM1", 4) &&
+        dimSlow[4] < 2 && dimSlow[5] == 0) loRaFishDimSlow = dimSlow[4];
     if (!LORAGOTCHI_SPECIES_EDITION) loRaFishNeedsPetSetup=false;
     if (loRaFishNeedsPetSetup && !loRaFishAdoptionEligible) loRaFishPage=LORAFISH_PET_SETUP_PAGE;
     lastWrittenLoRaFishHappiness = loRaFishHappiness;
@@ -2549,7 +2566,7 @@ static void drawLoRaFishValuePicker(DisplayDriver& display) {
   static const char* titles[] = {"FIRMWARE THEME", "BRIGHTNESS", "GAME RENDERING",
       "SCALES", "BODY / BORDER", "EYES", "SLEEP HOUR", "WAKE HOUR", "UTC OFFSET",
       "AWAKE TIMEOUT", "ASLEEP TIMEOUT", "DIM AFTER", "VOLUME", "WAKE ALARM",
-      "SLEEP CUE", "MESSAGE TONE", "SCREEN COLOUR", "SPECIES", "ORIENTATION", "DISPLAY UPDATE", "ANIMAL SET"};
+      "SLEEP CUE", "MESSAGE TONE", "SCREEN COLOUR", "SPECIES", "ORIENTATION", "DISPLAY UPDATE", "ANIMAL SET", "SLOW WHEN DIM"};
 #if LORAGOTCHI_DXPRO
   if (setting == LoRaFishSetting::SpeciesSet || setting == LoRaFishSetting::Species) {
     // Both DX-Pro steps are lists (3 sets, then up to 39 animals). They use the same compact rows as every
@@ -2587,6 +2604,7 @@ static void drawLoRaFishValuePicker(DisplayDriver& display) {
     case LoRaFishSetting::Brightness: text = loRaFishBrightnessNames[value]; break;
     case LoRaFishSetting::DisplayUpdate: text = value ? "Partial" : "Full"; break;
     case LoRaFishSetting::Orientation: text = value ? "180 degrees" : "0 degrees"; break;
+    case LoRaFishSetting::DimSlow: text = value ? "On" : "Off"; break;
     case LoRaFishSetting::Rendering: text = value==2 ? "Efficient 1 FPS" : value==1 ? "Simulation" : "Smooth"; break;
     case LoRaFishSetting::Scales:
     case LoRaFishSetting::Body:
@@ -2886,6 +2904,7 @@ static void drawLoRaFishDisplayMenu(DisplayDriver& display) {
   for (int row = 0; row < visible && first + row < count; ++row) {
     const uint8_t option = first + row;
     drawLoRaFishMenuLabel(display, LoRaFishMenuLayout::rowYFor(display, row), option == loRaFishDisplayOption,
+        (loRaFishDimSlowSupported && option == loRaFishDimSlowOptionIndex()) ? "Slow when dimmed" :
         (loRaFishPartialSupported && option == 5 + (LORAGOTCHI_SPECIES_EDITION ? 1 : 0) + loRaFishOrientationSupported) ? "Display update" :
         (loRaFishOrientationSupported && option == 5 + (LORAGOTCHI_SPECIES_EDITION ? 1 : 0)) ? "Orientation" :
         (loRaFishColorDisplay ? colorLabels[option] : monoLabels[option]));
@@ -4487,6 +4506,9 @@ public:
     // Static pages (menus, stats, pairing) only need an occasional redraw; button
     // presses reset _next_refresh in checkDisplayOn(), so they stay responsive.
     if (loRaFishPage == 0) {
+      // Optional battery saver: while the screen is dimmed, redraw the pet once per second.
+      // Never set on e-ink or on panels where dimming does nothing (see loRaFishDimSlowSupported).
+      if (loRaFishDimSlowActive()) return 1000;
 #if defined(LORAFISH_CARDPUTER_25D) && !defined(LORAFISH_25D_10FPS)
       // Cardputer LCD uses a framebuffer; 100 ms = only 10 FPS and makes
       // the pixel-stepped fish appear jerky. Target ~30 FPS on this board only.
@@ -5090,6 +5112,7 @@ void UITask::begin(DisplayDriver* display, SensorManager* sensors, NodePrefs* no
   loRaFishPartialSupported = display && display->supportsPartialUpdates();
   loRaFishOrientationSupported = display && display->supportsOrientation();
   loRaFishColorDisplay = display && display->supportsColor();
+  loRaFishDimSlowSupported = display && display->supportsBrightness() && !display->isEink();
   loadLoRaFish();
   loadLoRaFishSettings();
   loadLoRaFishEggReceipt();
@@ -5965,7 +5988,9 @@ char UITask::handleLongPress(char c, bool isHold) {
   }
 #endif
   if (loRaFishPage == 12) {
-    if (loRaFishPartialSupported && loRaFishDisplayOption == 5 + (LORAGOTCHI_SPECIES_EDITION ? 1 : 0) + loRaFishOrientationSupported) {
+    if (loRaFishDimSlowSupported && loRaFishDisplayOption == loRaFishDimSlowOptionIndex()) {
+      loRaFishPage = 15; openLoRaFishValue(LoRaFishSetting::DimSlow);
+    } else if (loRaFishPartialSupported && loRaFishDisplayOption == 5 + (LORAGOTCHI_SPECIES_EDITION ? 1 : 0) + loRaFishOrientationSupported) {
       loRaFishPage = 15; openLoRaFishValue(LoRaFishSetting::DisplayUpdate);
     } else if (loRaFishOrientationSupported && loRaFishDisplayOption == 5 + (LORAGOTCHI_SPECIES_EDITION ? 1 : 0)) {
       loRaFishPage = 15;
@@ -6163,7 +6188,8 @@ char UITask::handleDoubleClick(char c, bool oneButtonDirection) {
     case LORAFISH_PET_SETUP_PAGE: break;
     case 11: loRaFishDisplayOption = 0; loRaFishPage = 12; break;
     case 13: loRaFishDisplayOption = 1; loRaFishPage = 12; break;
-    case 15: loRaFishDisplayOption = loRaFishColorDisplay ? 4 : (loRaFishValuePicker.key() == LoRaFishSetting::MonoDisplayColour ? 3 : 4); loRaFishPage = 12; break;
+    case 15: if (loRaFishValuePicker.key() == LoRaFishSetting::DimSlow) { loRaFishDisplayOption = loRaFishDimSlowOptionIndex(); loRaFishPage = 12; break; }
+             loRaFishDisplayOption = loRaFishColorDisplay ? 4 : (loRaFishValuePicker.key() == LoRaFishSetting::MonoDisplayColour ? 3 : 4); loRaFishPage = 12; break;
     default: loRaFishPage = 0; loRaFishOption = LoRaFishOption::Advert; break;
   }
   _next_refresh = 0;

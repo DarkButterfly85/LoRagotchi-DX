@@ -187,12 +187,12 @@ static void loRaFishRegisterDisplayActivity(DisplayDriver&){}
 static uint32_t loRaFishScreenTimeoutMs(){return 15000;}
 class UITask;
 '''
-names='loRaFishOrientationSupported loRaFishOrientation loRaFishPartial loRaFishPartialSupported loRaFishPartialNeedsApply loRaFishOrientationNeedsApply loRaFishVisitWarning loRaFishVisitContinue loRaFishVisitWarningKey loRaFishSettingsMenuOpen loRaFishSettingsPending loRaFishChannelNotice loRaFishNameNotice loRaFishDXDestinationKey loRaFishDXDestinationKnown LORAFISH_DX_CONTACT_PAGE loRaFishPage loRaFishOption loRaFishValuePicker loRaFishDisplayOption loRaFishTimeField loRaFishTimeoutField loRaFishSoundField LORAFISH_PAGE_COUNT LORAFISH_RESET_CONFIRM_PAGE loRaFishResetConfirmation LORAFISH_ADVERT_PAGE loRaFishAdvertMenu loRaFishTheme loRaFishColor loRaFishScaleColor loRaFishEyeColor loRaFishColorField loRaFishNeedsAppearanceSetup loRaFishColorDisplay loRaFishSimulationMode loRaFishGuessNumber loRaFishGuessPrevious loRaFishGuessRounds loRaFishGuessScore loRaFishGuessHigher loRaFishGuessResultShown loRaFishGuessCorrect loRaFishGuessComplete loRaFishTimeoutAwakeSetting loRaFishTimeoutAsleepSetting loRaFishTimeoutShortNames loRaFishBrightnessSetting loRaFishBrightnessNames loRaFishBrightnessNeedsApply loRaFishAlwaysOnDimSetting loRaFishAlwaysOnDimNames loRaFishBuzzerVolume loRaFishWakeSound loRaFishSleepSound loRaFishMessageSound loRaFishVolumeNames loRaFishWakeSoundNames loRaFishSleepSoundNames loRaFishMessageSoundNames loRaFishWakeMelodies loRaFishSleepMelodies loRaFishMessageMelodies loRaFishSleepHour loRaFishWakeHour loRaFishUtcOffsetQuarters loRaFishColorNames'.split()
+names='loRaFishOrientationSupported loRaFishOrientation loRaFishPartial loRaFishPartialSupported loRaFishPartialNeedsApply loRaFishOrientationNeedsApply loRaFishVisitWarning loRaFishVisitContinue loRaFishVisitWarningKey loRaFishSettingsMenuOpen loRaFishSettingsPending loRaFishChannelNotice loRaFishNameNotice loRaFishDXDestinationKey loRaFishDXDestinationKnown LORAFISH_DX_CONTACT_PAGE loRaFishPage loRaFishOption loRaFishValuePicker loRaFishDisplayOption loRaFishTimeField loRaFishTimeoutField loRaFishSoundField LORAFISH_PAGE_COUNT LORAFISH_RESET_CONFIRM_PAGE loRaFishResetConfirmation LORAFISH_ADVERT_PAGE loRaFishAdvertMenu loRaFishTheme loRaFishColor loRaFishScaleColor loRaFishEyeColor loRaFishColorField loRaFishNeedsAppearanceSetup loRaFishColorDisplay loRaFishSimulationMode loRaFishGuessNumber loRaFishGuessPrevious loRaFishGuessRounds loRaFishGuessScore loRaFishGuessHigher loRaFishGuessResultShown loRaFishGuessCorrect loRaFishGuessComplete loRaFishTimeoutAwakeSetting loRaFishTimeoutAsleepSetting loRaFishTimeoutShortNames loRaFishBrightnessSetting loRaFishBrightnessNames loRaFishBrightnessNeedsApply loRaFishAlwaysOnDimSetting loRaFishDimSlow loRaFishDimSlowSupported loRaFishAlwaysOnDimNames loRaFishBuzzerVolume loRaFishWakeSound loRaFishSleepSound loRaFishMessageSound loRaFishVolumeNames loRaFishWakeSoundNames loRaFishSleepSoundNames loRaFishMessageSoundNames loRaFishWakeMelodies loRaFishSleepMelodies loRaFishMessageMelodies loRaFishSleepHour loRaFishWakeHour loRaFishUtcOffsetQuarters loRaFishColorNames'.split()
 parts=[pre]+[declaration(name) for name in names]
 parts += [block('struct LoRaFishThemePalette')+';',declaration('loRaFishThemes'),
  'static constexpr uint8_t LORAFISH_COLOR_THEME_COUNT=4,LORAFISH_COLOR_ALLELE_COUNT=7;',
  source[source.index('static constexpr bool loRaFishHasSound'):source.index('#endif',source.index('static constexpr bool loRaFishHasSound'))+len('#endif')]]
-for name in ['static void beginLoRaFishChannelNotice(', 'static bool dismissLoRaFishNotice(', 'static void drawLoRaFishChannelNotice(', 'static void beginLoRaFishNameNotice(', 'static const char* loRaFishDisplayName(', 'static const char* loRaFishProtocolName(', 'static uint8_t loRaFishThemeCount(', 'static uint8_t loRaFishDisplayOptionCount(',
+for name in ['static void beginLoRaFishChannelNotice(', 'static bool dismissLoRaFishNotice(', 'static void drawLoRaFishChannelNotice(', 'static void beginLoRaFishNameNotice(', 'static const char* loRaFishDisplayName(', 'static const char* loRaFishProtocolName(', 'static uint8_t loRaFishThemeCount(', 'static uint8_t loRaFishDisplayOptionCount(', 'static uint8_t loRaFishDimSlowOptionIndex(',
  'static uint8_t loRaFishOptionCount(', 'static void returnToLoRaFishOptions(',
  'static void serviceLoRaFishSettingsMenu(', 'static void cancelLoRaFishValue(', 'static void openLoRaFishValue(', 'static void ensureLoRaFishMysterySeed(', 'static void chooseLoRaFishMysteryColours(', 'static void selectLoRaFishValue(',
  'static void loRaFishFormatUtcOffset(', 'static void drawLoRaFishHeader(',
@@ -283,6 +283,21 @@ int main(){
   assert(loRaFishPage==12 && loRaFishOrientation==1 && loRaFishOrientationNeedsApply);
   loRaFishOrientationSupported=false;loRaFishOrientation=0;loRaFishOrientationNeedsApply=false;loRaFishSettingsPending=false;
 
+  // Slow animation when dimmed: optional last Display row, default Off, shown only where dimming is real.
+  assert(loRaFishDimSlow==0 && !loRaFishDimSlowSupported);
+  loRaFishDimSlowSupported=true;
+  assert(loRaFishDisplayOptionCount()==(LORAGOTCHI_SPECIES_EDITION ? 7 : 6));
+  loRaFishPage=12;loRaFishDisplayOption=loRaFishDisplayOptionCount()-1;
+  task.display.clearBounds();drawLoRaFishDisplayMenu(task.display);
+  task.handleLongPress(KEY_ENTER);
+  assert(loRaFishPage==15 && loRaFishValuePicker.key()==LoRaFishSetting::DimSlow);
+  shortPress(KEY_NEXT);task.handleDoubleClick(KEY_PREV);
+  assert(loRaFishPage==12 && loRaFishDimSlow==0 && loRaFishDisplayOption==loRaFishDimSlowOptionIndex());
+  task.handleLongPress(KEY_ENTER);shortPress(KEY_NEXT);task.handleLongPress(KEY_ENTER);
+  assert(loRaFishPage==12 && loRaFishDimSlow==1 && loRaFishSettingsPending);
+  loRaFishDimSlow=0;loRaFishSettingsPending=false;loRaFishDimSlowSupported=false;
+  // Unsupported (e-ink, T190, panels that cannot dim): no row and no picker.
+  openLoRaFishValue(LoRaFishSetting::DimSlow);assert(!loRaFishValuePicker.active());
   assert(loRaFishDisplayOptionCount()==(LORAGOTCHI_SPECIES_EDITION ? 6 : 5));
 #if LORAGOTCHI_SPECIES_EDITION
   // New-game picker enters only after notices/adoption; browsing/cancel never rolls.

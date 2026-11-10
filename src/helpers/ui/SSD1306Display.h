@@ -46,6 +46,7 @@ public:
   bool isOn() override { return _isOn; }
   void turnOn() override;
   void turnOff() override;
+  bool supportsBrightness() const override { return true; }
   void setBrightness(uint8_t brightness) override;
   void clear() override;
   void startFrame(ColorVal bkg = UIColor::window_bkg) override;
