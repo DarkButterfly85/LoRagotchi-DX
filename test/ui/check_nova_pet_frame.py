@@ -371,6 +371,8 @@ endmark = '#endif  // LORAGOTCHI_NOVA_LINK'
 b = mm.index(endmark, a) + len(endmark)
 (work / 'nova_block.inc').write_text(mm[a:b] + '\n')
 check('checkNovaSerial();' in mm[mm.index('void MyMesh::loop()'):], 'loop() must call checkNovaSerial()')
+check('strcmp(command, "nova contacts") == 0 && _cli_from_serial' in mm, 'CLI Rescue must keep answering "nova contacts"')
+check('NovaContacts::writeJson(sink, getContact)' in mm[a:b] and '"ed\\":\\"dx-pro\\"' in mm[a:b], 'the block must list contacts and report ed dx-pro')
 loop = mm[mm.index('void MyMesh::loop()'):]
 check(loop.index('if (_cli_rescue)') < loop.index('checkNovaSerial();') and loop.index('} else {') < loop.index('checkNovaSerial();'),
       'checkNovaSerial() must sit in the branch that is not CLI Rescue')
@@ -401,22 +403,80 @@ def dispatch(line):                    # the dashboard's onLine(), conditions co
     return 'ignored'
 
 
-s1 = ['SUP 1', 'T 100', 'RX nova hello\\r\\n', 'T 110', 'RX nova mesh\\n', 'T 120', 'RX nova petname Fluffy\\n', 'T 130',
+HELLO_KEYS = ['pet', 'mesh', 'contacts', 'petname', 'keys', 'clean', 'feed', 'guess', 'ping', 'sendpet']
+
+
+def check_hello(line, pet, petname):
+    """The 'nova hello' reply: ONE JSON line the dashboard's router takes as a radio report (ed first, "nova" later)."""
+    check(line.endswith('\n') and line.count('\n') == 1, 'hello must be exactly one line: %r' % line)
+    check(len(line) < 352, 'hello must fit its 352 byte buffer (%d)' % len(line))
+    o = json.loads(line)
+    check(list(o)[0] == 'ed' and o['ed'] == 'dx-pro', 'ed must come first and be dx-pro: %r' % line)
+    check(line.startswith('{"ed":"dx-pro","nova":'), 'ed first, then the nova object: %r' % line)
+    check(line.find('"nova"') > 0, 'the router needs "nova" after index 0: %r' % line)
+    check(line.find('"mesh"') != 1 and line.find('"pet"') != 1, 'must not be routed as a mesh or pet line: %r' % line)
+    check(dispatch(line) == 'frame', 'the dashboard must take the hello as a radio report: %s' % dispatch(line))
+    check(o['nova']['v'] == 1 and list(o['nova']['caps']) == HELLO_KEYS, 'nova.v is 1 and caps are the ten known keys in order: %r' % o['nova'])
+    want = {k: 0 for k in HELLO_KEYS}
+    want.update(pet=pet, petname=petname, contacts=1)           # the only features this build really has
+    check(o['nova']['caps'] == want, 'caps must be 1 only for what exists: %r (wanted %r)' % (o['nova']['caps'], want))
+    check(o['lg'] == {'hello': 1, 'pet': pet, 'mesh': 0}, 'the old lg object stays: %r' % o.get('lg'))
+    return o
+
+
+s1 = ['SUP 1', 'SETTER 1', 'T 100', 'RX nova hello\\r\\n', 'T 110', 'RX nova mesh\\n', 'T 120', 'RX nova petname Fluffy\\n', 'T 130',
       'RX nova profile away\\n', 'T 140', 'RX hello\\nls\\nnext\\nnovapet\\n', 'T 150', 'RX nova   he', 'T 160', 'RX llo\\n', 'T 170',
       'RX nova pets\\n', 'T 180', 'RXLONG 200', 'T 190']
 o = outs(run_serial(s1))
 check(o[0] == '', 'nothing may be sent before a command')
-check(o[1] == '{"lg":{"hello":1,"pet":1,"mesh":0}}\n', 'nova hello reply: %r' % o[1])
+check_hello(o[1], 1, 1)
 check(o[2] == '{"lg":{"mesh":0}}\n', 'nova mesh reply: %r' % o[2])
 check(o[3].startswith('# petname: ') and o[3].count('\n') == 1, 'nova petname reply: %r' % o[3])
 check(o[4].startswith('# nova: not supported') and o[4].count('\n') == 1, 'unknown nova command reply: %r' % o[4])
 check(o[5] == '', 'lines that are not "nova ..." must be ignored: %r' % o[5])
-check(o[6] == '' and o[7] == '{"lg":{"hello":1,"pet":1,"mesh":0}}\n', 'a command split over two reads, extra spaces: %r %r' % (o[6], o[7]))
+check(o[6] == '' and o[7] == o[1], 'a command split over two reads, extra spaces: %r %r' % (o[6], o[7]))
 check(o[8].startswith('# nova: not supported'), '"nova pets" is not "nova pet": %r' % o[8])
 check(o[9] == '', 'a 200 character line must be dropped whole: %r' % o[9])
 d = [dispatch(x) for x in (o[1], o[2], o[3], o[4], o[8])]
-check(d == ['ignored', 'ignored', 'log', 'log', 'log'], 'the dashboard must ignore the JSON replies and log the # lines: %s' % d)
-print('commands: hello, mesh, petname, unknown, partial/long/non-nova lines behave; the dashboard ignores the JSON, logs the # lines')
+check(d == ['frame', 'ignored', 'log', 'log', 'log'], 'the dashboard must take the hello as a report, ignore the mesh reply and log the # lines: %s' % d)
+check('contacts' in o[4], 'the unknown-command note lists the known commands, contacts included: %r' % o[4])
+print('commands: hello, mesh, petname, unknown, partial/long/non-nova lines behave; the dashboard reads the hello as a report, logs the # lines')
+
+# `nova hello`, one line, in every build state: caps follow what really exists (pet screen, pet name setter)
+for sup, setter in ((1, 1), (1, 0), (0, 1), (0, 0)):
+    h = outs(run_serial(['SUP %d' % sup, 'SETTER %d' % setter, 'RX nova hello\\n', 'T 10']))[0]
+    check_hello(h, sup, setter)
+check(dispatch('{"lg":{"hello":1,"pet":1,"mesh":0}}') == 'ignored', 'negative control: the OLD hello reply is ignored by the dashboard router')
+print('hello: one line, ed dx-pro first, nova after index 0, caps pet/petname follow the build, contacts 1, the other 7 caps 0')
+
+# `nova contacts` in normal mode: the production block, the shared filter, a fake contact table (8 anonymous decoy slots first)
+FISH = 'f09f909f'
+def hx(s): return s.encode().hex()
+def contact(ty, key, name_hex): return 'CONTACT %d %d %s' % (ty, key, name_hex)
+def idhex(key): return ''.join('%02x' % (key + i) for i in range(6))
+tab = ['CLR', contact(1, 16, hx('Fish ') + FISH), contact(1, 32, hx('Chat No Marker')), contact(2, 48, hx('LRX1 Tank ') + FISH),
+       contact(2, 64, hx('Other Repeater ') + FISH), contact(3, 80, hx('LRX1 Room ') + FISH), contact(2, 96, hx('LRX1 Plain'))]
+rows = run_serial(['SUP 1', 'SETTER 1'] + tab + ['RX nova contacts\\n', 'T 10', 'RX nova contacts\\r\\nnova hello\\n', 'T 20'])
+o = outs(rows)
+fish = bytes.fromhex(FISH).decode()
+check(o[0] == '{"contacts":[{"n":"Fish %s","id":"%s"},{"n":"LRX1 Tank %s","id":"%s"}]}\n' % (fish, idhex(16), fish, idhex(48)),
+      'nova contacts in normal mode: only eligible contacts, table order, anonymous slots skipped: %r' % o[0])
+check(o[0].count('\n') == 1 and json.loads(o[0])['contacts'][0]['id'] == idhex(16), 'one JSON line')
+check(dispatch(o[0]) == 'ignored', 'the contacts line is not telemetry for the dashboard router: %s' % dispatch(o[0]))
+check(o[1].count('\n') == 2 and o[1].startswith('{"contacts":[') and o[1].split('\n')[1].startswith('{"ed":"dx-pro"'),
+      'contacts and hello in one read: one line each, in order: %r' % o[1])
+check(outs(run_serial(['SUP 0', 'SETTER 0', 'CLR', 'RX nova contacts\\n', 'T 10']))[0] == '{"contacts":[]}\n', 'empty table: an empty list, still one line')
+check(outs(run_serial(['SUP 0', 'SETTER 0'] + tab + ['RX nova contacts\\n', 'T 10']))[0] == o[0], 'contacts do not depend on the screen or the pet name')
+many = ['CLR'] + [contact(1, i, hx('F%02d ' % i) + FISH) for i in range(40)]
+j = json.loads(outs(run_serial(['SUP 1', 'SETTER 1'] + many + ['RX nova contacts\\n', 'T 10']))[0])
+check(len(j['contacts']) == 16 and [c['n'] for c in j['contacts']] == ['F%02d %s' % (i, fish) for i in range(16)], 'at most 16 entries, first 16 in table order')
+esc_tab = ['CLR', contact(1, 1, hx('a"b\\c ') + FISH), contact(1, 2, hx('t\tn\x01 ') + FISH), contact(1, 3, hx('x' * 28) + FISH),
+           contact(1, 4, hx('y' * 29) + FISH)]                    # the last one is cut by the 32 byte name field: no fish, not eligible
+line = outs(run_serial(['SUP 1', 'SETTER 1'] + esc_tab + ['RX nova contacts\\n', 'T 10']))[0]
+check('a\\"b\\\\c ' in line and 't\\u0009n\\u0001' in line, 'quotes, backslashes and control characters are escaped: %r' % line)
+jj = json.loads(line)['contacts']
+check([c['n'] for c in jj] == ['a"b\\c ' + fish, 't\tn\x01 ' + fish, 'x' * 28 + fish] and all(len(c['n'].encode()) <= 32 for c in jj), 'escaped names decode back; at most 32 bytes: %r' % jj)
+print('contacts (normal mode): eligible only, table order, <=16, JSON-escaped, <=32 byte names, one line, any screen')
 
 # "nova petname": the real handler from MyMesh.cpp -> the real LoRaFishIdentity.h -> the real SafeSave, on a fake flash
 def run_id(script):
@@ -463,7 +523,7 @@ print('petname: writes only /lorafish.id, 16 ok / 17 refused / non-ASCII refused
 
 s2 = ['SUP 0', 'RX nova hello\\n', 'T 10', 'RX nova pet\\n', 'T 20', 'RX nova pet\\n', 'T 3020', 'RX nova pet\\n', 'T 31000']
 o = outs(run_serial(s2))
-check(o[0] == '{"lg":{"hello":1,"pet":0,"mesh":0}}\n', 'hello on a screen that cannot be copied: %r' % o[0])
+check_hello(o[0], 0, 0)
 check(o[1].startswith('# nova pet: this radio has no 128x64') and o[2] == '' and o[3].startswith('# nova pet:'), 'unsupported screen: one note, then quiet for 30 s: %r' % o)
 check(dispatch(o[1]) == 'log', 'the dashboard must log the unsupported note (not mistake it for "no pet support")')
 print('screen that cannot be copied: hello says pet 0; "nova pet" explains itself once every 30 s')

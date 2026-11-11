@@ -2776,7 +2776,12 @@ void MyMesh::checkCLIRescueCmd() {
 // The Nova dashboard page talks to the radio over the USB serial port in plain text lines. The
 // picture format and the dashboard come from LODESTAR ORION / LODESTAR NOVA (Aries Thorne, Todd
 // Steinhauer, FEAR REACTIVE), used with the authors' permission; see NOTICE and docs/CREDITS.md.
-//   nova hello           keep-alive; the radio answers with one JSON line saying what it can do
+//   nova hello           keep-alive; the radio answers with ONE JSON line: {"ed":"dx-pro","nova":{"v":1,"caps":{...}},"lg":{...}}.
+//                        "ed" comes first and "nova" after index 0, which is how the dashboard's line router
+//                        takes the line as a radio report (it never reads the other keys of this reply).
+//                        caps are 1 only for things this build really does; the rest stay 0.
+//   nova contacts        one JSON line {"contacts":[{"n":..,"id":..}]}: the contacts the DX visit picker offers
+//                        (LoRaFishEligible.h, at most 16). Also answered in CLI Rescue (_cli_from_serial).
 //   nova mesh            mesh analyser stream: not in this build yet, answered with {"lg":{"mesh":0}}
 //   nova pet             send the pet picture, a line at a time, for the next 4 s (the page repeats it)
 //   nova petname <name>  saves the pet's own name (16 characters at most, "-" clears it) in /lorafish.id and
@@ -2786,7 +2791,14 @@ void MyMesh::checkCLIRescueCmd() {
 // active, so it cannot clash with either. Nothing is ever sent unless a line asked for it.
 static void novaSay(const char* s) { Serial.print(s); Serial.print('\n'); }
 
-static void novaCommand(const char* line, uint32_t now) {
+// Streams the eligible-contacts JSON line to the serial port (same text as in CLI Rescue, but this
+// path has no reflected prefix). getContact(i, ContactInfo&) counts contacts the way the picker does.
+struct NovaSerialSink {
+  void write(const char* p, size_t n) { Serial.write((const uint8_t*)p, n); }
+};
+
+template <typename GetContact>
+static void novaCommand(const char* line, uint32_t now, GetContact getContact) {
   if (strncmp(line, "nova", 4) != 0 || (line[4] != 0 && line[4] != ' ')) return;   // not for us
   const char* w = line + 4;
   while (*w == ' ') w++;
@@ -2796,8 +2808,19 @@ static void novaCommand(const char* line, uint32_t now) {
   const bool note_ok = (int32_t)(now - next_note) >= 0;
 
   if (n == 5 && strncmp(w, "hello", 5) == 0) {
-    novaSay(NovaPetLink::supported() ? "{\"lg\":{\"hello\":1,\"pet\":1,\"mesh\":0}}"
-                                     : "{\"lg\":{\"hello\":1,\"pet\":0,\"mesh\":0}}");
+    // Capabilities: 1 only where the feature exists in this build, 0 for everything else (no faked data).
+    const int pet = NovaPetLink::supported() ? 1 : 0;                  // a 128x64 mono screen to copy
+    const int petname = LoRaFishIdentity::setterSlot() ? 1 : 0;        // the pet screen can store a name
+    char hello[352];
+    snprintf(hello, sizeof(hello),
+             "{\"ed\":\"dx-pro\",\"nova\":{\"v\":1,\"caps\":{\"pet\":%d,\"mesh\":0,\"contacts\":1,\"petname\":%d,"
+             "\"keys\":0,\"clean\":0,\"feed\":0,\"guess\":0,\"ping\":0,\"sendpet\":0}},"
+             "\"lg\":{\"hello\":1,\"pet\":%d,\"mesh\":0}}", pet, petname, pet);
+    novaSay(hello);
+  } else if (n == 8 && strncmp(w, "contacts", 8) == 0) {
+    NovaSerialSink sink;
+    NovaContacts::writeJson(sink, getContact);
+    Serial.print('\n');
   } else if (n == 4 && strncmp(w, "mesh", 4) == 0) {
     novaSay("{\"lg\":{\"mesh\":0}}");
   } else if (n == 3 && strncmp(w, "pet", 3) == 0) {
@@ -2834,7 +2857,7 @@ static void novaCommand(const char* line, uint32_t now) {
       }
     }
   } else {
-    novaSay("# nova: not supported by this firmware. Known: hello, mesh, pet, petname");
+    novaSay("# nova: not supported by this firmware. Known: hello, contacts, mesh, pet, petname");
   }
 }
 
@@ -2844,11 +2867,14 @@ void MyMesh::checkNovaSerial() {
   static bool skip = false;                       // a line that was too long: ignore the rest of it
   static uint32_t next_out = 0, next_hint = 0;
   const uint32_t now = millis();
+  auto contactAt = [this](uint32_t i, ContactInfo& c) {   // same indexing as the visit picker and CLI Rescue
+    return i < (uint32_t)getNumContacts() && getContactByIdx((uint32_t)MAX_ANON_CONTACTS + i, c);
+  };
 
   while (Serial.available()) {
     const char c = (char)Serial.read();
     if (c == '\n' || c == '\r') {
-      if (!skip && len) { line[len] = 0; novaCommand(line, now); }
+      if (!skip && len) { line[len] = 0; novaCommand(line, now, contactAt); }
       len = 0; skip = false;
       continue;
     }

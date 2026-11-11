@@ -52,7 +52,25 @@ static LoRaFishIdentity::NameResult setPetName(const char* name) {
   return r;
 }
 
-class MyMesh { public: void checkNovaSerial(); };
+// The contact table, as MyMesh has it: the first MAX_ANON_CONTACTS slots are not real contacts and are skipped by
+// the block's lambda; real contact i is slot MAX_ANON_CONTACTS + i. Slot 0.. of the anonymous part is an
+// eligible-looking decoy, so a block that forgets the offset would list it.
+static constexpr uint8_t ADV_TYPE_CHAT = 1, ADV_TYPE_REPEATER = 2, ADV_TYPE_ROOM = 3;
+static constexpr size_t PUB_KEY_SIZE = 32;
+static constexpr uint32_t MAX_ANON_CONTACTS = 8;
+struct ContactInfo { char name[32] = {}; uint8_t type = ADV_TYPE_CHAT; struct { uint8_t pub_key[PUB_KEY_SIZE] = {}; } id; };
+#include "LoRaFishEligible.h"
+static std::vector<ContactInfo> g_contacts;
+class MyMesh {
+public:
+  void checkNovaSerial();
+  int getNumContacts() { return (int)g_contacts.size(); }
+  bool getContactByIdx(uint32_t idx, ContactInfo& c) {
+    if (idx < MAX_ANON_CONTACTS) { c = ContactInfo(); strcpy(c.name, "ANON DECOY \xF0\x9F\x90\x9F"); c.type = ADV_TYPE_CHAT; return true; }
+    if (idx - MAX_ANON_CONTACTS >= g_contacts.size()) return false;
+    c = g_contacts[idx - MAX_ANON_CONTACTS]; return true;
+  }
+};
 #include "nova_block.inc"
 
 static std::string esc(const std::string& s) {
@@ -73,6 +91,14 @@ int main() {
     if (op == "SUP") { int v; in >> v; NovaPetLink::setSupported(v != 0); }
     else if (op == "SETTER") { int v; in >> v; LoRaFishIdentity::setterSlot() = v ? setPetName : nullptr; }   // pet screen present?
     else if (op == "LIVE") { unsigned sp, b, a, e; in >> sp >> b >> a >> e; memset(&liveId, 0, sizeof liveId); liveId.species = (uint16_t)sp; liveId.body = (uint8_t)b; liveId.accent = (uint8_t)a; liveId.eyes = (uint8_t)e; }
+    else if (op == "CLR") g_contacts.clear();
+    else if (op == "CONTACT") {                  // CONTACT <type> <key byte> <name as hex, "-" = empty>
+      unsigned ty, key; std::string hx; in >> ty >> key >> hx;
+      ContactInfo c; c.type = (uint8_t)ty;
+      for (size_t i = 0; hx != "-" && i + 1 < hx.size() && i / 2 < sizeof c.name; i += 2) c.name[i / 2] = (char)strtoul(hx.substr(i, 2).c_str(), nullptr, 16);
+      for (int i = 0; i < 32; i++) c.id.pub_key[i] = (uint8_t)(key + i);
+      g_contacts.push_back(c);
+    }
     else if (op == "FAIL") { int v; in >> v; flash.failWrites = v != 0; }
     else if (op == "ID") {                       // files on the fake flash, then the identity as a restart would load it
       std::string names;

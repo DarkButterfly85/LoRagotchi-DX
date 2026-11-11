@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Boot notice 'HOLD TO ENABLE NOVA' through the production handlers; hardware is mocked.
+"""Boot notice 'NOVA DASHBOARD / USB: open dashboard / in Chrome or Edge' through the production
+handlers; hardware is mocked. The dashboard works in normal mode, so the text must not ask for a hold.
 
 python3 test/ui/check_nova_boot_notice.py   (Python 3 and g++; no firmware build, no hardware)
 """
@@ -12,6 +13,7 @@ fixture = Path(__file__).with_name("check_menu_navigation.py")
 ns = runpy.run_path(str(fixture))
 source = ns["source"]
 parts = ns["parts"][:-1] + [ns["parts"][-1].split("int main(){", 1)[0]]
+parts.insert(0, "#ifndef NOVA_TEST_NO_LINK\n#define LORAGOTCHI_NOVA_LINK 1   // a build that serves the dashboard\n#endif")
 parts.append("static bool loRaFishNovaNoticeTimed = false;\nstatic unsigned long loRaFishNovaNoticeEnd = 0;\n#define LORAFISH_NOVA_NOTICE_MILLIS 5000UL")
 parts.append(ns["block"]("static void beginLoRaFishNovaNotice("))
 parts.append(ns["block"]("static bool serviceLoRaFishNovaNotice("))
@@ -19,6 +21,12 @@ parts.append(ns["block"]("static void drawLoRaFishNovaNotice("))
 parts.append(r'''
 static std::string joined(BoundsDisplay& d) { std::string s; for (auto& l : d.printed) s += l + "|"; return s; }
 int main() {
+#ifdef NOVA_TEST_NO_LINK
+  // A build without the serial link (phone app on USB, RP2040 WiFi, ...) must not promise a dashboard.
+  beginLoRaFishNovaNotice(); assert(!loRaFishNovaNotice);
+  puts("PASS no notice in a build without the Nova link");
+  return 0;
+#endif
   UITask task;
   loRaFishChannelNotice = loRaFishNameNotice = loRaFishMonoDisplayNotice = false;
   loRaFishPage = 0;
@@ -64,7 +72,7 @@ int main() {
   task.handleLongPress(KEY_ENTER);
   assert(the_mesh.rescues == 1 && loRaFishNovaNotice);
   loRaFishNovaNotice = false;
-  puts("PASS startup hold still enters CLI Rescue (notice only describes it)");
+  puts("PASS startup hold still enters CLI Rescue (the notice does not touch it)");
 
   // The other notices still behave: Nova goes first, then the name notice, one press each.
   loRaFishMeshNodeName = "No marker"; beginLoRaFishNameNotice(); beginLoRaFishNovaNotice();
@@ -90,12 +98,13 @@ int main() {
   loRaFishNovaNotice = true;
   task.display.clearBounds(); drawLoRaFishNovaNotice(task.display);
   assert(task.display.printed == (std::vector<std::string>{
-    "NOVA MODE", "", "HOLD TO ENABLE NOVA", "dashboard mode", "or wait: normal mode", "CLICK TO DISMISS"}) ||
+    "NOVA DASHBOARD", "", "USB: open dashboard", "in Chrome or Edge", "CLICK TO DISMISS"}) ||
     task.display.printed == (std::vector<std::string>{
-    "NOVA MODE", "HOLD TO ENABLE NOVA", "dashboard mode", "or wait: normal mode", "CLICK TO DISMISS"}));
+    "NOVA DASHBOARD", "USB: open dashboard", "in Chrome or Edge", "CLICK TO DISMISS"}));
   std::string first = joined(task.display);
-  for (const auto& line : task.display.printed) assert((int)strlen(line.c_str()) * 6 <= 128);
-  assert(task.display.getTextWidth("HOLD TO ENABLE NOVA") == 114);
+  for (const auto& line : task.display.printed) { assert(line.size() <= 20); assert((int)line.size() * 6 <= 128); }
+  assert(task.display.getTextWidth("USB: open dashboard") == 114);
+  assert(first.find("HOLD") == std::string::npos && first.find("ENABLE") == std::string::npos);   // no hold needed
   task.display.clearBounds(); tick += 12345; drawLoRaFishNovaNotice(task.display);
   assert(joined(task.display) == first);                        // same frame at any time: no animation
   puts("PASS wording fits 128 px and renders the same still frame every time");
@@ -122,10 +131,12 @@ assert "millis() - ui_started_at < 8000" in source
 with tempfile.TemporaryDirectory(prefix="dx-nova-notice-") as directory:
     cpp = Path(directory) / "notice.cpp"
     cpp.write_text("\n".join(parts))
-    for sound in (False, True):
+    for sound in (False, True, "nolink"):
         exe = Path(directory) / str(sound)
         args = ["g++", "-std=c++17", "-I" + str(ns["root"]), "-I" + str(ns["root"] / "src")]
-        if sound:
+        if sound == "nolink":
+            args += ["-DNOVA_TEST_NO_LINK"]
+        elif sound:
             args += ["-DPIN_BUZZER=6"]
         subprocess.run(args + [str(cpp), "-o", str(exe)], check=True, timeout=240)
         subprocess.run([str(exe)], check=True, timeout=30)

@@ -256,7 +256,7 @@ static const char* loRaFishMeshNodeName = nullptr;
 // The pet's own name from /lorafish.id (LoRaFishIdentity.h); "" = none, the header shows the radio name as before.
 static char loRaFishIdName[LoRaFishIdentity::kNameMax + 1] = "";
 static bool loRaFishNameNotice = false;
-// Boot hint about the existing startup hold (CLI Rescue / Nova dashboard mode). Informational only.
+// Boot hint that the Nova dashboard works over USB in normal mode (no hold needed). Informational only.
 static bool loRaFishNovaNotice = false;
 static bool loRaFishNovaNoticeTimed = false;
 static unsigned long loRaFishNovaNoticeEnd = 0;
@@ -275,7 +275,12 @@ static void beginLoRaFishChannelNotice() {
 
 static void beginLoRaFishNovaNotice() {
   // Armed at boot; the 5 s timer only starts once the home screen is up, so the splash is never covered.
+  // Only builds that really serve the dashboard (LORAGOTCHI_NOVA_LINK) say so.
+#ifdef LORAGOTCHI_NOVA_LINK
   loRaFishNovaNotice = true;
+#else
+  loRaFishNovaNotice = false;
+#endif
   loRaFishNovaNoticeTimed = false;
 }
 
@@ -4553,12 +4558,11 @@ static void drawLoRaFishChannelNotice(DisplayDriver& display) {
 static void drawLoRaFishNovaNotice(DisplayDriver& display) {
   // Static text only: no animation, so e-ink shows it as one still frame.
   const int x = display.width() / 2;
-  drawLoRaFishHeader(display, "NOVA MODE", "");
+  drawLoRaFishHeader(display, "NOVA DASHBOARD", "");
   display.setColor(UIColor::primary_txt);
-  display.drawTextCentered(x, 22, "HOLD TO ENABLE NOVA");
+  display.drawTextCentered(x, 22, "USB: open dashboard");     // 19 characters: 114 px, fits 128 px mono
   if (display.height() >= 48) {
-    display.drawTextCentered(x, 32, "dashboard mode");
-    display.drawTextCentered(x, 42, "or wait: normal mode");
+    display.drawTextCentered(x, 32, "in Chrome or Edge");
   }
   display.setColor(UIColor::secondary_txt);
 #if defined(LORAFISH_WATCH_TOUCH)
