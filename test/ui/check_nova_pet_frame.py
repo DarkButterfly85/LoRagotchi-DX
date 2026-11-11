@@ -357,5 +357,124 @@ pt = [l for l in run_harness('\n'.join(['REQ 1', 'F 1', 'color 1', 'size 2', 'cu
 check(pt.startswith('PASSTHROUGH same'), 'the real screen got different calls with the tee in front: ' + pt)
 print('tee passes every call to the real screen unchanged (' + pt + ')')
 
+
+# ---- 7. the waiting hint (screen off) -------------------------------------------------------------
+wt = re.findall(r'^WAIT (\d)$', run_harness('\n'.join(['REQ 1000', 'WAIT 2000', 'WAIT 4500', 'F 4600', 'rect 1 1 2 2', 'E', 'WAIT 4700',
+                                                         'REQ 9000', 'WAIT 9500', 'WAIT 12500']) + '\n'), re.M)
+check(wt == ['0', '1', '0', '0', '1'], 'waiting hint (asked, no frame for 3 s; frame drawn; asked again): %s' % wt)
+print('"screen is off" is detected: asked for >3 s and no frame drawn')
+
+# ---- 8. the serial commands, from the real MyMesh.cpp ------------------------------------------------
+mm = (CR / 'MyMesh.cpp').read_text()
+a = mm.index('#ifdef LORAGOTCHI_NOVA_LINK\n// ---- LORAGOTCHI NOVA serial link')
+endmark = '#endif  // LORAGOTCHI_NOVA_LINK'
+b = mm.index(endmark, a) + len(endmark)
+(work / 'nova_block.inc').write_text(mm[a:b] + '\n')
+check('checkNovaSerial();' in mm[mm.index('void MyMesh::loop()'):], 'loop() must call checkNovaSerial()')
+loop = mm[mm.index('void MyMesh::loop()'):]
+check(loop.index('if (_cli_rescue)') < loop.index('checkNovaSerial();') and loop.index('} else {') < loop.index('checkNovaSerial();'),
+      'checkNovaSerial() must sit in the branch that is not CLI Rescue')
+sexe = work / 'serial_harness'
+cc = subprocess.run(['g++', '-std=c++17', '-O1', '-Wall', '-Wextra', '-Wno-unused-parameter', '-Wno-delete-non-virtual-dtor', '-Werror',
+                     '-I', str(work), '-I', str(HERE), '-I', str(ROOT / 'src'), '-I', str(CR), '-I', str(CR / 'ui-new'),
+                     str(HERE / 'serial_harness.cpp'), '-o', str(sexe)], capture_output=True, text=True, timeout=180)
+check(cc.returncode == 0, 'serial harness did not compile:\n' + cc.stdout + cc.stderr)
+
+
+def run_serial(script):
+    p = subprocess.run([str(sexe)], input='\n'.join(script) + '\n', capture_output=True, text=True, timeout=60)
+    check(p.returncode == 0, 'serial harness crashed: ' + p.stderr)
+    return [l.split(' ', 3) for l in p.stdout.splitlines() if l.startswith('OUT ')]   # ['OUT', bytes, writes, text]
+
+
+def outs(rows):
+    return [(r[3] if len(r) > 3 else '').replace('\\n', '\n').replace('\\r', '\r') for r in rows]
+
+
+def dispatch(line):                    # the dashboard's onLine(), conditions copied from its source
+    line = line.strip()
+    if line[:1] == '{' and line.find('"mesh"') == 1: return 'mesh'
+    if line[:1] == '{' and line.find('"pet"') == 1: return 'pet'
+    if line[:1] == '{' and line.find('"nova"') > 0: return 'frame'          # would be read as radio telemetry
+    if line[:1] == '#':
+        return 'nosupport' if re.match(r'^nova \[status\|profile', line[1:].strip()) else 'log'
+    return 'ignored'
+
+
+s1 = ['SUP 1', 'T 100', 'RX nova hello\\r\\n', 'T 110', 'RX nova mesh\\n', 'T 120', 'RX nova petname Fluffy\\n', 'T 130',
+      'RX nova profile away\\n', 'T 140', 'RX hello\\nls\\nnext\\nnovapet\\n', 'T 150', 'RX nova   he', 'T 160', 'RX llo\\n', 'T 170',
+      'RX nova pets\\n', 'T 180', 'RXLONG 200', 'T 190']
+o = outs(run_serial(s1))
+check(o[0] == '', 'nothing may be sent before a command')
+check(o[1] == '{"lg":{"hello":1,"pet":1,"mesh":0}}\n', 'nova hello reply: %r' % o[1])
+check(o[2] == '{"lg":{"mesh":0}}\n', 'nova mesh reply: %r' % o[2])
+check(o[3].startswith('# petname: ') and o[3].count('\n') == 1, 'nova petname reply: %r' % o[3])
+check(o[4].startswith('# nova: not supported') and o[4].count('\n') == 1, 'unknown nova command reply: %r' % o[4])
+check(o[5] == '', 'lines that are not "nova ..." must be ignored: %r' % o[5])
+check(o[6] == '' and o[7] == '{"lg":{"hello":1,"pet":1,"mesh":0}}\n', 'a command split over two reads, extra spaces: %r %r' % (o[6], o[7]))
+check(o[8].startswith('# nova: not supported'), '"nova pets" is not "nova pet": %r' % o[8])
+check(o[9] == '', 'a 200 character line must be dropped whole: %r' % o[9])
+d = [dispatch(x) for x in (o[1], o[2], o[3], o[4], o[8])]
+check(d == ['ignored', 'ignored', 'log', 'log', 'log'], 'the dashboard must ignore the JSON replies and log the # lines: %s' % d)
+print('commands: hello, mesh, petname, unknown, partial/long/non-nova lines behave; the dashboard ignores the JSON, logs the # lines')
+
+s2 = ['SUP 0', 'RX nova hello\\n', 'T 10', 'RX nova pet\\n', 'T 20', 'RX nova pet\\n', 'T 3020', 'RX nova pet\\n', 'T 31000']
+o = outs(run_serial(s2))
+check(o[0] == '{"lg":{"hello":1,"pet":0,"mesh":0}}\n', 'hello on a screen that cannot be copied: %r' % o[0])
+check(o[1].startswith('# nova pet: this radio has no 128x64') and o[2] == '' and o[3].startswith('# nova pet:'), 'unsupported screen: one note, then quiet for 30 s: %r' % o)
+check(dispatch(o[1]) == 'log', 'the dashboard must log the unsupported note (not mistake it for "no pet support")')
+print('screen that cannot be copied: hello says pet 0; "nova pet" explains itself once every 30 s')
+
+# end to end: nova pet, the screen draws, the lines go out 96 bytes per 10 ms, the dashboard decodes them
+sc1, sc2 = Model(), Model()
+DENSE = bytes([0x55, 0x00] * 8) * 64         # every other byte set: the longest kind of picture to code
+sc1.xbm(0, 0, 128, 64, DENSE); sc1.fill(10, 20, 6, 4)
+sc2.fill(40, 30, 6, 4); sc2.box(0, 0, 128, 64); sc2.fill(60, 5, 8, 3)
+s3 = ['SUP 1', 'RX nova pet\\n', 'T 1000']
+s3 += ['F 1000', 'xbm 0 0 128 64 ' + DENSE.hex(), 'rect 10 20 6 4', 'E']
+for t in range(1000, 1290, 10): s3.append('T %d' % t)
+s3 += ['F 1300', 'rect 40 30 6 4', 'box 0 0 128 64', 'rect 60 5 8 3', 'E']
+for t in range(1300, 1600, 10): s3.append('T %d' % t)
+rows = run_serial(s3)
+o = outs(rows)
+check(o[0] == '', 'nova pet must not answer with text')
+sizes = [int(r[1]) for r in rows]
+check(max(sizes) <= 96, 'at most 96 bytes may go out per loop pass, saw %d' % max(sizes))
+stream = ''.join(o)
+lines = stream.splitlines(keepends=True)
+check(len(lines) == 2 and all(l.endswith('\n') for l in lines), 'expected two complete lines, got %d' % len(lines))
+check([dispatch(l) for l in lines] == ['pet', 'pet'], 'the dashboard must take both lines as pet pictures')
+ks = [json.loads(l)['pet']['k'] for l in lines]
+check(ks == [1, 0], 'key picture then a delta, got %s' % ks)
+res = dashboard_decode(lines)
+check(all(r[0] for r in res) and res[0][2] == sc1.frame_bytes() and res[1][2] == sc2.frame_bytes(),
+      'dashboard did not decode the lines that went over the fake serial port to the pictures drawn')
+sent_at = [i for i, s in enumerate(sizes) if s]
+check(len(sent_at) >= 20, 'a whole picture should need many small writes (%d)' % len(sent_at))
+print('end to end: "nova pet" -> screen draws -> %d small writes -> 2 lines -> dashboard shows both pictures' % len(sent_at))
+
+# a lapsed stream drops its unsent bytes; nothing leaks out later
+s4 = ['SUP 1', 'RX nova pet\\n', 'T 1000', 'F 1000', 'xbm 0 0 128 64 ' + DENSE.hex(), 'E', 'T 1010', 'T 1020', 'T 6000', 'T 6010', 'T 6020']
+rows = run_serial(s4)
+o = outs(rows)
+check(len(o[1]) == 96 and len(o[2]) == 96 and o[3] == '' and o[4] == '' and o[5] == '', 'a line half sent when the window lapses must be dropped, not finished: %s' % [len(x) for x in o])
+# screen asleep: one hint, once per 30 s; the page keeps asking every 3 s
+s5 = ['SUP 1', 'RX nova pet\\n', 'T 1000', 'T 2000', 'RX nova pet\\n', 'T 3000', 'T 4100', 'RX nova pet\\n', 'T 6000', 'T 6100']
+o = outs(run_serial(s5))
+hints = [x for x in o if x]
+check(len(hints) == 1 and hints[0].startswith('# nova pet: waiting for the radio') and dispatch(hints[0]) == 'log', 'screen-off hint: %s' % hints)
+# a long line, then a good command: the stream still starts
+s6 = ['SUP 1', 'RXLONG 200', 'T 1000', 'F 1010', 'rect 1 1 3 3', 'E', 'T 1020', 'RX nova pet\\n', 'T 1030', 'F 1040', 'rect 1 1 3 3', 'E', 'T 1050', 'T 1060']
+o = outs(run_serial(s6))
+check(o[0] == '' and o[1] == '' and o[2] == '' and any(x for x in o[3:]), 'a 200 character line must not start the stream, a later good command must: %s' % [len(x) for x in o])
+print('lapse, screen-off hint and long-line recovery behave')
+
+# the source: no other reader of Serial may be in the same build
+ui = (CR / 'ui-new/UITask.cpp').read_text()
+check('#if defined(LORAFISH_SERIAL_TEST)' in ui and '!defined(LORAFISH_SERIAL_TEST)' in hdr, 'LORAFISH_SERIAL_TEST builds read USB serial themselves: the link must be left out of them')
+check('!defined(ENABLE_USB_INTERFACE)' in hdr, 'the link must be left out of builds that carry the phone protocol on USB')
+check(ui.count('NovaPetTee tee(') == 1 and 'NovaPetLink::supported() ? NovaPetLink::link() : NULL' in ui, 'UITask must only use the tee when the link is asked')
+print('wiring checks ok')
+
 shutil.rmtree(work, ignore_errors=True)
 print('OK (decoder: %s)' % ('node, ' + BLOCK.name if NODE else 'python port: node not found'))
