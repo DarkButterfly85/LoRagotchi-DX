@@ -1342,7 +1342,9 @@ static void loadLoRaFishIdentity() {
   if (LoRaFishIdentity::load(loRaFishPetStore, id) == LoRaFishSafeSave::None) return;
   strncpy(loRaFishIdName, id.name, LoRaFishIdentity::kNameMax);
   loRaFishIdName[LoRaFishIdentity::kNameMax] = 0;
-  if (!loRaFishNeedsPetSetup && LoRaFishSpecies::editionKnown(id.species)) loRaFishSpecies = id.species;
+  // An unknown species in the settings (saved by newer firmware) is kept as it is, never replaced by a stale file.
+  if (!loRaFishNeedsPetSetup && LoRaFishSpecies::known(loRaFishSpecies) && LoRaFishSpecies::editionKnown(id.species))
+    loRaFishSpecies = id.species;
   loRaFishColor = id.body; loRaFishScaleColor = id.accent; loRaFishEyeColor = id.eyes;
   loRaFishIdentityLast = loRaFishIdentityNow();
 }
@@ -1350,6 +1352,10 @@ static void loadLoRaFishIdentity() {
 // Called whenever the settings are saved: species and colours live in /lorafish.cfg as before, and a
 // change is copied to /lorafish.id (created here the first time). Writes only when something differs.
 static void syncLoRaFishIdentity() {
+  // A species this firmware does not know (or an invalid gene) cannot be written as it is, and must not be
+  // replaced by a stand-in either: leave the file alone until the pet has a species it can describe.
+  if (!LoRaFishSpecies::known(loRaFishSpecies) || !LoRaFishColour::valid(loRaFishColor) ||
+      !LoRaFishColour::valid(loRaFishScaleColor) || !LoRaFishColour::valid(loRaFishEyeColor)) return;
   const LoRaFishIdentity::Identity now = loRaFishIdentityNow();
   if (LoRaFishIdentity::same(now, loRaFishIdentityLast)) return;
   const uint32_t t = millis();
