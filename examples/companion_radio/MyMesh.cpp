@@ -16,6 +16,9 @@ LoRagotchiChannel::Result LoRagotchiChannel::startupResult = LoRagotchiChannel::
 #endif
 
 #include "NovaPetLink.h"   // Nova dashboard link: defines LORAGOTCHI_NOVA_LINK where it applies
+#ifdef LORAGOTCHI_NOVA_LINK
+#include "LoRaFishIdentity.h"   // /lorafish.id: the pet name that "nova petname" sets
+#endif
 
 #ifdef LORAFISH_UI
 #include "LoRaFishCommit.h"
@@ -2752,7 +2755,8 @@ void MyMesh::checkCLIRescueCmd() {
 //   nova hello           keep-alive; the radio answers with one JSON line saying what it can do
 //   nova mesh            mesh analyser stream: not in this build yet, answered with {"lg":{"mesh":0}}
 //   nova pet             send the pet picture, a line at a time, for the next 4 s (the page repeats it)
-//   nova petname <name>  LoRaGotchi names the pet after the radio's own name, so this changes nothing
+//   nova petname <name>  saves the pet's own name (16 characters at most, "-" clears it) in /lorafish.id and
+//                        nothing else; the pet screen header shows it instead of the radio's name
 // Only lines that start with "nova" are looked at; everything else on the port is ignored. This runs
 // only when the phone is not using the USB port (no ENABLE_USB_INTERFACE) and CLI Rescue is not
 // active, so it cannot clash with either. Nothing is ever sent unless a line asked for it.
@@ -2781,7 +2785,30 @@ static void novaCommand(const char* line, uint32_t now) {
       next_note = now + 30000u; novaSay("# nova pet: not enough memory for the picture");
     }
   } else if (n == 7 && strncmp(w, "petname", 7) == 0) {
-    novaSay("# petname: LoRaGotchi names the pet after the radio's own name. Change the radio name in the MeshCore app; nothing was changed");
+    const char* arg = w + n;
+    while (*arg == ' ') arg++;
+    char nm[96];                                  // the rest of the line (the line buffer is 96 bytes)
+    strncpy(nm, arg, sizeof(nm) - 1);
+    nm[sizeof(nm) - 1] = 0;
+    size_t nl = strlen(nm);
+    while (nl && nm[nl - 1] == ' ') nm[--nl] = 0;
+    if (nl == 0) {
+      novaSay("# petname: usage: nova petname <name> (16 characters at most; - clears the name); nothing was changed");
+    } else {
+      if (nl == 1 && nm[0] == '-') nm[0] = 0;     // the dashboard sends "-" to clear
+      char msg[128];
+      switch (LoRaFishIdentity::requestName(nm)) {
+        case LoRaFishIdentity::NameOk:
+          if (nm[0]) snprintf(msg, sizeof(msg), "# petname: saved \"%.16s\" in /lorafish.id (shown in the pet screen header)", nm);
+          else snprintf(msg, sizeof(msg), "# petname: name cleared; the pet screen header shows the radio's name again");
+          novaSay(msg);
+          break;
+        case LoRaFishIdentity::NameTooLong: novaSay("# petname: too long (16 characters at most); nothing was changed"); break;
+        case LoRaFishIdentity::NameBadChar: novaSay("# petname: plain keyboard characters only (no accents or symbols outside ASCII); nothing was changed"); break;
+        case LoRaFishIdentity::NameNoPet:   novaSay("# petname: this build has no pet name to set; nothing was changed"); break;
+        default:                            novaSay("# petname: could not save /lorafish.id; nothing was changed"); break;
+      }
+    }
   } else {
     novaSay("# nova: not supported by this firmware. Known: hello, mesh, pet, petname");
   }

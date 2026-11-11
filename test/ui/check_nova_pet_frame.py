@@ -418,6 +418,49 @@ d = [dispatch(x) for x in (o[1], o[2], o[3], o[4], o[8])]
 check(d == ['ignored', 'ignored', 'log', 'log', 'log'], 'the dashboard must ignore the JSON replies and log the # lines: %s' % d)
 print('commands: hello, mesh, petname, unknown, partial/long/non-nova lines behave; the dashboard ignores the JSON, logs the # lines')
 
+# "nova petname": the real handler from MyMesh.cpp -> the real LoRaFishIdentity.h -> the real SafeSave, on a fake flash
+def run_id(script):
+    p = subprocess.run([str(sexe)], input='\n'.join(script) + '\n', capture_output=True, text=True, timeout=60)
+    check(p.returncode == 0, 'serial harness crashed: ' + p.stderr)
+    rows = []
+    for l in p.stdout.splitlines():
+        if l.startswith('OUT '):
+            r = l.split(' ', 3); rows.append(('OUT', (r[3] if len(r) > 3 else '').replace('\\n', '\n')))
+        elif l.startswith('ID '):
+            rows.append(('ID', dict(re.findall(r'(\w+)=(\[[^\]]*\]|\S+)', l))))
+    return rows
+
+
+pn = ['SETTER 1', 'LIVE 0 1 2 3', 'ID',
+      'RX nova petname Fluffy\\n', 'T 10', 'ID',                       # created: name set, species and colours from the live pet
+      'RX nova petname 0123456789ABCDEFG\\n', 'T 20', 'ID',           # 17 characters: refused, file unchanged
+      'RX nova petname caf\u00e9\\n', 'T 30', 'ID',                   # not ASCII: refused
+      'RX nova petname   Mr Bubbles  \\n', 'T 40', 'ID',             # spaces trimmed, inner space kept
+      'RX nova petname 0123456789ABCDEF\\n', 'T 50', 'ID',           # exactly 16: fine
+      'RX nova petname -\\n', 'T 60', 'ID',                          # dash clears (the dashboard's way)
+      'RX nova petname\\n', 'T 70', 'ID',                            # no name: usage, nothing written
+      'FAIL 1', 'RX nova petname Nope\\n', 'T 80', 'FAIL 0', 'ID',    # flash write fails: reported, file unchanged
+      'SETTER 0', 'RX nova petname Y\\n', 'T 90']                    # no pet screen in this build
+rows = run_id(pn)
+texts = [v for k, v in rows if k == 'OUT']
+ids = [v for k, v in rows if k == 'ID']
+check(len(ids) == 9 and len(texts) == 9, 'petname script produced %d ID rows, %d replies' % (len(ids), len(texts)))
+check(ids[0]['files'] == '-' and ids[0]['src'] == '0', 'before any name there is no file at all: %s' % ids[0])
+check(texts[0].startswith('# petname: saved "Fluffy" in /lorafish.id') and texts[0].count('\n') == 1, 'petname reply: %r' % texts[0])
+files = sorted(ids[1]['files'].split(','))
+check(files == ['/lorafish.id'], 'only /lorafish.id may be written (no pet record, no settings): %s' % files)
+check(ids[1]['name'] == '[Fluffy]' and ids[1]['sp'] == '0' and ids[1]['genes'] == '1,2,3', 'name saved with the live species and colours: %s' % ids[1])
+check(texts[1].startswith('# petname: too long') and ids[2] == ids[1], 'a 17 character name is refused and changes nothing: %r %s' % (texts[1], ids[2]))
+check(texts[2].startswith('# petname: plain keyboard') and ids[3] == ids[1], 'a non-ASCII name is refused: %r' % texts[2])
+check(ids[4]['name'] == '[Mr Bubbles]' and texts[3].startswith('# petname: saved "Mr Bubbles"'), 'trimmed name: %s %r' % (ids[4], texts[3]))
+check(ids[5]['name'] == '[0123456789ABCDEF]', '16 characters are accepted: %s' % ids[5])
+check(ids[6]['name'] == '[]' and ids[6]['sp'] == '0' and texts[5].startswith('# petname: name cleared'), 'dash clears the name, keeps species/colours: %s %r' % (ids[6], texts[5]))
+check(texts[6].startswith('# petname: usage') and ids[7] == ids[6], 'no name: usage line only: %r' % texts[6])
+check(texts[7].startswith('# petname: could not save') and ids[8] == ids[6], 'a failed write is reported and changes nothing: %r' % texts[7])
+check(texts[8].startswith('# petname: this build has no pet name'), 'no pet screen: %r' % texts[8])
+for t in texts: check(dispatch(t) == 'log' and t.count('\n') == 1, 'petname replies are single # lines: %r' % t)
+print('petname: writes only /lorafish.id, 16 ok / 17 refused / non-ASCII refused, dash clears, failures and no-pet builds answer in one # line')
+
 s2 = ['SUP 0', 'RX nova hello\\n', 'T 10', 'RX nova pet\\n', 'T 20', 'RX nova pet\\n', 'T 3020', 'RX nova pet\\n', 'T 31000']
 o = outs(run_serial(s2))
 check(o[0] == '{"lg":{"hello":1,"pet":0,"mesh":0}}\n', 'hello on a screen that cannot be copied: %r' % o[0])

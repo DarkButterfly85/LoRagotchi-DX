@@ -11,6 +11,10 @@ python3 test/ui/check_lorafish_identity.py      (Python 3 and g++; no firmware b
      a bad name alone only loses the name
   d. names of 17 bytes or more, and non-ASCII names, are refused and nothing is written; 16 is fine
   e. LoRaFishState (cut out of UITask.cpp) is still 32 bytes with magic LFM2
+  f. UITask.cpp wiring (UITask cannot be built on a PC, so the key pieces are cut out and checked): the
+     T-Deck key/value names for the three identity files exist and differ from every other record's key
+     (otherwise /lorafish.id would overwrite the pet record), and the load / save / display / reset /
+     setter hooks are present in the right order
 """
 from pathlib import Path
 import re, subprocess, sys, tempfile, zlib
@@ -32,6 +36,9 @@ check(m, 'LoRaFishState not found in UITask.cpp')
 mg = re.search(r'LORAFISH_MAGIC = (0x[0-9A-Fa-f]+);', src)
 check(mg and int(mg.group(1), 16) == 0x4C464D32, 'pet magic is no longer LFM2')
 
+km = re.search(r'static const char\* loRaFishRecordKey\(const char\* path\) \{.*?\n\}', src, re.S)
+check(km, 'loRaFishRecordKey not found in UITask.cpp')
+
 cpp = r'''
 #include <cassert>
 #include <cstdio>
@@ -45,6 +52,24 @@ namespace SS = LoRaFishSafeSave;
 
 ''' + m.group(0) + r'''
 static_assert(sizeof(LoRaFishState) == 32, "the pet record must stay 32 bytes");
+
+''' + km.group(0) + r'''
+static void keysAreSeparate() {                       // f. T-Deck NVS keys
+  const char* petMain = SS::kMain; const char* petBak = SS::kBak;
+  const char* idMain = LoRaFishIdentity::kMain; const char* idBak = LoRaFishIdentity::kBak; const char* idTmp = LoRaFishIdentity::kTmp;
+  const char* others[] = {petMain, petBak, "/lorafish.cfg", "/lfegg0.dat", "/lfegg1.dat"};
+  const char* mine[] = {idMain, idBak, idTmp};
+  for (const char* m : mine) {
+    assert(strlen(loRaFishRecordKey(m)) <= 15);       // NVS key limit
+    for (const char* o : others) assert(strcmp(loRaFishRecordKey(m), loRaFishRecordKey(o)) != 0);
+  }
+  assert(strcmp(loRaFishRecordKey(idMain), loRaFishRecordKey(idBak)) != 0);
+  assert(strcmp(loRaFishRecordKey(idMain), loRaFishRecordKey(idTmp)) != 0);
+  assert(strcmp(loRaFishRecordKey(idBak), loRaFishRecordKey(idTmp)) != 0);
+  assert(!strcmp(loRaFishRecordKey(petMain), "state") && !strcmp(loRaFishRecordKey(petBak), "statebak"));   // pet keys unchanged
+  assert(!strcmp(loRaFishRecordKey("/lorafish.cfg"), "cfg") && !strcmp(loRaFishRecordKey("/lfegg0.dat"), "egg0"));
+  printf("F_OK\n");
+}
 
 typedef std::vector<uint8_t> Bytes;
 struct Store {                       // littlefs style: rename replaces the target
@@ -79,6 +104,7 @@ static Bytes goodRecord() { uint8_t r[kRecord]; Identity i = mk("Bubbles", LoRaF
 
 int main() {
   static_assert(kRecord == 27 && kSealed == 35, "record size");
+  keysAreSeparate();
   // ---- a. existing pet, no identity file
   { Store s; LoRaFishState pet; memset(&pet, 0, sizeof pet); pet.magic = 0x4C464D32; pet.ageMinutes = 1234; pet.happiness = 80;
     assert(SS::commit(s, (const uint8_t*)&pet, sizeof pet));
@@ -182,8 +208,32 @@ check(cc.returncode == 0, 'did not compile:\n' + cc.stdout + cc.stderr)
 run = subprocess.run([str(exe)], capture_output=True, text=True, timeout=120)
 check(run.returncode == 0, 'test program failed (%d): %s%s' % (run.returncode, run.stdout, run.stderr))
 out = run.stdout
-for tag in ('A_OK', 'B_OK', 'C_OK', 'D_OK'):
+for tag in ('A_OK', 'B_OK', 'C_OK', 'D_OK', 'F_OK'):
     check(tag in out, tag + ' missing:\n' + out)
+
+# ---- f. wiring in UITask.cpp (text checks: order and presence) ---------------------------------------------
+def at(s, what):
+    i = src.find(s)
+    check(i >= 0, 'UITask.cpp: missing ' + what)
+    return i
+
+
+at('static_assert(sizeof(LoRaFishState) == 32', 'static_assert on the pet record size')
+i_load = at('  loadLoRaFishIdentity();\n  LoRaFishIdentity::setterSlot() = setLoRaFishPetName;', 'identity load + setter registration in begin()')
+check(i_load > at('  loadLoRaFish();\n  loadLoRaFishSettings();', 'pet and settings load in begin()'), 'identity must load after the pet record and settings')
+check(i_load > at('LORAFISH_MONOCHROME_COLOR;\n  }\n  loadLoRaFishIdentity();', 'identity after the mono colour fallback'), 'identity after mono fallback')
+check(src.count('syncLoRaFishIdentity();') == 2, 'settings save must sync the identity on both exits (changed / unchanged)')
+body = src[at('static void saveLoRaFishSettings() {', 'saveLoRaFishSettings'):]
+body = body[:body.index('\n}\n')]
+check(body.count('syncLoRaFishIdentity();') == 2, 'both syncs belong to saveLoRaFishSettings')
+check('loRaFishIdName[0]) {' in src[at('static const char* loRaFishDisplayName()', 'display name'):][:200], 'the header name prefers the pet name')
+check('loRaFishIdName[0] = 0;' in src[at('static void resetLoRaFishPet() {', 'reset'):][:300], 'a reset pet does not keep the old name')
+check('LoRaFishSafeSave::commit(loRaFishPetStore, (const uint8_t*)&fish, sizeof(fish))' in src, 'the pet record is still saved the old way, 32 bytes')
+check('loRaFishProtocolName' in src and 'LoRaFishText::protocolName(name, sizeof(name), loRaFishMeshNodeName, 32)' in src, 'the radio/visit name still comes from the node name')
+# the identity code never writes the pet files or the settings file
+blk = src[at('// ---- static pet identity (/lorafish.id)', 'identity block'):at('static bool loRaFishPetRecordValid', 'pet record check')]
+for banned in ('"/lorafish.dat"', '"/lorafish.cfg"', 'kMain', 'writeLoRaFishRecord', 'encodeLoRaFishSettings'):
+    check(banned not in blk, 'identity block must not touch ' + banned)
 
 # ---- b. exact bytes against a Python reference ---------------------------------------------------------
 def ref(name, species, body, accent, eyes):
@@ -199,4 +249,4 @@ check(main == expect, 'bytes on flash differ:\n  got    %s\n  expect %s' % (main
 check(len(main) == 35, 'sealed size')
 print('/lorafish.id (Bubbles, Wolf 551, genes 8/247/6) = ' + main.hex(' '))
 print([l for l in out.splitlines() if l.startswith('C_OK')][0].replace('C_OK', 'damaged-file cases that fell back cleanly:'))
-print('identity: ok (a existing pet unchanged, b round trip + exact bytes, c damaged files, d names, e LoRaFishState = 32 bytes)')
+print('identity: ok (a existing pet unchanged, b round trip + exact bytes, c damaged files, d names, e LoRaFishState = 32 bytes, f UITask wiring + NVS keys)')

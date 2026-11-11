@@ -117,6 +117,7 @@ static void tdeckTouchPoll() {
 #include "../LoRaFishColour.h"
 #include "../LoRaFishMeshWeather.h"
 #include "LoRaFishSafeSave.h"
+#include "../LoRaFishIdentity.h"
 #include "../LoRaFishSpecies.h"
 #include "LoRaFishLifeArt.h"
 #include "LoRaFishBattery.h"
@@ -251,6 +252,8 @@ struct LoRaFishRenderClockScope {
 static mesh::RTCClock* loRaFishRTC = nullptr;
 
 static const char* loRaFishMeshNodeName = nullptr;
+// The pet's own name from /lorafish.id (LoRaFishIdentity.h); "" = none, the header shows the radio name as before.
+static char loRaFishIdName[LoRaFishIdentity::kNameMax + 1] = "";
 static bool loRaFishNameNotice = false;
 static bool loRaFishChannelNotice = false;
 static bool loRaFishMonoDisplayNotice = false;
@@ -288,6 +291,12 @@ static const char* loRaFishProtocolName() {
 }
 
 static const char* loRaFishDisplayName() {
+  if (loRaFishIdName[0]) {                       // a name set with "nova petname"
+    static char own[16];                         // same header room as the radio name below
+    strncpy(own, loRaFishIdName, sizeof(own) - 1);
+    own[sizeof(own) - 1] = 0;
+    return own;
+  }
   if (!loRaFishMeshNodeName || !loRaFishMeshNodeName[0]) return "LoRaFish";
 
   // Keep the left header clear of the clock/right-side status on 128px displays.
@@ -322,6 +331,7 @@ struct LoRaFishState {
   uint32_t longestUptimeMinutes;
 };
 
+static_assert(sizeof(LoRaFishState) == 32, "pet record /lorafish.dat must stay 32 bytes (LFM2)");
 static constexpr uint32_t LORAFISH_MAGIC = 0x4C464D32; // "LFM2"
 static constexpr uint32_t LORAFISH_MAGIC_V1 = 0x4C464D31; // "LFM1"
 static void saveLoRaFish();
@@ -1017,6 +1027,7 @@ static void startLoRaFishFeeding() {
 
 static void resetLoRaFishPet() {
   // Recreate the initial persisted pet state.
+  loRaFishIdName[0] = 0;                 // a new pet does not keep the old pet's name (/lorafish.id follows at the next settings save)
   loRaFishAdoptionEligible = true;
   fish = {LORAFISH_MAGIC, 0, 0, 0, 0, 80, 0};
   loRaFishHappiness.resetCare();
@@ -1200,6 +1211,9 @@ static const char* loRaFishRecordKey(const char* path) {
   if (!strcmp(path,"/lfegg0.dat")) return "egg0";
   if (!strcmp(path,"/lfegg1.dat")) return "egg1";
   if (!strcmp(path,LoRaFishSafeSave::kBak)) return "statebak";
+  if (!strcmp(path,LoRaFishIdentity::kMain)) return "id";        // T-Deck key/value store: must not fall through to "state"
+  if (!strcmp(path,LoRaFishIdentity::kBak)) return "idbak";
+  if (!strcmp(path,LoRaFishIdentity::kTmp)) return "idtmp";
   return "state";
 }
 
@@ -1298,6 +1312,67 @@ struct LoRaFishPetStore {
 };
 static LoRaFishPetStore loRaFishPetStore;
 
+// ---- static pet identity (/lorafish.id): name, species, colour genes -------------------------------
+// The file is separate from the pet record (/lorafish.dat, unchanged) and from /lorafish.cfg. It does
+// not exist until a name is set or the species/colours change from what the pet had at start-up; with
+// no file the pet behaves exactly as before. See LoRaFishIdentity.h.
+static LoRaFishIdentity::Identity loRaFishIdentityLast;   // what /lorafish.id holds (or, with no file, the start-up state)
+static bool loRaFishIdentityFailed = false;
+static uint32_t loRaFishIdentityLastAttempt = 0;
+static bool loRaFishPetRestored = false;                  // set by loadLoRaFish(): a pet record was found
+
+static LoRaFishIdentity::Identity loRaFishIdentityNow() {
+  LoRaFishIdentity::Identity id;
+  memset(&id, 0, sizeof(id));
+  strncpy(id.name, loRaFishIdName, LoRaFishIdentity::kNameMax);
+  id.species = LoRaFishSpecies::known(loRaFishSpecies) ? loRaFishSpecies : (uint16_t)LoRaFishSpecies::TropicalFish;
+  id.body = LoRaFishColour::valid(loRaFishColor) ? loRaFishColor : LoRaFishColour::fallback(loRaFishColor);
+  id.accent = LoRaFishColour::valid(loRaFishScaleColor) ? loRaFishScaleColor : LoRaFishColour::fallback(loRaFishScaleColor);
+  id.eyes = LoRaFishColour::valid(loRaFishEyeColor) ? loRaFishEyeColor : LoRaFishColour::fallback(loRaFishEyeColor);
+  return id;
+}
+
+// At start-up, after the pet record and settings are loaded. A missing or damaged file changes nothing.
+static void loadLoRaFishIdentity() {
+  loRaFishIdName[0] = 0;
+  loRaFishIdentityLast = loRaFishIdentityNow();
+  loRaFishIdentityFailed = false;
+  if (!loRaFishPetRestored) return;            // a brand-new pet: an old file belongs to a pet that is gone
+  LoRaFishIdentity::Identity id = loRaFishIdentityLast;
+  if (LoRaFishIdentity::load(loRaFishPetStore, id) == LoRaFishSafeSave::None) return;
+  strncpy(loRaFishIdName, id.name, LoRaFishIdentity::kNameMax);
+  loRaFishIdName[LoRaFishIdentity::kNameMax] = 0;
+  if (!loRaFishNeedsPetSetup && LoRaFishSpecies::editionKnown(id.species)) loRaFishSpecies = id.species;
+  loRaFishColor = id.body; loRaFishScaleColor = id.accent; loRaFishEyeColor = id.eyes;
+  loRaFishIdentityLast = loRaFishIdentityNow();
+}
+
+// Called whenever the settings are saved: species and colours live in /lorafish.cfg as before, and a
+// change is copied to /lorafish.id (created here the first time). Writes only when something differs.
+static void syncLoRaFishIdentity() {
+  const LoRaFishIdentity::Identity now = loRaFishIdentityNow();
+  if (LoRaFishIdentity::same(now, loRaFishIdentityLast)) return;
+  const uint32_t t = millis();
+  if (loRaFishIdentityFailed && t - loRaFishIdentityLastAttempt < LORAFISH_SAVE_RETRY_MS) return;
+  loRaFishIdentityLastAttempt = t;
+  if (!LoRaFishIdentity::commit(loRaFishPetStore, now)) { loRaFishIdentityFailed = true; return; }
+  loRaFishIdentityFailed = false;
+  loRaFishIdentityLast = now;
+}
+
+// "nova petname <name>" (MyMesh.cpp) arrives here; writes /lorafish.id and nothing else.
+static LoRaFishIdentity::NameResult setLoRaFishPetName(const char* name) {
+  LoRaFishIdentity::Identity saved;
+  const LoRaFishIdentity::NameResult r =
+      LoRaFishIdentity::saveWithName(loRaFishPetStore, loRaFishIdentityNow(), name, &saved);
+  if (r != LoRaFishIdentity::NameOk) return r;
+  strncpy(loRaFishIdName, saved.name, LoRaFishIdentity::kNameMax);
+  loRaFishIdName[LoRaFishIdentity::kNameMax] = 0;
+  loRaFishIdentityLast = saved;
+  loRaFishIdentityFailed = false;
+  return r;
+}
+
 static bool loRaFishPetRecordValid(const uint8_t* rec, size_t len) {
   uint32_t magic = 0;
   if (len < sizeof(magic)) return false;
@@ -1316,6 +1391,7 @@ static void saveLoRaFishSettings() {
       memcmp(data, lastWrittenLoRaFishSettings, sizeof(data)) == 0) {
     loRaFishHappyLastSavedMs = now;
     loRaFishSettingsPending = false;
+    syncLoRaFishIdentity();
     return;
   }
   loRaFishSettingsLastAttempt = now;
@@ -1330,6 +1406,7 @@ static void saveLoRaFishSettings() {
   lastWrittenLoRaFishHappiness = loRaFishHappiness;
   haveLastWrittenLoRaFishHappiness = true;
   loRaFishHappyLastSavedMs = now;
+  syncLoRaFishIdentity();
 }
 
 // Options scope includes action/RF/GNSS/game children, not DX contacts (19).
@@ -1587,6 +1664,7 @@ static void loadLoRaFish() {
                     source == LoRaFishSafeSave::Bak ? "backup" : "older format");
     }
   }
+  loRaFishPetRestored=restored;
   loRaFishNeedsPetSetup=(LORAGOTCHI_SPECIES_EDITION!=0) && !restored; loRaFishPetSetupField=0;
   loRaFishAdoptionEligible=!restored;
   loRaFishNeedsAppearanceSetup=!restored && loRaFishColorDisplay;
@@ -5482,6 +5560,8 @@ void UITask::begin(DisplayDriver* display, SensorManager* sensors, NodePrefs* no
     loRaFishScaleColor=LORAFISH_MONOCHROME_COLOR;
     loRaFishEyeColor=LORAFISH_MONOCHROME_COLOR;
   }
+  loadLoRaFishIdentity();
+  LoRaFishIdentity::setterSlot() = setLoRaFishPetName;
   applyLoRaFishTheme();
   loRaFishMonoDisplayNotice = !loRaFishColorDisplay && !loRaFishMonoDisplayColourKnown;
 #ifdef PIN_BUZZER
