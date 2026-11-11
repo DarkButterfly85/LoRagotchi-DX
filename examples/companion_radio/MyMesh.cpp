@@ -15,6 +15,11 @@ LoRagotchiChannel::Result LoRagotchiChannel::startupResult = LoRagotchiChannel::
 #endif
 #endif
 
+#include "NovaPetLink.h"   // Nova dashboard link: defines LORAGOTCHI_NOVA_LINK where it applies
+#ifdef LORAGOTCHI_NOVA_LINK
+#include "LoRaFishIdentity.h"   // /lorafish.id: the pet name that "nova petname" sets
+#endif
+
 #ifdef LORAFISH_UI
 #include "LoRaFishCommit.h"
 #include "LoRaFishArrival.h"
@@ -2742,6 +2747,111 @@ void MyMesh::checkCLIRescueCmd() {
   }
 }
 
+#ifdef LORAGOTCHI_NOVA_LINK
+// ---- LORAGOTCHI NOVA serial link --------------------------------------------------------------
+// The Nova dashboard page talks to the radio over the USB serial port in plain text lines. The
+// picture format and the dashboard come from LODESTAR ORION / LODESTAR NOVA (Aries Thorne, Todd
+// Steinhauer, FEAR REACTIVE), used with the authors' permission; see NOTICE and docs/CREDITS.md.
+//   nova hello           keep-alive; the radio answers with one JSON line saying what it can do
+//   nova mesh            mesh analyser stream: not in this build yet, answered with {"lg":{"mesh":0}}
+//   nova pet             send the pet picture, a line at a time, for the next 4 s (the page repeats it)
+//   nova petname <name>  saves the pet's own name (16 characters at most, "-" clears it) in /lorafish.id and
+//                        nothing else; the pet screen header shows it instead of the radio's name
+// Only lines that start with "nova" are looked at; everything else on the port is ignored. This runs
+// only when the phone is not using the USB port (no ENABLE_USB_INTERFACE) and CLI Rescue is not
+// active, so it cannot clash with either. Nothing is ever sent unless a line asked for it.
+static void novaSay(const char* s) { Serial.print(s); Serial.print('\n'); }
+
+static void novaCommand(const char* line, uint32_t now) {
+  if (strncmp(line, "nova", 4) != 0 || (line[4] != 0 && line[4] != ' ')) return;   // not for us
+  const char* w = line + 4;
+  while (*w == ' ') w++;
+  size_t n = 0;
+  while (w[n] && w[n] != ' ') n++;
+  static uint32_t next_note = 0;                  // explanations (not the pictures) at most every 30 s
+  const bool note_ok = (int32_t)(now - next_note) >= 0;
+
+  if (n == 5 && strncmp(w, "hello", 5) == 0) {
+    novaSay(NovaPetLink::supported() ? "{\"lg\":{\"hello\":1,\"pet\":1,\"mesh\":0}}"
+                                     : "{\"lg\":{\"hello\":1,\"pet\":0,\"mesh\":0}}");
+  } else if (n == 4 && strncmp(w, "mesh", 4) == 0) {
+    novaSay("{\"lg\":{\"mesh\":0}}");
+  } else if (n == 3 && strncmp(w, "pet", 3) == 0) {
+    if (!NovaPetLink::supported()) {
+      if (note_ok) { next_note = now + 30000u; novaSay("# nova pet: this radio has no 128x64 black-and-white screen, so there is no picture to send yet"); }
+    } else if (NovaPetLink::Link* l = NovaPetLink::link(true)) {
+      l->request(now);                            // the pictures follow as the screen redraws
+    } else if (note_ok) {
+      next_note = now + 30000u; novaSay("# nova pet: not enough memory for the picture");
+    }
+  } else if (n == 7 && strncmp(w, "petname", 7) == 0) {
+    const char* arg = w + n;
+    while (*arg == ' ') arg++;
+    char nm[96];                                  // the rest of the line (the line buffer is 96 bytes)
+    strncpy(nm, arg, sizeof(nm) - 1);
+    nm[sizeof(nm) - 1] = 0;
+    size_t nl = strlen(nm);
+    while (nl && nm[nl - 1] == ' ') nm[--nl] = 0;
+    if (nl == 0) {
+      novaSay("# petname: usage: nova petname <name> (16 characters at most; - clears the name); nothing was changed");
+    } else {
+      if (nl == 1 && nm[0] == '-') nm[0] = 0;     // the dashboard sends "-" to clear
+      char msg[128];
+      switch (LoRaFishIdentity::requestName(nm)) {
+        case LoRaFishIdentity::NameOk:
+          if (nm[0]) snprintf(msg, sizeof(msg), "# petname: saved \"%.16s\" in /lorafish.id (shown in the pet screen header)", nm);
+          else snprintf(msg, sizeof(msg), "# petname: name cleared; the pet screen header shows the radio's name again");
+          novaSay(msg);
+          break;
+        case LoRaFishIdentity::NameTooLong: novaSay("# petname: too long (16 characters at most); nothing was changed"); break;
+        case LoRaFishIdentity::NameBadChar: novaSay("# petname: plain keyboard characters only (no accents or symbols outside ASCII); nothing was changed"); break;
+        case LoRaFishIdentity::NameNoPet:   novaSay("# petname: this build has no pet name to set; nothing was changed"); break;
+        default:                            novaSay("# petname: could not save /lorafish.id; nothing was changed"); break;
+      }
+    }
+  } else {
+    novaSay("# nova: not supported by this firmware. Known: hello, mesh, pet, petname");
+  }
+}
+
+void MyMesh::checkNovaSerial() {
+  static char line[96];
+  static size_t len = 0;
+  static bool skip = false;                       // a line that was too long: ignore the rest of it
+  static uint32_t next_out = 0, next_hint = 0;
+  const uint32_t now = millis();
+
+  while (Serial.available()) {
+    const char c = (char)Serial.read();
+    if (c == '\n' || c == '\r') {
+      if (!skip && len) { line[len] = 0; novaCommand(line, now); }
+      len = 0; skip = false;
+      continue;
+    }
+    if (skip) continue;
+    if (len < sizeof(line) - 1) line[len++] = c; else { skip = true; len = 0; }
+  }
+
+  NovaPetLink::Link* l = NovaPetLink::link();
+  if (!l) return;
+  if (l->pending()) {
+    if (!l->active(now)) {
+      l->dropPending();                           // nobody is asking any more
+    } else if ((int32_t)(now - next_out) >= 0) {
+      // 96 bytes every 10 ms = 9.6 kB/s, below what a 115200 baud USB-serial chip carries, so the
+      // radio loop never waits on the port. A 2 kB whole picture takes about 0.2 s, a change far less.
+      size_t n = l->pending() < 96 ? l->pending() : 96;
+      l->consumed(Serial.write(l->pendingData(), n));
+      next_out = now + 10u;
+    }
+  }
+  if (l->waiting(now) && (int32_t)(now - next_hint) >= 0) {
+    next_hint = now + 30000u;
+    novaSay("# nova pet: waiting for the radio's screen to draw. It is off or asleep: press a button to wake it");
+  }
+}
+#endif  // LORAGOTCHI_NOVA_LINK
+
 void MyMesh::checkSerialInterface() {
   size_t len = _serial->checkRecvFrame(cmd_frame);
   if (len > 0) {
@@ -2958,6 +3068,9 @@ void MyMesh::loop() {
     checkCLIRescueCmd();
   } else {
     checkSerialInterface();
+#ifdef LORAGOTCHI_NOVA_LINK
+    checkNovaSerial();
+#endif
 #if defined(ENABLE_WIFI_INTERFACE) && defined(RP2040_PLATFORM) && !defined(ENABLE_USB_INTERFACE)
     // RP2040 WiFi builds are headless and have no way into the rescue CLI (that needs a
     // display + long-press), so serve config commands on the otherwise unused USB serial

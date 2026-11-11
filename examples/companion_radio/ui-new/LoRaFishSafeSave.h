@@ -34,6 +34,12 @@ static const char* const kBak = "/lorafish.bak";
 
 enum Source { None, Main, Legacy, Tmp, Bak };
 
+// Which three files a record lives in. The pet record uses the default (petPaths()); a second, separate
+// record (the static pet identity, LoRaFishIdentity.h) passes its own names, so the same tmp / verify /
+// backup steps protect it. acceptBare is false for a record that never existed without the trailer.
+struct Paths { const char* main; const char* tmp; const char* bak; bool acceptBare; };
+inline Paths petPaths() { return Paths{kMain, kTmp, kBak, true}; }
+
 inline uint32_t crc32(const uint8_t* data, size_t len) {
   uint32_t crc = 0xFFFFFFFFUL;
   for (size_t i = 0; i < len; ++i) {
@@ -75,21 +81,21 @@ inline bool readSealed(S& s, const char* path, uint8_t* blob, size_t* blobLen, s
 // valid(record, length) decides whether a record is a genuine pet (magic, size).
 // rec must hold kMaxRecord bytes.
 template <class S, class V>
-inline Source load(S& s, V valid, uint8_t* rec, size_t* recLen) {
+inline Source load(S& s, V valid, uint8_t* rec, size_t* recLen, const Paths& p = petPaths()) {
   uint8_t blob[kMaxBlob];
   size_t blobLen = 0, n = 0;
-  if (s.hasRename() && readSealed(s, kTmp, blob, &blobLen, &n) && valid(blob, n)) {
+  if (s.hasRename() && readSealed(s, p.tmp, blob, &blobLen, &n) && valid(blob, n)) {
     memcpy(rec, blob, n); *recLen = n; return Tmp;
   }
-  const int raw = s.read(kMain, blob, kMaxBlob);
+  const int raw = s.read(p.main, blob, kMaxBlob);
   if (raw > 0) {
     if (unseal(blob, (size_t)raw, &n)) {
       if (valid(blob, n)) { memcpy(rec, blob, n); *recLen = n; return Main; }
-    } else if (valid(blob, (size_t)raw)) {
+    } else if (p.acceptBare && valid(blob, (size_t)raw)) {
       memcpy(rec, blob, (size_t)raw); *recLen = (size_t)raw; return Legacy;  // older firmware
     }
   }
-  if (readSealed(s, kBak, blob, &blobLen, &n) && valid(blob, n)) {
+  if (readSealed(s, p.bak, blob, &blobLen, &n) && valid(blob, n)) {
     memcpy(rec, blob, n); *recLen = n; return Bak;
   }
   return None;
@@ -105,24 +111,24 @@ inline bool writeVerified(S& s, const char* path, const uint8_t* blob, size_t le
 
 // Returns true only when the new copy is in place as the main file.
 template <class S>
-inline bool commit(S& s, const uint8_t* rec, size_t len) {
+inline bool commit(S& s, const uint8_t* rec, size_t len, const Paths& p = petPaths()) {
   if (len == 0 || len > kMaxRecord) return false;
   uint8_t blob[kMaxBlob];
   const size_t blobLen = seal(rec, len, blob);
 
   uint8_t oldBlob[kMaxBlob];
   size_t oldBlobLen = 0, oldRec = 0;
-  const bool oldGood = readSealed(s, kMain, oldBlob, &oldBlobLen, &oldRec);
+  const bool oldGood = readSealed(s, p.main, oldBlob, &oldBlobLen, &oldRec);
 
   if (s.hasRename()) {
-    if (!writeVerified(s, kTmp, blob, blobLen)) { s.remove(kTmp); return false; }
+    if (!writeVerified(s, p.tmp, blob, blobLen)) { s.remove(p.tmp); return false; }
     // Only a main that passes its checksum may replace the backup.
-    if (oldGood && !s.rename(kMain, kBak)) return false;
-    return s.rename(kTmp, kMain);
+    if (oldGood && !s.rename(p.main, p.bak)) return false;
+    return s.rename(p.tmp, p.main);
   }
   // Key/value store: each write is already all-or-nothing, so no tmp copy.
-  if (oldGood && !writeVerified(s, kBak, oldBlob, oldBlobLen)) return false;
-  return writeVerified(s, kMain, blob, blobLen);
+  if (oldGood && !writeVerified(s, p.bak, oldBlob, oldBlobLen)) return false;
+  return writeVerified(s, p.main, blob, blobLen);
 }
 
 }  // namespace LoRaFishSafeSave
