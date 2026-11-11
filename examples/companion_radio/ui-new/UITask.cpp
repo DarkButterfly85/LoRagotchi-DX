@@ -192,6 +192,7 @@ public:
 #endif
 #include <helpers/TxtDataHelpers.h>
 #include "../MyMesh.h"
+#include "../LoRaFishEligible.h"
 #include "target.h"
 #include <time.h>
 #ifdef ENABLE_WIFI_INTERFACE
@@ -3175,15 +3176,7 @@ static bool loRaFishDXDestination(ContactInfo& c) {
   return the_mesh.getContactByIdx((uint32_t)MAX_ANON_CONTACTS + loragotchiDXHome.destinationIndex, c);
 }
 
-static bool loRaFishDXEligible(const ContactInfo& c) {
-  // A tank remains an honest MeshCore repeater advert, not a companion that
-  // silently forwards. Only explicitly marked tanks join the visit picker.
-  // Names are discovery hints, not authentication; the transaction still binds
-  // to the selected full public key and requires the normal LFG1 handshake.
-  const bool tank = c.type == ADV_TYPE_REPEATER &&
-      !strncmp(c.name, "LRX1 ", 5);
-  return (c.type == ADV_TYPE_CHAT || tank) && LoRaFishText::hasFish(c.name, sizeof(c.name));
-}
+// loRaFishDXEligible() lives in ../LoRaFishEligible.h (shared with the serial 'nova contacts' command).
 
 static uint32_t loRaFishDXContactCount(uint32_t* selectedRow = nullptr) {
   uint32_t count = 0;

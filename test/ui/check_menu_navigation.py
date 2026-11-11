@@ -207,6 +207,9 @@ for name in ['static void beginLoRaFishChannelNotice(', 'static bool dismissLoRa
  'static void drawLoRaFishMenuLabel(', 'static void drawLoRaFishDisplayMenu(', 'static void drawLoRaFishPetSetup(', 'static void drawLoRaFishColorMenu(',
  'static void drawLoRaFishTimeMenu(', 'static void drawLoRaFishTimeoutMenu(',
  'static void drawLoRaFishGuessGame(']:
+    if name=='static bool loRaFishDXEligible(':   # moved to the shared header (also used by MyMesh.cpp)
+        parts.append('#include "examples/companion_radio/LoRaFishEligible.h"')
+        continue
     parts.append(block(name))
 parts += ['#ifdef PIN_BUZZER', block('static void drawLoRaFishSoundMenu('),'#endif']
 parts.append(r'''
