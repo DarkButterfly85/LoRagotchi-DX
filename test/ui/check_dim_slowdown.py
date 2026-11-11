@@ -51,7 +51,7 @@ assert UI.index('memcpy(data+106,"DIM1",4)') > art_crc, 'ART1 block and its CRC 
 assert 'LoRaFishSpecies::checksum(data+90,14)' in UI, 'ART1 checksum range unchanged'
 
 # ---- harness: real timer block + helper + settings tail ------------------
-timer = between(UI, '    if (loRaFishChannelNotice || loRaFishNameNotice) return 2000;',
+timer = between(UI, '    if (loRaFishNovaNotice || loRaFishChannelNotice || loRaFishNameNotice) return 2000;',
                 '    return 2000;                                     // static pages', True)
 helper = between(UI, 'static bool loRaFishDimSlowActive() {', '\n}\n', True)
 tail = between(UI, '    uint8_t dimSlow[6] = {};', 'loRaFishDimSlow = dimSlow[4];', True)
@@ -70,7 +70,7 @@ HARNESS = r'''
 #endif
 static constexpr uint8_t LORAFISH_DX_CONTACT_PAGE = LORAFISH_DX_CONTACT_PAGE_VALUE;
 static constexpr uint8_t LORAFISH_RANGE_PAGE = 21;
-static bool loRaFishChannelNotice=false, loRaFishNameNotice=false, loRaFishScreenDimmed=false;
+static bool loRaFishNovaNotice=false, loRaFishChannelNotice=false, loRaFishNameNotice=false, loRaFishScreenDimmed=false;
 static bool loRaFishDimSlowSupported=true;
 static uint8_t loRaFishDimSlow=0, loRaFishPage=0, loRaFishSimulationMode=0;
 @@HELPER@@
