@@ -23,10 +23,11 @@
 #include <new>
 
 // The link needs the pet UI and a free USB serial port (the phone talks over Bluetooth). Builds that
-// carry the phone protocol on USB, and RP2040 WiFi builds that use USB for the rescue CLI, leave it out.
+// carry the phone protocol on USB, RP2040 WiFi builds that use USB for the rescue CLI, and the
+// LORAFISH_SERIAL_TEST builds (they read USB serial for button commands) leave it out.
 // Add -D LORAGOTCHI_NO_NOVA_LINK to leave it out of any other build.
 #if defined(LORAFISH_UI) && !defined(ENABLE_USB_INTERFACE) && !defined(LORAGOTCHI_NO_NOVA_LINK) && \
-    !(defined(ENABLE_WIFI_INTERFACE) && defined(RP2040_PLATFORM))
+    !defined(LORAFISH_SERIAL_TEST) && !(defined(ENABLE_WIFI_INTERFACE) && defined(RP2040_PLATFORM))
 #define LORAGOTCHI_NOVA_LINK 1
 #endif
 
@@ -187,19 +188,23 @@ inline size_t encodeLine(const uint8_t* fb, const uint8_t* prev, uint32_t seq, c
 class Link {
 public:
   Canvas canvas;                 // the tee draws into this while a page is asking
-  Link() : seq_(0), since_key_(0), last_key_(0), last_sent_(0), until_(0), want_key_(true),
-           len_(0), off_(0) { memset(prev_, 0, sizeof(prev_)); line_[0] = 0; }
+  Link() : seq_(0), since_key_(0), last_key_(0), last_sent_(0), until_(0), started_(0), want_key_(true),
+           got_frame_(false), len_(0), off_(0) { memset(prev_, 0, sizeof(prev_)); line_[0] = 0; }
 
   // "nova pet": keep the stream going for WINDOW_MS. A stream that lapsed starts again with a key picture.
   void request(uint32_t now) {
-    if (!active(now)) { want_key_ = true; len_ = off_ = 0; }
+    if (!active(now)) { want_key_ = true; len_ = off_ = 0; started_ = now; got_frame_ = false; }
     until_ = now + WINDOW_MS;
   }
+  // Asked for more than 3 s ago and the screen has not drawn once: it is off or asleep. The caller says so.
+  bool waiting(uint32_t now) const { return active(now) && !got_frame_ && (uint32_t)(now - started_) > 3000; }
   bool active(uint32_t now) const { return until_ != 0 && (int32_t)(until_ - now) > 0; }
 
   // A finished screen picture is in canvas. Builds the next line unless one is still going out.
   void frameDone(uint32_t now) {
-    if (!active(now) || off_ < len_) return;
+    if (!active(now)) return;
+    got_frame_ = true;
+    if (off_ < len_) return;
     bool key = want_key_ || since_key_ >= KEY_EVERY_FRAMES || (uint32_t)(now - last_key_) >= KEY_EVERY_MS;
     if (!key) {
       if ((uint32_t)(now - last_sent_) < MIN_GAP_MS) return;
@@ -227,8 +232,8 @@ public:
 private:
   uint8_t prev_[BYTES];
   char line_[MAX_LINE];
-  uint32_t seq_, since_key_, last_key_, last_sent_, until_;
-  bool want_key_;
+  uint32_t seq_, since_key_, last_key_, last_sent_, until_, started_;
+  bool want_key_, got_frame_;
   size_t len_, off_;
 };
 

@@ -131,6 +131,10 @@ static void tdeckTouchPoll() {
 #endif
 #include "../MyMesh.h"
 #include "../LoRagotchiChannelStatus.h"
+#include "../NovaPetLink.h"   // Nova dashboard link (serial "nova pet"); a no-op unless asked
+#ifdef LORAGOTCHI_NOVA_LINK
+#include "NovaPetTee.h"
+#endif
 #ifdef ESP32
 #include <SPIFFS.h>
 #endif
@@ -5437,6 +5441,10 @@ void UITask::begin(DisplayDriver* display, SensorManager* sensors, NodePrefs* no
 #endif
 
   _node_prefs = node_prefs;
+#ifdef LORAGOTCHI_NOVA_LINK
+  // Can the Nova dashboard copy this screen? (black and white 128x64 only for now)
+  NovaPetLink::setSupported(_display != NULL && NovaPetTee::suitable(*_display));
+#endif
 #ifdef LORAFISH_UI
   loRaFishMeshNodeName = node_prefs ? node_prefs->node_name : nullptr;
   beginLoRaFishChannelNotice();
@@ -6141,11 +6149,25 @@ void UITask::loop() {
           _display->endStrip();
         }
       } else {
+#ifdef LORAGOTCHI_NOVA_LINK
+        // Only while the Nova page is asking ("nova pet" in the last 4 s): draw through a tee that also
+        // copies the frame for the dashboard. The real screen gets exactly the same calls.
+        NovaPetLink::Link* nova = NovaPetLink::supported() ? NovaPetLink::link() : NULL;
+        if (nova && nova->active(millis())) {
+          NovaPetTee tee(*_display, *nova, millis());
+          tee.startFrame();
+          delay_millis = curr->render(tee);
+          if (millis() < _alert_expiry) drawUIAlertBox(tee, _alert);
+          tee.endFrame();
+        } else
+#endif
+        {
         _display->startFrame();
         delay_millis = curr->render(*_display);
         if (millis() < _alert_expiry) drawUIAlertBox(*_display, _alert);  // render alert popup
 
         _display->endFrame();
+        }
       }
       if (millis() < _alert_expiry) {
         _next_refresh = _alert_expiry;   // will need refresh when alert is dismissed
