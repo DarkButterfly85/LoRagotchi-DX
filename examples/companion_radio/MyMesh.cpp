@@ -16,6 +16,7 @@ LoRagotchiChannel::Result LoRagotchiChannel::startupResult = LoRagotchiChannel::
 #endif
 
 #ifdef LORAFISH_UI
+#include "LoRaFishEligible.h"
 #include "LoRaFishCommit.h"
 #include "LoRaFishArrival.h"
 static LoRaFishCommitFrame loRaFishCommitFrame;
@@ -2548,6 +2549,25 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp, char*
     return true;
   }
 
+#ifdef LORAFISH_UI
+  // Read-only: lists the contacts the DX visit picker would offer. Serial console only; the JSON
+  // line is streamed straight to Serial (it is far larger than reply_buf, and remote/app CLI
+  // callers have no room for it), so over those paths the command stays "unknown".
+  if (strcmp(command, "nova contacts") == 0 && _cli_from_serial) {
+    struct SerialSink {
+      void write(const char* p, size_t n) { Serial.write((const uint8_t*)p, n); }
+    } sink;
+    Serial.print("  ");
+    Serial.print(reply);   // reflected "xx|" prefix, if the command had one
+    NovaContacts::writeJson(sink, [this](uint32_t i, ContactInfo& c) {
+      return i < (uint32_t)getNumContacts() && getContactByIdx((uint32_t)MAX_ANON_CONTACTS + i, c);
+    });
+    Serial.println();
+    _cli_serial_printed = true;
+    return true;
+  }
+#endif
+
   if (strcmp(command, "get tz.offset") == 0) {
     sprintf(reply, "> %d", _prefs.tz_offset);
     return true;
@@ -2593,9 +2613,13 @@ void MyMesh::checkCLIRescueCmd() {
     cli_command[len - 1] = 0;  // replace newline with C string null terminator
 
     reply_buf[0] = 0;
-    if (handleCommand(cli_command, 0, reply_buf)) {
-      // command was handled, print reply output
-      Serial.print("  "); Serial.print(reply_buf); Serial.println();
+    _cli_from_serial = true;
+    _cli_serial_printed = false;
+    const bool handled = handleCommand(cli_command, 0, reply_buf);
+    _cli_from_serial = false;
+    if (handled) {
+      // command was handled, print reply output (unless it already printed its own line)
+      if (!_cli_serial_printed) { Serial.print("  "); Serial.print(reply_buf); Serial.println(); }
     } else if (strcmp(cli_command, "rebuild") == 0) {
       bool success = _store->formatFileSystem();
       if (success) {
