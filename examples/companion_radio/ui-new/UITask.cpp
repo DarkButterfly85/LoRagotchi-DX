@@ -197,6 +197,7 @@ public:
 #endif
 #include <helpers/TxtDataHelpers.h>
 #include "../MyMesh.h"
+#include "../LoRaFishEligible.h"
 #include "target.h"
 #include <time.h>
 #ifdef ENABLE_WIFI_INTERFACE
@@ -255,6 +256,11 @@ static const char* loRaFishMeshNodeName = nullptr;
 // The pet's own name from /lorafish.id (LoRaFishIdentity.h); "" = none, the header shows the radio name as before.
 static char loRaFishIdName[LoRaFishIdentity::kNameMax + 1] = "";
 static bool loRaFishNameNotice = false;
+// Boot hint about the existing startup hold (CLI Rescue / Nova dashboard mode). Informational only.
+static bool loRaFishNovaNotice = false;
+static bool loRaFishNovaNoticeTimed = false;
+static unsigned long loRaFishNovaNoticeEnd = 0;
+#define LORAFISH_NOVA_NOTICE_MILLIS 5000UL
 static bool loRaFishChannelNotice = false;
 static bool loRaFishMonoDisplayNotice = false;
 // OLED colour is physical hardware. This persistent panel profile lets colour
@@ -267,8 +273,28 @@ static void beginLoRaFishChannelNotice() {
   loRaFishChannelNotice = LoRagotchiChannel::startupResult == LoRagotchiChannel::Result::Full;
 }
 
+static void beginLoRaFishNovaNotice() {
+  // Armed at boot; the 5 s timer only starts once the home screen is up, so the splash is never covered.
+  loRaFishNovaNotice = true;
+  loRaFishNovaNoticeTimed = false;
+}
+
+// Called every loop. Returns true on the loop where the notice ends by itself.
+static bool serviceLoRaFishNovaNotice(bool homeVisible, unsigned long now) {
+  if (!loRaFishNovaNotice || !homeVisible) return false;
+  if (!loRaFishNovaNoticeTimed) {
+    loRaFishNovaNoticeTimed = true;
+    loRaFishNovaNoticeEnd = now + LORAFISH_NOVA_NOTICE_MILLIS;
+    return false;
+  }
+  if ((long)(now - loRaFishNovaNoticeEnd) < 0) return false;
+  loRaFishNovaNotice = false;
+  return true;
+}
+
 static bool dismissLoRaFishNotice() {
   // One gesture dismisses one notice, without navigating, saving or sending.
+  if (loRaFishNovaNotice) { loRaFishNovaNotice = false; return true; }
   if (loRaFishChannelNotice) { loRaFishChannelNotice = false; return true; }
   if (loRaFishNameNotice) { loRaFishNameNotice = false; return true; }
   if (loRaFishMonoDisplayNotice) {
@@ -3263,15 +3289,7 @@ static bool loRaFishDXDestination(ContactInfo& c) {
   return the_mesh.getContactByIdx((uint32_t)MAX_ANON_CONTACTS + loragotchiDXHome.destinationIndex, c);
 }
 
-static bool loRaFishDXEligible(const ContactInfo& c) {
-  // A tank remains an honest MeshCore repeater advert, not a companion that
-  // silently forwards. Only explicitly marked tanks join the visit picker.
-  // Names are discovery hints, not authentication; the transaction still binds
-  // to the selected full public key and requires the normal LFG1 handshake.
-  const bool tank = c.type == ADV_TYPE_REPEATER &&
-      !strncmp(c.name, "LRX1 ", 5);
-  return (c.type == ADV_TYPE_CHAT || tank) && LoRaFishText::hasFish(c.name, sizeof(c.name));
-}
+// loRaFishDXEligible() lives in ../LoRaFishEligible.h (shared with the serial 'nova contacts' command).
 
 static uint32_t loRaFishDXContactCount(uint32_t* selectedRow = nullptr) {
   uint32_t count = 0;
@@ -4532,6 +4550,24 @@ static void drawLoRaFishChannelNotice(DisplayDriver& display) {
 #endif
 }
 
+static void drawLoRaFishNovaNotice(DisplayDriver& display) {
+  // Static text only: no animation, so e-ink shows it as one still frame.
+  const int x = display.width() / 2;
+  drawLoRaFishHeader(display, "NOVA MODE", "");
+  display.setColor(UIColor::primary_txt);
+  display.drawTextCentered(x, 22, "HOLD TO ENABLE NOVA");
+  if (display.height() >= 48) {
+    display.drawTextCentered(x, 32, "dashboard mode");
+    display.drawTextCentered(x, 42, "or wait: normal mode");
+  }
+  display.setColor(UIColor::secondary_txt);
+#if defined(LORAFISH_WATCH_TOUCH)
+  display.drawTextCentered(x, 56, "TAP TO DISMISS");
+#else
+  display.drawTextCentered(x, 56, "CLICK TO DISMISS");
+#endif
+}
+
 static void drawLoRaFishNameNotice(DisplayDriver& display) {
   const int x = display.width() / 2;
   drawLoRaFishHeader(display, "GET FOUND BY FRIENDS", "");
@@ -4581,6 +4617,10 @@ static void drawLoRaFishAdoption(DisplayDriver& display) {
 }
 
 static void drawLoRaFish(DisplayDriver& display, UITask* task) {
+  if (loRaFishNovaNotice) {
+    drawLoRaFishNovaNotice(display);
+    return;
+  }
   if (loRaFishChannelNotice) {
     drawLoRaFishChannelNotice(display);
     return;
@@ -4648,7 +4688,7 @@ static void drawLoRaFish(DisplayDriver& display, UITask* task) {
 // driver's tight pitch (LoRaFishMenuLayout) instead of being stretched with the 64 px page frame.
 // Mirrors the precedence inside drawLoRaFish(): notices and adoption first, then the picker, then the page.
 static bool loRaFishListPage() {
-  if (loRaFishChannelNotice || loRaFishNameNotice || loRaFishMonoDisplayNotice || loRaFishAdoptionEligible)
+  if (loRaFishNovaNotice || loRaFishChannelNotice || loRaFishNameNotice || loRaFishMonoDisplayNotice || loRaFishAdoptionEligible)
     return false;
   if (loRaFishValuePicker.active()) {
 #if LORAGOTCHI_DXPRO
@@ -4672,7 +4712,7 @@ static bool loRaFishListPage() {
 
 static void drawLoRaFishNative(DisplayDriver& display, UITask* task) {
   const int w=display.width(),h=display.height();
-  const bool notice=loRaFishChannelNotice || loRaFishNameNotice ||
+  const bool notice=loRaFishNovaNotice || loRaFishChannelNotice || loRaFishNameNotice ||
       loRaFishMonoDisplayNotice || loRaFishAdoptionEligible || loRaFishNeedsPetSetup || loRaFishValuePicker.active();
   if(loRaFishPage==0 && !notice) {
     const int ribbon=h>64 ? 24 : 0;
@@ -4939,7 +4979,7 @@ public:
 #else
     drawLoRaFish(display, _task);
 #endif
-    if (loRaFishChannelNotice || loRaFishNameNotice) return 2000;
+    if (loRaFishNovaNotice || loRaFishChannelNotice || loRaFishNameNotice) return 2000;
     // Static pages (menus, stats, pairing) only need an occasional redraw; button
     // presses reset _next_refresh in checkDisplayOn(), so they stay responsive.
     if (loRaFishPage == 0) {
@@ -5533,6 +5573,7 @@ void UITask::begin(DisplayDriver* display, SensorManager* sensors, NodePrefs* no
   loRaFishMeshNodeName = node_prefs ? node_prefs->node_name : nullptr;
   beginLoRaFishChannelNotice();
   beginLoRaFishNameNotice();
+  beginLoRaFishNovaNotice();
 #endif
 
   if (_display != NULL) {
@@ -5855,7 +5896,7 @@ static uint8_t loRaFishStaticFrame[64];
 static bool shouldRenderLoRaFish(bool homeVisible, bool alertVisible, bool forced) {
   // Only genuinely static menu pages. Aquarium (even sleeping/dimmed), Stats,
   // clock, pairing, DX and RF/GNSS retain their existing refresh cadence.
-  const bool staticPage = loRaFishChannelNotice || loRaFishNameNotice || loRaFishMonoDisplayNotice || loRaFishPage == 5 ||
+  const bool staticPage = loRaFishNovaNotice || loRaFishChannelNotice || loRaFishNameNotice || loRaFishMonoDisplayNotice || loRaFishPage == 5 ||
       (loRaFishPage >= 8 && loRaFishPage <= 18);
   if (!homeVisible || alertVisible || !staticPage || loRaFishAdoptionEligible) {
     loRaFishStaticFrameValid = false;
@@ -5865,7 +5906,7 @@ static bool shouldRenderLoRaFish(bool homeVisible, bool alertVisible, bool force
   encodeLoRaFishSettings(settings);
   uint8_t frame[] = {
       (uint8_t)loRaFishChannelNotice, (uint8_t)loRaFishNameNotice, (uint8_t)loRaFishMonoDisplayNotice,
-      loRaFishPage, (uint8_t)loRaFishOption, loRaFishDisplayOption, loRaFishTimeField,
+      (uint8_t)loRaFishNovaNotice, loRaFishPage, (uint8_t)loRaFishOption, loRaFishDisplayOption, loRaFishTimeField,
       loRaFishTimeoutField, loRaFishSoundField, loRaFishColorField,
       (uint8_t)loRaFishValuePicker.active(), (uint8_t)loRaFishValuePicker.key(),
       loRaFishValuePicker.value(), (uint8_t)loRaFishCanBreed(),
@@ -5914,7 +5955,8 @@ void UITask::loop() {
     _next_refresh = 0;
   }
   serviceLoRaFishSettingsMenu(_display && _display->isOn() && curr == home);
-  serviceLoRaFishAdoption(curr == home && !loRaFishNameNotice && !loRaFishChannelNotice && !loRaFishMonoDisplayNotice);
+  serviceLoRaFishAdoption(curr == home && !loRaFishNovaNotice && !loRaFishNameNotice && !loRaFishChannelNotice && !loRaFishMonoDisplayNotice);
+  if (serviceLoRaFishNovaNotice(curr == home, millis())) _next_refresh = 0;  // redraw without the notice
   tickLoRaFish();
 #if defined(LORAFISH_SERIAL_TEST)
   {
@@ -6724,7 +6766,7 @@ char UITask::handleTripleClick(char c) {
     checkDisplayOn(0);
     return 0;
   }
-  if (loRaFishChannelNotice || loRaFishNameNotice) {
+  if (loRaFishNovaNotice || loRaFishChannelNotice || loRaFishNameNotice) {
     if (_display && _display->isOn() && curr == home) dismissLoRaFishNotice();
     checkDisplayOn(0);
     return 0;

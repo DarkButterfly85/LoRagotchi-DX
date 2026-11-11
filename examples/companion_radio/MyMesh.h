@@ -334,6 +334,8 @@ private:
   bool send_unscoped;   // force un-scoped flood (instead of using send_scope)
   char cli_command[80];
   char reply_buf[166];
+  bool _cli_from_serial = false;      // handleCommand() is serving the USB serial console
+  bool _cli_serial_printed = false;   // the command already wrote its own serial line
   uint8_t app_target_ver;
   uint8_t *sign_data;
   uint32_t sign_data_len;
