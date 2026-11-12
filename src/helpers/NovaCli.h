@@ -4,7 +4,11 @@
 //
 //   nova hello           one JSON line saying which dashboard features this firmware really has
 //   nova contacts        parsed here, answered by the caller (one JSON line streamed from LoRaFishEligible.h); reply() builds nothing
-//   nova mesh | nova pet {"nova_unavailable":"<name>"}   (so the dashboard does not wait for nothing)
+//   nova mesh            parsed here, answered by the caller (examples/companion_radio/MyMesh.cpp queues the mesh line and, at
+//                        most every 5 s, the status frame from helpers/NovaStreams.h); reply() builds nothing
+//   nova status          the status frame on demand (parsed here, answered by the caller); reply() builds nothing
+//   nova battery         {"nova_ok":"battery","mv":N,"pct":N,"chg":0|1} (built by NovaStreams.h, answered by the caller); reply() builds nothing
+//   nova pet             {"nova_unavailable":"pet"}   (so the dashboard does not wait for nothing)
 //   nova petname <name>  {"nova_unavailable":"petname"}  only as the answer of a build with no pet name to set; a build
 //                        that has one answers through helpers/NovaPetName.h ({"nova_ok":"petname","name":...})
 //   nova baud <rate>     only answered by a build that registered a speed setter (examples/companion_radio/NovaBaud.h
@@ -20,7 +24,7 @@
 
 namespace NovaCli {
 
-enum class Cmd { NotNova, Hello, Contacts, Mesh, Pet, PetName, Baud, Unknown };
+enum class Cmd { NotNova, Hello, Contacts, Mesh, Pet, PetName, Baud, Status, Battery, Unknown };
 
 struct Parsed {
   Cmd cmd;
@@ -31,6 +35,7 @@ struct Parsed {
 // handler really saves the name, i.e. a pet screen has registered its setter).
 struct Caps {
   int pet = 0, mesh = 0, contacts = 0, petname = 0, keys = 0, clean = 0, feed = 0, guess = 0, ping = 0, sendpet = 0;
+  // mesh = 1 means this build feeds helpers/NovaStreams.h from the radio's rx/tx hooks and answers "nova mesh" with the mesh lines and the status frames.
   int baud = 0;   // "nova baud" saves a speed (NovaBaud.h). Listed as "baud":1 only when 1; absent otherwise, so a build without it says exactly what it always said
 };
 
@@ -52,6 +57,8 @@ static inline Parsed parse(const char* line) {
   else if (n == 3 && strncmp(w, "pet", 3) == 0) p.cmd = Cmd::Pet;
   else if (n == 7 && strncmp(w, "petname", 7) == 0) { p.cmd = Cmd::PetName; p.arg = rest; }
   else if (n == 4 && strncmp(w, "baud", 4) == 0) { p.cmd = Cmd::Baud; p.arg = rest; }
+  else if (n == 6 && strncmp(w, "status", 6) == 0) p.cmd = Cmd::Status;
+  else if (n == 7 && strncmp(w, "battery", 7) == 0) p.cmd = Cmd::Battery;
   return p;
 }
 
@@ -90,7 +97,9 @@ static inline size_t reply(const Parsed& p, const char* edition, const Caps& c, 
       break;
     }
     case Cmd::Contacts: return 0;   // streamed by the caller (NovaContacts::writeJson, LoRaFishEligible.h): no line built here
-    case Cmd::Mesh:    n = snprintf(out, cap, "{\"nova_unavailable\":\"mesh\"}"); break;
+    case Cmd::Status:  return 0;    // answered by the caller (NovaStreams.h status frame): no line built here
+    case Cmd::Battery: return 0;    // answered by the caller (NovaStreams.h batteryReply): no line built here
+    case Cmd::Mesh:    n = snprintf(out, cap, "{\"nova_unavailable\":\"mesh\"}"); break;   // a build without the stream (the caller answers it where there is one)
     case Cmd::Pet:     n = snprintf(out, cap, "{\"nova_unavailable\":\"pet\"}"); break;
     case Cmd::PetName: n = snprintf(out, cap, "{\"nova_unavailable\":\"petname\"}"); break;
     case Cmd::Baud:    n = snprintf(out, cap, "{\"nova_unavailable\":\"baud\"}"); break;

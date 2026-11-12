@@ -399,9 +399,6 @@ static void setAddrWindow(uint16_t x, uint16_t y, uint16_t w, uint16_t h) {
   writeCommand(ST77XX_RAMWR); // write to RAM
 }
 
-#define SCALE_X  1.25f     // 160 / 128
-#define SCALE_Y  1.25f      // 80 / 64
-
 static TFT_eSprite *sprite = NULL;
 static uint16_t* presentedPixels = nullptr;
 static bool presentedPixelsValid = false;
@@ -570,7 +567,7 @@ void ST7735Display::setColor(ColorVal c) {
 }
 
 void ST7735Display::setCursor(int x, int y) {
-  sprite->setCursor(x*SCALE_X, y*SCALE_Y);
+  sprite->setCursor(x, y);
 }
 
 void ST7735Display::print(const char* str) {
@@ -578,19 +575,19 @@ void ST7735Display::print(const char* str) {
 }
 
 void ST7735Display::fillRect(int x, int y, int w, int h) {
-  sprite->fillRect(x*SCALE_X, y*SCALE_Y, w*SCALE_X, h*SCALE_Y, curr_color);
+  sprite->fillRect(x, y, w, h, curr_color);
 }
 
 void ST7735Display::drawRect(int x, int y, int w, int h) {
-  sprite->drawRect(x*SCALE_X, y*SCALE_Y, w*SCALE_X, h*SCALE_Y, curr_color);
+  sprite->drawRect(x, y, w, h, curr_color);
 }
 
 void ST7735Display::drawXbm(int x, int y, const uint8_t* bits, int w, int h) {
-  sprite->drawBitmap(x*SCALE_X, y*SCALE_Y, bits, w, h, curr_color);
+  sprite->drawBitmap(x, y, bits, w, h, curr_color);
 }
 
 uint16_t ST7735Display::getTextWidth(const char* str) {
-  return sprite->textWidth(str) / SCALE_X;
+  return sprite->textWidth(str);
 }
 
 void ST7735Display::endFrame() {

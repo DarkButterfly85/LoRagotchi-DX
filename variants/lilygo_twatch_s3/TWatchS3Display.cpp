@@ -12,9 +12,6 @@ ColorVal UIColor::popup_bkg = 0x001F;
 ColorVal UIColor::popup_txt = 0xFFFF;
 ColorVal UIColor::corp_blue = 0x001A;
 
-// 128 frame columns -> 240 panel pixels; the 128-row frame fills the panel.
-static const float FRAME_ZOOM = (float)LCD_HOR_SIZE / TWatchS3Display::LOGICAL_WIDTH;   // 1.875
-
 bool TWatchS3Display::begin() {
   _lcd.init();
   _lcd.setRotation(1);
@@ -25,6 +22,10 @@ bool TWatchS3Display::begin() {
   _frame.setColorDepth(16);
   _frame.setPsram(false);
   _buffered = _frame.createSprite(LOGICAL_WIDTH, FRAME_HEIGHT) != nullptr;
+  if (!_buffered) {   // the 240x240 frame is 112 KB: if internal RAM has no block that size, use PSRAM
+    _frame.setPsram(true);
+    _buffered = _frame.createSprite(LOGICAL_WIDTH, FRAME_HEIGHT) != nullptr;
+  }
   _frame.setTextSize(1);
   _isOn = true;
   return _buffered;
@@ -114,7 +115,7 @@ void TWatchS3Display::drawFooterHint(const char* left, const char* right, ColorV
 void TWatchS3Display::endFrame() {
   if (!_isOn || !_buffered) return;
   _lcd.startWrite();
-  _frame.pushRotateZoom(&_lcd, LCD_HOR_SIZE / 2.0f, LCD_VER_SIZE / 2.0f, 0, FRAME_ZOOM, FRAME_ZOOM);
+  _frame.pushSprite(&_lcd, 0, 0);   // 1:1, the frame is the panel
   _lcd.endWrite();
 }
 

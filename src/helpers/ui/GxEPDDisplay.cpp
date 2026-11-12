@@ -113,22 +113,12 @@ void GxEPDDisplay::startFrame(ColorVal bkg) {
   }
 }
 
+// Text is the Adafruit GFX 6x8 font drawn at its own size (like the E213 and E290 drivers): size N is a
+// 6N x 8N cell. The cursor is the top-left of the cell, so there is no baseline offset.
 void GxEPDDisplay::setTextSize(int sz) {
   display_crc.update<int>(sz);
-  switch(sz) {
-    case 1:  // Small
-      display.setFont(&FreeSans9pt7b);
-      break;
-    case 2:  // Medium Bold
-      display.setFont(&FreeSansBold12pt7b);
-      break;
-    case 3:  // Large
-      display.setFont(&FreeSans18pt7b);
-      break;
-    default:
-      display.setFont(&FreeSans9pt7b);
-      break;
-  }
+  display.setFont(NULL);
+  display.setTextSize(sz < 1 ? 1 : sz);
 }
 
 void GxEPDDisplay::setColor(ColorVal c) {
@@ -139,7 +129,7 @@ void GxEPDDisplay::setColor(ColorVal c) {
 void GxEPDDisplay::setCursor(int x, int y) {
   display_crc.update<int>(x);
   display_crc.update<int>(y);
-  display.setCursor((x+offset_x)*scale_x, (y+offset_y)*scale_y);
+  display.setCursor(x, y);
 }
 
 void GxEPDDisplay::print(const char* str) {
@@ -152,7 +142,7 @@ void GxEPDDisplay::fillRect(int x, int y, int w, int h) {
   display_crc.update<int>(y);
   display_crc.update<int>(w);
   display_crc.update<int>(h);
-  display.fillRect(x*scale_x, y*scale_y, w*scale_x, h*scale_y, _curr_color);
+  display.fillRect(x, y, w, h, _curr_color);
 }
 
 void GxEPDDisplay::drawRect(int x, int y, int w, int h) {
@@ -160,7 +150,7 @@ void GxEPDDisplay::drawRect(int x, int y, int w, int h) {
   display_crc.update<int>(y);
   display_crc.update<int>(w);
   display_crc.update<int>(h);
-  display.drawRect(x*scale_x, y*scale_y, w*scale_x, h*scale_y, _curr_color);
+  display.drawRect(x, y, w, h, _curr_color);
 }
 
 void GxEPDDisplay::drawXbm(int x, int y, const uint8_t* bits, int w, int h) {
@@ -169,46 +159,15 @@ void GxEPDDisplay::drawXbm(int x, int y, const uint8_t* bits, int w, int h) {
   display_crc.update<int>(w);
   display_crc.update<int>(h);
   display_crc.update<uint8_t>(bits, w * h / 8);
-  // Calculate the base position in display coordinates
-  uint16_t startX = x * scale_x;
-  uint16_t startY = y * scale_y;
-  
-  // Width in bytes for bitmap processing
-  uint16_t widthInBytes = (w + 7) / 8;
-  
-  // Process the bitmap row by row
-  for (uint16_t by = 0; by < h; by++) {
-    // Calculate the target y-coordinates for this logical row
-    int y1 = startY + (int)(by * scale_y);
-    int y2 = startY + (int)((by + 1) * scale_y);
-    int block_h = y2 - y1;
-    
-    // Scan across the row bit by bit
-    for (uint16_t bx = 0; bx < w; bx++) {
-      // Calculate the target x-coordinates for this logical column
-      int x1 = startX + (int)(bx * scale_x);
-      int x2 = startX + (int)((bx + 1) * scale_x);
-      int block_w = x2 - x1;
-      
-      // Get the current bit
-      uint16_t byteOffset = (by * widthInBytes) + (bx / 8);
-      uint8_t bitMask = 0x80 >> (bx & 7);
-      bool bitSet = pgm_read_byte(bits + byteOffset) & bitMask;
-      
-      // If the bit is set, draw a block of pixels
-      if (bitSet) {
-        // Draw the block as a filled rectangle
-        display.fillRect(x1, y1, block_w, block_h, _curr_color);
-      }
-    }
-  }
+  // XBM art is MSB first; every set bit is exactly one panel pixel.
+  display.drawBitmap(x, y, bits, w, h, _curr_color);
 }
 
 uint16_t GxEPDDisplay::getTextWidth(const char* str) {
   int16_t x1, y1;
   uint16_t w, h;
   display.getTextBounds(str, 0, 0, &x1, &y1, &w, &h);
-  return ceil((w + 1) / scale_x);
+  return w;
 }
 
 void GxEPDDisplay::endFrame() {

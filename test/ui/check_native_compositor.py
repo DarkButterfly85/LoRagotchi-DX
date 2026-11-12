@@ -49,9 +49,9 @@ public:
 '''+listpage+chr(10)+s[start:end]+r'''
 int main(){
  UITask task;
- for(auto dims:{std::pair<int,int>{320,170},{320,240},{240,135}}){
+ for(auto dims:{std::pair<int,int>{320,170},{320,240},{240,135},{220,128},{160,80}}){
   Recorder r(dims.first,dims.second);drawLoRaFishNative(r,&task);
-  assert(sceneW==dims.first-LoRaFishLayout::sidebarWidth(dims.first) && sceneH==dims.second-24);
+  assert(sceneW==dims.first-LoRaFishLayout::sidebarWidth(dims.first) && sceneH==dims.second-(dims.second>=96?24:0));   // 160x80 has no room for the ribbon
   loRaFishPage=8;Recorder m(dims.first,dims.second);drawLoRaFishNative(m,&task);
   assert(sceneW==dims.first && sceneH==dims.second);loRaFishPage=0;
   for(bool* notice:{&loRaFishNovaNotice,&loRaFishChannelNotice,&loRaFishNameNotice,&loRaFishMonoDisplayNotice,

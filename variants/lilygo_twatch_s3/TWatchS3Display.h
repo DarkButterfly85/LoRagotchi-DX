@@ -5,13 +5,12 @@
 // (SDA 39 / SCL 40, INT 16). Panel and touch configuration ported from the
 // Meck T-Watch firmware.
 //
-// The LoRaGotchi UI is laid out for a 128x64 canvas. Everything is drawn into
-// a 128x128 RGB565 frame buffer, which endFrame() scales by 1.875 (240/128) to
-// fill the square panel, keeping the layout's proportions:
-//   - TWatchS3Display itself is the normal 128x64 canvas. Its drawing lands in
-//     the middle of the frame (rows 32-95), so menus and other screens are
-//     centred on the panel.
-//   - TWatchS3TankView (below) is a 128x128 canvas over the same frame, used
+// Everything is drawn 1:1 into a 240x240 RGB565 frame buffer that endFrame() copies to the
+// panel as it is: one UI pixel is one panel pixel, there is no scaling.
+//   - TWatchS3Display itself is the page canvas: the full 240 panel columns by
+//     64 rows. Its drawing lands in the middle of the frame (rows 88-151), so
+//     menus and other screens are centred on the panel.
+//   - TWatchS3TankView (below) is a 240x240 canvas over the same frame, used
 //     for the aquarium screen so the tank fills the panel (see that class).
 
 #include <helpers/ui/DisplayDriver.h>
@@ -112,10 +111,10 @@ class TWatchS3Display : public DisplayDriver {
   void rawDrawXbm(int x, int y, const uint8_t* bits, int w, int h);
 
 public:
-  static const int LOGICAL_WIDTH = 128;    // canvas the UI is laid out for
-  static const int LOGICAL_HEIGHT = 64;
-  static const int FRAME_HEIGHT = 128;     // frame buffer rows (fills the panel)
-  static const int MENU_OFFSET_Y = (FRAME_HEIGHT - LOGICAL_HEIGHT) / 2;   // 32
+  static const int LOGICAL_WIDTH = 240;    // page canvas: every panel column
+  static const int LOGICAL_HEIGHT = 64;    // page canvas rows (the page layouts are 64 rows high)
+  static const int FRAME_HEIGHT = 240;     // frame buffer rows (fills the panel)
+  static const int MENU_OFFSET_Y = (FRAME_HEIGHT - LOGICAL_HEIGHT) / 2;   // 88
 
   TWatchS3Display() : DisplayDriver(LOGICAL_WIDTH, LOGICAL_HEIGHT), _frame(&_lcd) {}
 
@@ -140,7 +139,7 @@ public:
   void endFrame() override;
 
   // One line of hint text in the margin below a centred screen (frame rows
-  // 117-124): `left` at the left edge, `right` against the right edge.
+  // 229-236): `left` at the left edge, `right` against the right edge.
   void drawFooterHint(const char* left, const char* right, ColorVal color);
 
   // Touch position in panel pixels (0..239, same orientation as the display).
@@ -148,17 +147,17 @@ public:
   bool getTouch(int* x, int* y);
 };
 
-// TWatchS3TankView -- a 128x128 canvas over the same frame buffer, for the
+// TWatchS3TankView -- a 240x240 canvas over the same frame buffer, for the
 // LoRaGotchi aquarium screen (selected in UITask.cpp under LORAFISH_TALL_TANK).
 //
 // The aquarium drawing places the header at fixed rows 0-15, the footer, floor
-// and bubbles relative to height() (so they land at the bottom of the 128-row
-// tank: rows 80 and below), and the fish, guest fish, egg, gravestone, food and
-// messages at fixed rows 16-63. Those fixed tank rows are moved down by 32 so
+// and bubbles relative to height() (so they land at the bottom of the 240-row
+// tank: rows 200 and below), and the fish, guest fish, egg, gravestone, food and
+// messages at fixed rows 16-63. Those fixed tank rows are moved down by 88 so
 // the tank contents sit in the middle of the taller tank, exactly as they sat
 // in the middle of the 64-row one.
 //
-// With shiftTank=false it is a plain 128x128 canvas with no rows moved. That
+// With shiftTank=false it is a plain 240x240 canvas with no rows moved. That
 // is used for the tank scenery (LORAFISH_CARDPUTER_25D), which already spreads
 // itself over height() and must fill the whole tall tank.
 //

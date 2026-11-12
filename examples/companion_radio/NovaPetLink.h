@@ -30,6 +30,10 @@
 // screen takes them), base64 of 32 bytes. The palette is built as the screen draws (the first colour is the
 // window background), is the same in every delta that follows its key picture, and a colour that is new
 // forces a new key picture. More than 16 distinct colours: the extras are drawn in the nearest palette colour.
+// Slot order (the radio decides it, the dashboard just reads p): every key picture starts from a fresh palette
+// that the radio fills before it draws anything, in a fixed priority (Link::setPaletteSeed): the window
+// background, then the theme colours, the pet's own colours, the plants, then the background blues. Whatever
+// the scene draws later takes the slots that are left, so a colour that matters is never snapped to a near one.
 // Colour d is coded one more way than mono, so flat areas of any colour cost little: after the XOR with the
 // previous picture (key: none), every byte is XORed with the byte before it (h[0] = t[0], h[i] = t[i] ^ t[i-1]).
 // Decode: run-length decode, then t[i] = h[i] ^ t[i-1], then (delta) XOR with the previous picture.
@@ -194,6 +198,11 @@ public:
   bool paletteDirty() const { return dirty_; }          // a colour was added since the last key picture went out
   void clearPaletteDirty() { dirty_ = false; }
   void resetPalette() { npal_ = 0; dirty_ = false; overflow_ = 0; idx_ = 0xFF; memset(pal_, 0, sizeof(pal_)); }
+  // Reserve palette slots in the order given (first = lowest index), skipping colours already held. Used
+  // right after resetPalette(), before anything is drawn; a colour that does not fit is simply not reserved.
+  void seedPalette(const uint16_t* colours, int n) {
+    for (int i = 0; i < n && npal_ < PALETTE_SIZE; i++) indexFor(colours[i]);
+  }
   uint32_t overflowed() const { return overflow_; }     // pixels drawn in a "nearest" colour because the palette was full
 
   void set(int x, int y) {
@@ -240,21 +249,27 @@ public:
   // Same rules as the Adafruit text the OLED uses: 6 columns a character, wrap at the right edge,
   // newline goes back to column 0. Characters outside 32..126 leave a blank cell.
   void print(const char* s) {
-    const uint8_t* f = font5x7();
     for (; *s; s++) {
       const unsigned char ch = (unsigned char)*s;
       if (ch == '\n') { cx_ = 0; cy_ += 8 * size_; continue; }
       if (ch == '\r') continue;
       if (cx_ + 6 * size_ > fmt_.w) { cx_ = 0; cy_ += 8 * size_; }
-      if (ch >= 32 && ch <= 126) {
-        const uint8_t* g = f + (ch - 32) * 5;
-        for (int col = 0; col < 5; col++)
-          for (int row = 0; row < 8; row++)
-            if (g[col] & (1 << row)) fillRect(cx_ + col * size_, cy_ + row * size_, size_, size_);
-      }
+      glyph(ch, cx_, cy_);
       cx_ += 6 * size_;
     }
   }
+  // One character with its left edge at x: no wrapping, the cursor does not move. For a copy of a screen
+  // whose own text is narrower than 6 columns a character (NovaPetTee places each one where the real screen does).
+  void glyph(unsigned char ch, int x, int y) {
+    if (ch < 32 || ch > 126) return;
+    const uint8_t* g = font5x7() + (ch - 32) * 5;
+    for (int col = 0; col < 5; col++)
+      for (int row = 0; row < 8; row++)
+        if (g[col] & (1 << row)) fillRect(x + col * size_, y + row * size_, size_, size_);
+  }
+  int cursorX() const { return cx_; }
+  int cursorY() const { return cy_; }
+  int textSize() const { return size_; }
 
 private:
   Format fmt_;
@@ -373,8 +388,9 @@ public:
   Canvas canvas;                 // the tee draws into this while a page is asking
   explicit Link(const Format& f = Format())
     : fmt_(f), prev_(NULL), line_(NULL), cap_(0), seq_(0), since_key_(0), last_key_(0), last_sent_(0), until_(0), started_(0),
-      want_key_(true), got_frame_(false), len_(0), off_(0) {
+      want_key_(true), got_frame_(false), len_(0), off_(0), nseed_(0) {
     name_[0] = 0;
+    memset(seed_, 0, sizeof(seed_));
     if (!f.valid() || !canvas.init(f)) return;
     cap_ = f.maxLine() < MAX_LINE_CAP ? f.maxLine() : MAX_LINE_CAP;
     prev_ = (uint8_t*)calloc(1, f.bytes());
@@ -394,6 +410,33 @@ public:
     if (!active(now)) { want_key_ = true; len_ = off_ = 0; started_ = now; got_frame_ = false; canvas.resetPalette(); }
     until_ = now + WINDOW_MS;
   }
+
+  // The colours to reserve, in priority order, before a key picture is drawn (see the note on slot order above).
+  // Duplicates are dropped; only the first PALETTE_SIZE count. UITask sets it every frame from the live theme and pet.
+  void setPaletteSeed(const uint16_t* colours, int n) {
+    nseed_ = 0;
+    for (int i = 0; colours && i < n && nseed_ < PALETTE_SIZE; i++) {
+      bool dup = false;
+      for (int j = 0; j < nseed_; j++) if (seed_[j] == colours[i]) { dup = true; break; }
+      if (!dup) seed_[nseed_++] = colours[i];
+    }
+  }
+  // The next picture will go out as a key picture (nothing has been sent, or one is due).
+  bool keyDue(uint32_t now) const { return want_key_ || since_key_ >= KEY_EVERY_FRAMES || (uint32_t)(now - last_key_) >= KEY_EVERY_MS; }
+  // Start of a colour frame (the tee calls this). Whenever the picture will be a key picture the palette is
+  // rebuilt from scratch: window background first, then the seed, then whatever the scene draws. The same seed
+  // therefore gives the same indices in every key picture. Delta pictures keep the palette their key picture
+  // sent (a colour that is new still forces a key picture). A rebuilt palette is only valid in a key picture,
+  // so one is demanded: if its line cannot go out yet, the next frame rebuilds again.
+  void beginColourFrame(uint32_t now, uint16_t bkg) {
+    if (keyDue(now)) {
+      canvas.resetPalette();
+      canvas.seedPalette(&bkg, 1);
+      canvas.seedPalette(seed_, nseed_);
+      want_key_ = true;
+    }
+    canvas.beginFrameColor(bkg);
+  }
   // Asked for more than 3 s ago and the screen has not drawn once: it is off or asleep. The caller says so.
   bool waiting(uint32_t now) const { return active(now) && !got_frame_ && (uint32_t)(now - started_) > 3000; }
   bool active(uint32_t now) const { return until_ != 0 && (int32_t)(until_ - now) > 0; }
@@ -409,7 +452,7 @@ public:
     if (!active(now) || !ok()) return;
     got_frame_ = true;
     if (off_ < len_) return;
-    bool key = want_key_ || since_key_ >= KEY_EVERY_FRAMES || (uint32_t)(now - last_key_) >= KEY_EVERY_MS || canvas.paletteDirty();
+    bool key = keyDue(now) || canvas.paletteDirty();
     if (!key) {
       if ((uint32_t)(now - last_sent_) < (fmt_.eink ? EINK_MIN_GAP_MS : MIN_GAP_MS)) return;
       if (memcmp(canvas.px, prev_, fmt_.bytes()) == 0) return;       // nothing moved: nothing to say
@@ -445,6 +488,8 @@ private:
   uint32_t seq_, since_key_, last_key_, last_sent_, until_, started_;
   bool want_key_, got_frame_;
   size_t len_, off_;
+  uint16_t seed_[PALETTE_SIZE];
+  uint8_t nseed_;
 };
 
 // ---- which screen this radio has, and the one shared Link ------------------------------------------

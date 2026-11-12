@@ -1,5 +1,7 @@
 # Native-pixel LoRagotchi layouts — local implementation, 2026-11-07
 
+> **Superseded in part, 2026-11-12:** no display driver scales any more. The T096 / 128x64 logical compatibility path, the T-Deck 2.5x/3.75x grid, the ST7789 stock grid, the NV3001B mapping, the GxEPD `EINK_SCALE_*` factors, the LGFX `UI_ZOOM` and the T-Watch 1.875x frame zoom are gone; see "No display scaling" at the end of this file. The statements below about those paths describe the code before that change.
+
 ## Provenance and preservation
 
 Worktree: projects/loragotchi-dx-pet-followup-20261106, branch fix/pet-followup-20261106, starting HEAD 53efe2e0780265a5b971b5a59782c664826fa703. Initially clean. Read-only remote inspection/fetch found main 84ce7f9ef9134c683739df1c902a1fc32abc64c6; its tracked tree is identical to starting HEAD (git diff --quiet HEAD origin/main returned 0). No merge/rebase/reset, commit, push, flash, radio operation or publication. Other worktrees and hardware paths preserved. The project vault's prior multi-display and transport notes were consulted. The available project graph returned no matching LoRagotchi nodes; direct source inspection supplied the evidence.
@@ -116,3 +118,30 @@ Private build logs, diagnostic rasters and binaries are not part of the source
 commit. The earlier “uncommitted/no push” labels describe those local checkpoints;
 publication is to the existing fork feature branch only, not main or upstream.
 The integrated aquarium raster and physical-panel acceptance caveats still apply.
+
+## No display scaling — 2026-11-12
+
+Every DisplayDriver now reports its panel's own pixel size (in the mounted orientation) and draws 1:1. There is no float
+multiplier between the UI and a panel: `DISPLAY_SCALE_X/Y`, `EINK_SCALE_X/Y`, `EINK_X/Y_OFFSET`, `UI_ZOOM`,
+`NV3001B_LOGICAL_*` / `NV3001B_TEXT_SIZE*_SCALE_*` and the T-Watch `pushRotateZoom` are removed from the drivers and from every
+board ini. Save formats, radio formats and the Nova serial link are untouched; the Nova copy already took width()/height() from the driver.
+
+| Driver (boards) | Native size reported | What changed |
+| --- | --- | --- |
+| ST7735Display (Heltec T096, Wireless Tracker v1/v2, T1) | 160x80 | was 128x64 mapped x1.25; sprite was already 160x80 |
+| ST7789LCDDisplay (T190, T-Deck, V4 TFT, V4-R8 TFT, T114) | DISPLAY_WIDTH/HEIGHT by rotation: 320x170, 320x240, 240x135 | T-Deck and V4-R8 used 2.5x/3.75x; text size is no longer multiplied |
+| ST7789Display (stock T190, stock T114, ThinkNode M9) | 320x170, 240x135, 320x240 | stock 128x64 grid removed; text is Arial 10/16/24 pt for sizes 1/2/3 so the 128x64 row spacing still fits |
+| NV3001BDisplay (Heltec RC32) | 220x128 | logical 128x64 mapping and the 1x2 / 2x3 text blocks removed; text is the native 5x7 glyph in a 6 px advance, size N = N x N |
+| GxEPDDisplay (T-Echo, Lite, ThinkNode M5/M8, Mesh Pocket, Wio L1 e-ink) | model WIDTH x HEIGHT by DISPLAY_ROTATION | 128x128 logical grid and the FreeSans fonts' baseline offset removed; text is the GFX 6x8 font like the E213/E290 drivers; still no animation |
+| LGFXDisplay (SenseCAP Indicator) | 480x480 | UI_ZOOM 3.5 removed |
+| TWatchS3Display | 240x240 frame, page canvas 240x64, tank 240x240 | 128-column frame no longer zoomed 1.875x |
+| Cardputer, E213, E290, SSD1306/SH1106/SH1107/U8g2 | unchanged | were already native |
+
+LoRaFish builds on the panels that are not 128x64 (T-Deck, T096, Wireless Tracker, T1, tracker v2, ThinkNode M9, RC32) now
+set `LORAGOTCHI_NATIVE_UI`, like the V4 / T190 / T114 TFT builds. In the native layout a panel shorter than 96 rows has no status
+ribbon, and a driver whose text rows are taller than 9 px (ST7789Display, pitch 12) moves the menu hint line up by its pitch.
+Stock (non-LoRaFish) home screens anchor their bottom hints to display.height() instead of row 64.
+
+Not verified without hardware: every panel above (appearance, text fit, e-ink font change, T-Watch 112 KB frame allocation,
+M9 Arial metrics). Host checks: check_no_display_scaling.py (driver sources, board inis, NV3001B bus replay), and the native
+menu/page/compositor/habitat checks now include 220x128 and 160x80.

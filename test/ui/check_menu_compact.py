@@ -27,7 +27,10 @@ GEOMETRIES=[
  ('320x170 T190 landscape',320,170,9,8,1.0,16,162),
  ('240x135 Cardputer / T114',240,135,9,8,1.0,12,127),
  ('240x320 ST7789',240,320,9,8,1.0,32,312),
- ('T-Deck 128x64 grid, 2.5x/3.75x',128,64,5,16,3.75,7,56),
+ ('T-Deck / V4 TFT 320x240 native',320,240,9,8,1.0,23,232),
+ ('160x80 T096 / Wireless Tracker native',160,80,9,8,1.0,6,72),
+ ('220x128 RC32 NV3001B native',220,128,9,8,1.0,11,120),
+ ('320x240 ThinkNode M9 ST7789Display (10 pt Arial, 12 px pitch)',320,240,12,10,1.0,17,229),
 ]
 
 LAYOUT_TEST=r'''
@@ -41,7 +44,7 @@ int main(){
  for(const G& d:g){
   // visible rows = floor(usable / pitch), computed here independently of the header's expression
   const int usable=d.hint-18;
-  assert(L::hintY(d.h)==d.hint);
+  assert(L::hintY(d.h,d.pitch)==d.hint);
   assert(L::rows(d.h,d.pitch)==usable/d.pitch);
   assert(L::rows(d.h,d.pitch)==d.rows);
   // The last row ends above the hint line; the row after it would not.
@@ -127,7 +130,7 @@ int main(){
     assert(labels[i]==loRaFishOptionLabel(LoRaFishOptions::at(firstShown+(int)i,loRaFishHasSound,true,true)));
    // Hint sits on the bottom edge line and below the last row.
    assert(panel.printed.back().find("NEXT")!=std::string::npos || panel.printed.back().find("OK")!=std::string::npos);
-   assert(panel.ys.back()==LoRaFishMenuLayout::hintY(c.h));
+   assert(panel.ys.back()==LoRaFishMenuLayout::hintY(c.h,c.pitch));
    assert(rowYs.back()+c.glyph<=panel.ys.back());
   }
   // Display menu: same rules, its own list.
@@ -142,8 +145,8 @@ int main(){
      if(s==">"||s=="DISPLAY")continue;
     }
     for(size_t i=0;i<panel.printed.size();++i){
-     if(panel.printed[i]==">"){++marked;assert(panel.ys[i]>=18 && panel.ys[i]<LoRaFishMenuLayout::hintY(c.h));}
-     if(panel.ys[i]>=18 && panel.ys[i]<LoRaFishMenuLayout::hintY(c.h) && panel.printed[i]!=">")++rows;
+     if(panel.printed[i]==">"){++marked;assert(panel.ys[i]>=18 && panel.ys[i]<LoRaFishMenuLayout::hintY(c.h,c.pitch));}
+     if(panel.ys[i]>=18 && panel.ys[i]<LoRaFishMenuLayout::hintY(c.h,c.pitch) && panel.printed[i]!=">")++rows;
     }
     assert(rows==std::min(dcount,visible));
     assert(marked==1);
@@ -233,19 +236,16 @@ def sources_guards():
     print('PASS source guards: no fixed row counts/steps in list menus; DX-Pro pickers and native flow use the shared layout')
 
 def driver_pitch_check():
-    """The ST7789LCD driver formula, evaluated for the real T-Deck and native scales (no hardware needed)."""
-    import math
+    """Every ST7789 LCD board is native 1:1 now, so the driver keeps the default 9 px row pitch (8 px glyph + 1)."""
     cpp=(ROOT/'src/helpers/ui/ST7789LCDDisplay.cpp').read_text()
-    assert 'glyphPixels = 8 * static_cast<int>(DISPLAY_SCALE_X)' in cpp and '(glyphPixels + 1) / DISPLAY_SCALE_Y' in cpp
-    def pitch(sx,sy):
-        p=int(((8*int(sx))+1)/sy+0.999)   # same arithmetic as the driver (float truncation of text size and result)
-        return 4 if p<4 else 9 if p>9 else p
-    ini=(ROOT/'variants/lilygo_tdeck/platformio.ini').read_text()
-    sx=float(re.search(r'DISPLAY_SCALE_X=([0-9.]+)',ini).group(1));sy=float(re.search(r'DISPLAY_SCALE_Y=([0-9.]+)',ini).group(1))
-    assert pitch(sx,sy)==5,(sx,sy,pitch(sx,sy))        # T-Deck: 16 px glyphs on a 3.75 px grid -> 5 rows
-    assert pitch(1,1)==9                                # native 1:1 panels (T190, T114, ...): 8 px glyph + 1
-    assert 5*sy>=16+1 and 5*sy<16+2+sy                  # the T-Deck pitch clears the glyph and is within a grid row of font+2
-    print('PASS ST7789LCD pitch formula: T-Deck %gx/%gx -> 5 rows (%.2f px for a 16 px font), native 1:1 -> 9'%(sx,sy,5*sy))
+    hdr=(ROOT/'src/helpers/ui/ST7789LCDDisplay.h').read_text()
+    assert 'DISPLAY_SCALE' not in cpp and 'DISPLAY_SCALE' not in hdr, 'the LCD driver must not scale'
+    assert 'menuRowPitch' not in cpp and 'menuRowPitch' not in hdr, 'native LCD panels use the default 9 px pitch'
+    base=(ROOT/'src/helpers/ui/DisplayDriver.h').read_text()
+    assert 'virtual int menuRowPitch() const { return 9; }' in base
+    # The mono Arial driver draws a 13 px box for size-1 text, so it declares a taller pitch (see GEOMETRIES).
+    assert 'int menuRowPitch() const override { return 12; }' in (ROOT/'src/helpers/ui/ST7789Display.h').read_text()
+    print('PASS ST7789LCD pitch: native 1:1 on every board -> default 9 rows; ST7789Display (10 pt Arial) -> 12')
 
 def run(cmd,**k): subprocess.run(cmd,check=True,**k)
 

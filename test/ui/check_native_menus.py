@@ -10,7 +10,7 @@ source=source.replace('BoundsDisplay():DisplayDriver(128,64){}','BoundsDisplay(i
 source='#include "examples/companion_radio/ui-new/LoRaFishLayout.h"'+chr(10)+source
 source+=r'''
 int main() {
- for(auto dims:{std::pair<int,int>{320,170},{320,240},{240,135},{128,64},{170,320}}) {
+ for(auto dims:{std::pair<int,int>{320,170},{320,240},{240,135},{220,128},{160,80},{128,64},{170,320}}) {
   BoundsDisplay output(dims.first,dims.second);
   const int width=std::min(dims.first,224),top=(dims.second-64)/2;
   LoRaFishLayout::Page card(output);                        // stretched 64 px frame: dialogs, game
@@ -41,7 +41,7 @@ int main() {
    }
   }
  }
- puts("PASS native production full-area menus: 320x170, 320x240, 240x135, 128x64, 170x320; glyph bounds/overlap, mono/colour, all selections, sound and stationary/advancing text");
+ puts("PASS native production full-area menus: 320x170, 320x240, 240x135, 220x128, 160x80, 128x64, 170x320; glyph bounds/overlap, mono/colour, all selections, sound and stationary/advancing text");
 }
 '''
 with tempfile.TemporaryDirectory() as t:

@@ -71,12 +71,12 @@ int main(int argc,char**) {
  assert(levels[7]==LOW&&levels[17]==HIGH&&rotations==1);
  d.startFrame(0);d.setColor(0x1234);
  const uint8_t bits[]={0xff,0xff};d.drawXbm(1,2,bits,8,2);d.endFrame();
- if(!failCanvas){assert(blits==1);int count=0;for(auto p:panel)count+=p==0x1234;assert(count==100);
- // Exactly 20 x 5, not overlapping ceil(2.5) blocks (old code yielded 21 x 6).
- for(int y=0;y<170;y++)for(int x=0;x<320;x++)assert((panel[y*320+x]==0x1234)==(x>=2&&x<22&&y>=5&&y<10));
+ if(!failCanvas){assert(blits==1);int count=0;for(auto p:panel)count+=p==0x1234;assert(count==16);
+ // Exactly 8 x 2, one panel pixel per bitmap pixel (no scaling).
+ for(int y=0;y<170;y++)for(int x=0;x<320;x++)assert((panel[y*320+x]==0x1234)==(x>=1&&x<9&&y>=2&&y<4));
  d.startFrame(0x55);d.endFrame();for(auto p:panel)assert(p==0x55);
  d.startFrame(0);d.setColor(7);d.fillRect(1,1,1,1);d.endFrame();
- int rectCount=0;for(auto p:panel)rectCount+=p==7;assert(rectCount==9); // edges [2,5) x [2,5)
+ int rectCount=0;for(auto p:panel)rectCount+=p==7;assert(rectCount==1); // one panel pixel
  }
  assert(d.supportsOrientation());
  d.setOrientation(true);assert(lastRotation==3);
@@ -90,7 +90,7 @@ with tempfile.TemporaryDirectory() as t:
  p=Path(t);(p/'helpers').mkdir()
  for name in ['Wire.h','SPI.h','Adafruit_GFX.h','Adafruit_ST7789.h','helpers/RefCountedDigitalPin.h']:(p/name).write_text('#include "mock.h"\n')
  (p/'mock.h').write_text(mock);(p/'main.cpp').write_text(main)
- flags=['HELTEC_VISION_MASTER_T190','LORAGOTCHI_T190_COLOR','LORAFISH_TDECK_FRAMEBUFFER','DISPLAY_WIDTH=170','DISPLAY_HEIGHT=320','DISPLAY_ROTATION=1','DISPLAY_SCALE_X=2.5f','DISPLAY_SCALE_Y=2.65625f','PIN_TFT_CS=39','PIN_TFT_DC=47','PIN_TFT_RST=40','PIN_TFT_SDA=48','PIN_TFT_SCL=38','PIN_TFT_VDD_CTL=7','PIN_TFT_LEDA_CTL=17','PIN_TFT_LEDA_CTL_ACTIVE=HIGH']
+ flags=['HELTEC_VISION_MASTER_T190','LORAGOTCHI_T190_COLOR','LORAFISH_TDECK_FRAMEBUFFER','DISPLAY_WIDTH=170','DISPLAY_HEIGHT=320','DISPLAY_ROTATION=1','PIN_TFT_CS=39','PIN_TFT_DC=47','PIN_TFT_RST=40','PIN_TFT_SDA=48','PIN_TFT_SCL=38','PIN_TFT_VDD_CTL=7','PIN_TFT_LEDA_CTL=17','PIN_TFT_LEDA_CTL_ACTIVE=HIGH']
  subprocess.run(['g++','-std=c++17','-Wall','-Wextra','-Wno-unused-parameter','-I'+t,'-I'+str(root/'src/helpers/ui'),*['-D'+f for f in flags],str(p/'main.cpp'),str(root/'src/helpers/ui/ST7789LCDDisplay.cpp'),'-o',str(p/'check')],check=True)
  subprocess.run([str(p/'check')],check=True);subprocess.run([str(p/'check'),'allocation-failure'],check=True)
-print('T190 production driver: RGB565, fractional bitmap, full redraw, wake rotation, power polarity and allocation fallback PASS')
+print('T190 production driver: RGB565, 1:1 bitmap, full redraw, wake rotation, power polarity and allocation fallback PASS')

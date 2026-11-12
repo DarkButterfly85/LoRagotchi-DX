@@ -38,7 +38,7 @@ TEST(NovaCli, ParsesEverySubCommand) {
 }
 
 TEST(NovaCli, SubCommandsMatchWholeWordsOnly) {
-  for (const char* l : {"nova", "nova ", "nova hell", "nova hello2", "nova pets", "nova meshes", "nova petnam", "nova status", "nova profile", "nova contact", "nova contactss", "nova Hello"})
+  for (const char* l : {"nova", "nova ", "nova hell", "nova hello2", "nova pets", "nova meshes", "nova petnam", "nova statuses", "nova profile", "nova contact", "nova contactss", "nova Hello"})
     EXPECT_EQ(parse(l).cmd, Cmd::Unknown) << l;
 }
 
@@ -108,14 +108,14 @@ TEST(NovaCli, UnavailableLines) {
 }
 
 TEST(NovaCli, UnknownSubCommandGetsOneErrorLineAndNeverEchoesInput) {
-  for (const char* l : {"nova", "nova bogus", "nova status", "nova profile", "nova \"}{evil"}) {
+  for (const char* l : {"nova", "nova bogus", "nova statuses", "nova profile", "nova \"}{evil"}) {
     const std::string s = say(l);
     EXPECT_EQ(s, "{\"nova_error\":\"unknown_command\"}") << l;
   }
 }
 
 TEST(NovaCli, NoReplyStartsWithNovaStatusOrProfile) {
-  for (const char* l : {"nova hello", "nova mesh", "nova pet", "nova petname x", "nova status", "nova profile", "nova x"}) {
+  for (const char* l : {"nova hello", "nova mesh", "nova pet", "nova petname x", "nova statuses", "nova profile", "nova x"}) {
     const std::string s = say(l);
     EXPECT_EQ(s.rfind("nova", 0), std::string::npos) << s;
     EXPECT_EQ(s.rfind("{", 0), 0u) << s;
