@@ -68,6 +68,9 @@ int main() {
       for (size_t i = 0; i < link->canvas.bytes(); i++) printf("%02x", link->canvas.px[i]);
       printf("\n");
     }
+    else if (op == "ADV") {         // ADV <num> <den>: the real screen's text is num/den columns a character (T096: 24 5 = 4.8)
+      int n, d; in >> n >> d; real.advNum = direct.advNum = n; real.advDen = direct.advDen = d;
+    }
     else if (op == "WAIT") { in >> now; printf("WAIT %d\n", link->waiting(now) ? 1 : 0); }
     else {                         // the same command, parsed afresh for each driver
       if (tee) apply(*tee, op, in);

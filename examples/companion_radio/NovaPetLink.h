@@ -249,21 +249,27 @@ public:
   // Same rules as the Adafruit text the OLED uses: 6 columns a character, wrap at the right edge,
   // newline goes back to column 0. Characters outside 32..126 leave a blank cell.
   void print(const char* s) {
-    const uint8_t* f = font5x7();
     for (; *s; s++) {
       const unsigned char ch = (unsigned char)*s;
       if (ch == '\n') { cx_ = 0; cy_ += 8 * size_; continue; }
       if (ch == '\r') continue;
       if (cx_ + 6 * size_ > fmt_.w) { cx_ = 0; cy_ += 8 * size_; }
-      if (ch >= 32 && ch <= 126) {
-        const uint8_t* g = f + (ch - 32) * 5;
-        for (int col = 0; col < 5; col++)
-          for (int row = 0; row < 8; row++)
-            if (g[col] & (1 << row)) fillRect(cx_ + col * size_, cy_ + row * size_, size_, size_);
-      }
+      glyph(ch, cx_, cy_);
       cx_ += 6 * size_;
     }
   }
+  // One character with its left edge at x: no wrapping, the cursor does not move. For a copy of a screen
+  // whose own text is narrower than 6 columns a character (NovaPetTee places each one where the real screen does).
+  void glyph(unsigned char ch, int x, int y) {
+    if (ch < 32 || ch > 126) return;
+    const uint8_t* g = font5x7() + (ch - 32) * 5;
+    for (int col = 0; col < 5; col++)
+      for (int row = 0; row < 8; row++)
+        if (g[col] & (1 << row)) fillRect(x + col * size_, y + row * size_, size_, size_);
+  }
+  int cursorX() const { return cx_; }
+  int cursorY() const { return cy_; }
+  int textSize() const { return size_; }
 
 private:
   Format fmt_;
