@@ -525,7 +525,7 @@ print('petname: JSON ok line, writes only /lorafish.id, 16 ok / 17, non-ASCII, q
 s2 = ['SUP 0', 'RX nova hello\\n', 'T 10', 'RX nova pet\\n', 'T 20', 'RX nova pet\\n', 'T 3020', 'RX nova pet\\n', 'T 31000']
 o = outs(run_serial(s2))
 check(o[0] == HELLO0, 'hello on a screen that cannot be copied (no setter either): %r' % o[0])
-check(o[1].startswith('# nova pet: this radio has no 128x64') and o[2] == '' and o[3].startswith('# nova pet:'), 'unsupported screen: one note, then quiet for 30 s: %r' % o)
+check(o[1].startswith("# nova pet: this radio's screen cannot be copied") and o[2] == '' and o[3].startswith('# nova pet:'), 'unsupported screen: one note, then quiet for 30 s: %r' % o)
 check(dispatch(o[1]) == 'log', 'the dashboard must log the unsupported note (not mistake it for "no pet support")')
 print('screen that cannot be copied: hello says pet 0, petname 0; "nova pet" explains itself once every 30 s')
 
@@ -577,12 +577,15 @@ print('lapse, screen-off hint and long-line recovery behave')
 ui = (CR / 'ui-new/UITask.cpp').read_text()
 check('#if defined(LORAFISH_SERIAL_TEST)' in ui and '!defined(LORAFISH_SERIAL_TEST)' in hdr, 'LORAFISH_SERIAL_TEST builds read USB serial themselves: the link must be left out of them')
 check('!defined(ENABLE_USB_INTERFACE)' in hdr, 'the link must be left out of builds that carry the phone protocol on USB')
-check(ui.count('NovaPetTee tee(') == 1 and 'NovaPetLink::supported() ? NovaPetLink::link() : NULL' in ui, 'UITask must only use the tee when the link is asked')
-# the pet's name: one accessor, fed from /lorafish.id, never the radio's node name
+check(ui.count('NovaPetTee tee(') == 2 and ui.count('loRaFishNovaLinkIfAsked(millis())') == 2 and 'NovaPetLink::supported() ? NovaPetLink::link() : NULL' in ui,
+      'UITask must only use the tee (whole screen, or the first band of a banded screen) when the link is asked')
+check('NovaPetLink::setFormat(NovaPetTee::formatOf(*_display))' in ui and 'defined(LORAFISH_TALL_TANK)' in ui[ui.index('NovaPetLink::setSupported(false);') - 400:ui.index('NovaPetLink::setSupported(false);') + 10], 'the link takes its format from the display (T-Watch tall tank stays out)')
+# the pet's name: one accessor, fed from /lorafish.id only; the frame name falls back to the radio's node name in one place
 acc = ui[ui.index('static inline const char* loRaFishPetNameForNova()'):]
 acc = acc[:acc.index('\n')]
 check('return loRaFishIdName;' in acc, 'loRaFishPetNameForNova() must return the /lorafish.id name variable: %r' % acc)
-check(ui.count('->setName(') == 1 and 'nova->setName(loRaFishPetNameForNova());' in ui, 'the only thing that feeds the Nova frame name is loRaFishPetNameForNova()')
+check(ui.count('->setNames(') == 1 and ui.count('->setName(') == 0 and 'nova->setNames(loRaFishPetNameForNova(), loRaFishMeshNodeName);' in ui,
+      'the Nova frame name is the /lorafish.id name, else the radio name, set in one place')
 dn = ui[ui.index('static const char* loRaFishDisplayName()'):]
 dn = dn[:dn.index('\n}\n')]
 check('loRaFishIdName[0]' in dn and 'loRaFishMeshNodeName' in dn, 'the header prefers the /lorafish.id name and still falls back to the radio name, for display only')
@@ -593,6 +596,151 @@ check('node_name' not in nb and 'requestName(nm)' in nb and 'NovaPetName::prepar
 check('lorafish.dat' not in nb and 'saveLoRaFish' not in nb, 'the serial handler must not touch the pet record')
 check('caps.petname = LoRaFishIdentity::setterSlot() ? 1 : 0;' in nb, 'caps.petname must follow the registered setter')
 print('wiring checks ok')
+
+
+# ---- 9. the name fallback and other screens (colour in "c", e-ink, other sizes) ---------------------
+def hx(s):
+    return s.encode().hex() if s else '-'
+
+
+def lines_of(script):
+    out = run_harness('\n'.join(script) + '\n').splitlines()
+    return [json.loads(l[5:]) for l in out if l.startswith('LINE ')], out
+
+
+def frame_name(pet, radio):
+    ls, _ = lines_of(['NAMES %s %s' % (hx(pet), hx(radio)), 'REQ 1000', 'F 1000', 'rect 1 1 4 4', 'E'])
+    check(len(ls) == 1 and ls[0]['pet']['k'] == 1, 'a key picture for the name test')
+    return ls[0]['pet'].get('n')
+
+
+check(frame_name('Fluffy', 'MeshNode-7') == 'Fluffy', 'a set pet name is the frame name')
+check(frame_name('', 'MeshNode-7') == 'MeshNode-7', 'no pet name: the radio name')
+check(frame_name('   ', 'MeshNode-7') == 'MeshNode-7', 'a pet name of spaces is no name')
+check(frame_name('"\\"', 'Radio') == 'Radio', 'a pet name of only quotes is no name')
+check(frame_name('', 'Ra"di\\o') == 'Radio', 'quote characters are stripped from the radio name')
+check(frame_name('a"b', 'Radio') == 'ab', 'quote characters are stripped from the pet name')
+check(frame_name('', 'caf\u00e9') == 'caf', 'non-ASCII is dropped from the radio name')
+check(frame_name('', '0123456789ABCDEFGHIJ') == '0123456789ABCDEF', 'the radio name is cut to 16')
+check(frame_name('', '') is None and frame_name('', '   ') is None, 'no name anywhere: no n field')
+ls, _ = lines_of(['NAMES %s %s' % (hx(''), hx('MeshNode-7')), 'REQ 1000'] + [x for k in range(6) for x in frame_ops_n(1000 + 300 * k, 5 + k, req=1000 + 300 * k)])
+check(len(ls) >= 3 and ls[0]['pet']['k'] == 1 and ls[0]['pet'].get('n') == 'MeshNode-7' and all('n' not in o['pet'] for o in ls[1:]),
+      'the radio-name fallback is on the key picture only')
+print('name: /lorafish.id name, else the radio name; quotes and non-ASCII stripped; key pictures only')
+
+# a line without "c" (the first format) is accepted by the dashboard's own decoder, as 128x64 mono
+legacy = ref_line(frames[6], None, 5)
+check('"c"' not in legacy and '"w"' not in legacy and '"h"' not in legacy and '"e"' not in legacy, 'the legacy line has no screen fields')
+r = dashboard_decode([legacy, ref_line(frames[8], frames[6], 6)])
+check(r[0][0] and r[0][2] == frames[6] and r[1][0] and r[1][2] == frames[8], 'the dashboard decoder must read a frame without c as 128x64 mono')
+ls, _ = lines_of(['REQ 1000', 'F 1000', 'rect 1 1 4 4', 'E'])
+check(set(ls[0]['pet'].keys()) == {'s', 'k', 'd'}, 'a 128x64 mono radio sends exactly the first format')
+print('a frame without c is accepted by the existing mono decoder; the 128x64 OLED still sends the first format')
+
+
+def b64rle(b64):
+    raw, out, i = base64.b64decode(b64), bytearray(), 0
+    while i < len(raw):
+        c = raw[i]; i += 1
+        if c:
+            out.append(c)
+        else:
+            out += bytes(raw[i]); i += 1
+    return out
+
+
+class AnyPic:                         # the dashboard side for any screen: size, colour, e-ink
+    def __init__(self):
+        self.seq, self.raw, self.w, self.h, self.col, self.eink, self.pal = -1, None, 128, 64, False, False, None
+
+    def apply(self, o):
+        o = o['pet']; d = b64rle(o['d'])
+        if o['k']:
+            self.w, self.h, self.eink, self.col = o.get('w', 128), o.get('h', 64), bool(o.get('e')), 'c' in o
+            if self.col:
+                p = base64.b64decode(o['c']['p']); check(o['c']['b'] == 4 and len(p) == 32, 'palette field')
+                self.pal = [p[2 * i] << 8 | p[2 * i + 1] for i in range(16)]
+        elif self.seq < 0 or o['s'] != self.seq + 1:
+            self.seq = -1; return False
+        if self.col:
+            for i in range(1, len(d)): d[i] ^= d[i - 1]
+        if o['k']: self.raw = d
+        else: self.raw = bytearray(a ^ b for a, b in zip(self.raw, d))
+        self.seq = o['s']
+        stride = (self.w + 1) // 2 if self.col else (self.w + 7) // 8
+        check(len(self.raw) == stride * self.h, 'picture size %d for %dx%d' % (len(self.raw), self.w, self.h))
+        return True
+
+    def pixel(self, x, y):
+        if self.col:
+            b = self.raw[y * ((self.w + 1) // 2) + x // 2]
+            return self.pal[(b & 15) if x & 1 else (b >> 4)]
+        return self.raw[y * ((self.w + 7) // 8) + x // 8] >> (7 - x % 8) & 1
+
+
+class Grid(Model):                    # the expected picture with a value per pixel (a colour, or 1 = ink)
+    def __init__(self, w, h, bg):
+        self.g = [[bg] * w for _ in range(h)]; self.w, self.h, self.on = w, h, 1
+
+    def pix(self, x, y):
+        if 0 <= x < self.w and 0 <= y < self.h: self.g[y][x] = self.on
+
+
+def scene_script(model):              # the same scene as the ops that drive the tee and as the model calls
+    ops = []
+    def col(c): ops.append('color %d' % c); model.on = c
+    col(0xF800); ops.append('rect 3 5 51 20'); model.fill(3, 5, 51, 20)
+    col(0x001F); ops.append('box 100 100 31 21'); model.box(100, 100, 31, 21)
+    col(0x07E0); ops += ['cursor 7 60', 'print A', 'size 2', 'cursor 40 60', 'print A', 'size 1']; model.text(7, 60, 1, 'A'); model.text(40, 60, 2, 'A')
+    col(0xFFE0); ops.append('xbm 21 90 10 3 ' + bytes(XBM).hex()); model.xbm(21, 90, 10, 3, XBM)
+    ops += ['rect -5 -5 10 10', 'rect 130 0 20 4']; model.fill(-5, -5, 10, 10); model.fill(130, 0, 20, 4)
+    return ops
+
+
+for (cw, ch) in ((135, 240), (240, 135)):
+    cm = Grid(cw, ch, 0)
+    out = run_harness('\n'.join(['SCREEN %d %d 1 0' % (cw, ch), 'REQ 1000', 'F 1000'] + scene_script(cm) + ['E']) + '\n').splitlines()
+    check(out[0].startswith('SCREEN 1 LINECAP '), 'a %dx%d colour link must be made: %s' % (cw, ch, out[0]))
+    cap = int(out[0].split()[-1]); check(2112 < cap <= 16384, 'colour line buffer %d' % cap)
+    cl = [l[5:] for l in out if l.startswith('LINE ')]
+    check(len(cl) == 1, 'one colour key line for %dx%d' % (cw, ch))
+    o = json.loads(cl[0])
+    check(list(o['pet'].keys()) == ['s', 'k', 'w', 'h', 'c', 'd'], 'colour key picture fields: %s' % list(o['pet'].keys()))
+    check(o['pet']['w'] == cw and o['pet']['h'] == ch and o['pet']['c']['b'] == 4, 'colour key picture size/depth')
+    pic = AnyPic(); check(pic.apply(o), 'colour key applied')
+    bad = [(x, y) for y in range(ch) for x in range(cw) if pic.pixel(x, y) != cm.g[y][x]]
+    check(not bad, 'colour %dx%d: %d pixels differ from the model, first %s' % (cw, ch, len(bad), bad[:3]))
+    check(len(cl[0]) < cap, 'line longer than the line buffer')
+    # a small change next: a delta with no screen fields
+    out = run_harness('\n'.join(['SCREEN %d %d 1 0' % (cw, ch), 'REQ 1000', 'F 1000'] + scene_script(cm) + ['E', 'REQ 1300', 'F 1300', 'color 63488', 'rect 30 5 20 20', 'E']) + '\n').splitlines()
+    cl2 = [json.loads(l[5:]) for l in out if l.startswith('LINE ')]
+    check(len(cl2) == 2 and cl2[1]['pet']['k'] == 0 and list(cl2[1]['pet'].keys()) == ['s', 'k', 'd'], 'colour delta carries only s, k, d')
+    pic2 = AnyPic(); pic2.apply(cl2[0]); check(pic2.apply(cl2[1]), 'colour delta applied')
+    check(all(pic2.pixel(x, y) == (0xF800 if 30 <= x < 50 and 5 <= y < 25 else 0) for y in range(ch) for x in range(cw)), 'colour delta result (every frame is drawn from a clean screen)')
+print('colour screens (135x240, 240x135): key picture with w, h and a 16-colour palette in c, read back pixel for pixel; deltas carry no screen fields')
+
+# e-ink 296x128: one still picture, flagged "e", never a delta, at most one every 2 s
+ei = Grid(296, 128, 0)
+es = ['SCREEN 296 128 0 1', 'REQ 1000', 'F 1000', 'color 1', 'rect 10 10 30 7', 'cursor 5 50', 'print A', 'box 0 0 296 128', 'E']
+ei.fill(10, 10, 30, 7); ei.text(5, 50, 1, 'A'); ei.box(0, 0, 296, 128)
+for k, t in enumerate((1300, 1600, 2000, 2600, 3100, 3400)):                     # changes every 300 ms or so
+    es += ['REQ %d' % t, 'F %d' % t, 'color 1', 'rect %d 80 6 6' % (20 + 5 * k), 'E']
+out = run_harness('\n'.join(es) + '\n').splitlines()
+check(out[0].startswith('SCREEN 1 LINECAP '), 'an e-ink link must be made')
+el = [json.loads(l[5:]) for l in out if l.startswith('LINE ')]
+check(el and list(el[0]['pet'].keys()) == ['s', 'k', 'w', 'h', 'e', 'd'] and el[0]['pet']['e'] == 1 and 'c' not in el[0]['pet'], 'e-ink key picture fields: %s' % list(el[0]['pet'].keys()))
+check(all(o['pet']['k'] == 1 for o in el), 'e-ink never sends a delta')
+check(len(el) == 2, 'e-ink: first picture at 1000 and the next one only after 2 s (at 3100), got %d' % len(el))
+ep = AnyPic(); check(ep.apply(el[0]) and ep.eink and not ep.col and ep.w == 296 and ep.h == 128, 'e-ink picture applied')
+check(all(ep.pixel(x, y) == ei.g[y][x] for y in range(128) for x in range(296)), 'e-ink pixels: black ink on white paper (set = ink)')
+print('e-ink 296x128: whole still pictures only, flagged e, size w/h, no c, at most one every 2 s')
+
+# other mono sizes: the size is in the key picture, the picture is padded to whole bytes
+out = run_harness('\n'.join(['SCREEN 132 64 0 0', 'REQ 1000', 'F 1000', 'color 1', 'rect 126 1 6 3', 'E']) + '\n').splitlines()
+ol = [json.loads(l[5:]) for l in out if l.startswith('LINE ')]
+check(list(ol[0]['pet'].keys()) == ['s', 'k', 'w', 'h', 'd'] and ol[0]['pet']['w'] == 132, '132x64 mono: w and h on the key picture')
+op = AnyPic(); check(op.apply(ol[0]) and op.pixel(131, 2) == 1 and op.pixel(125, 2) == 0, '132 wide rows are 17 bytes')
+print('other mono sizes carry w/h')
 
 shutil.rmtree(work, ignore_errors=True)
 print('OK (decoder: %s)' % ('node, ' + BLOCK.name if NODE else 'python port: node not found'))

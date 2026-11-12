@@ -6,7 +6,7 @@
 
 int main() {
   FakeMono real, direct;           // real = behind the tee, direct = the same commands with no tee
-  NovaPetLink::Link* link = new NovaPetLink::Link();
+  NovaPetLink::Link* link = new NovaPetLink::Link(NovaPetTee::formatOf(real));
   NovaPetTee* tee = nullptr;
   uint32_t now = 0;
   std::string line;
@@ -15,6 +15,19 @@ int main() {
     std::string op; in >> op;
     if (op.empty() || op[0] == '#') continue;
     if (op == "REQ") { in >> now; link->request(now); }
+    else if (op == "SCREEN") {      // SCREEN <w> <h> <colour 0|1> <eink 0|1>: another kind of screen, new link, same ops
+      int w, h, c, e; in >> w >> h >> c >> e;
+      delete tee; tee = nullptr; delete link;
+      real = FakeMono(w, h, c != 0, e != 0); direct = FakeMono(w, h, c != 0, e != 0);
+      link = new NovaPetLink::Link(NovaPetTee::formatOf(real));
+      printf("SCREEN %d LINECAP %zu\n", link->ok() ? 1 : 0, link->lineCapacity());
+    }
+    else if (op == "NAMES") {       // NAMES <hex pet name | -> <hex radio name | ->: what UITask hands to Link::setNames()
+      std::string a, b; in >> a >> b;
+      auto x = unhex(a == "-" ? "" : a), y = unhex(b == "-" ? "" : b);
+      std::string pn(x.begin(), x.end()), rn(y.begin(), y.end());
+      link->setNames(pn.c_str(), rn.c_str());
+    }
     else if (op == "F") {           // begin a frame at time now
       in >> now; delete tee; tee = new NovaPetTee(real, *link, now);
       tee->startFrame(); direct.startFrame();
@@ -52,7 +65,7 @@ int main() {
       printf("ENCSMALL %zu\n", NovaPetLink::encodeLine(f.data(), nullptr, 1, buf, sizeof buf));
     }
     else if (op == "DUMP") {        // the picture the tee drew so far, as hex
-      for (int i = 0; i < NovaPetLink::BYTES; i++) printf("%02x", link->canvas.px[i]);
+      for (size_t i = 0; i < link->canvas.bytes(); i++) printf("%02x", link->canvas.px[i]);
       printf("\n");
     }
     else if (op == "WAIT") { in >> now; printf("WAIT %d\n", link->waiting(now) ? 1 : 0); }
