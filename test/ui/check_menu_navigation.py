@@ -37,6 +37,7 @@ pre=r'''
 #include <cassert>
 #include "examples/companion_radio/LoRaFishColour.h"
 #include "examples/companion_radio/LoRaFishSpecies.h"
+#include "examples/companion_radio/LoRaFishIdentity.h"
 static long random(long lo,long){return lo+42;}
 static uint16_t loRaFishSpecies=0;
 static uint32_t loRaFishMysterySeed=0;
@@ -109,6 +110,7 @@ static void loragotchiDXSave(){++dxWrites;}
 static bool fishSleeping=false;
 static bool loRaFishIsSleeping(){return fishSleeping;}
 static const char* loRaFishMeshNodeName="Fish";
+static char loRaFishIdName[LoRaFishIdentity::kNameMax+1]="";   // the pet's own name (/lorafish.id); empty = the radio name is shown
 struct {uint32_t ageMinutes=60,rfEvents=1;uint8_t evolution=1;} fish;
 struct {template<typename... Args> void printf(const char*,Args...){} void println(const char*){}} Serial;
 static void loRaFishClock(char* time,size_t tsize,char* date,size_t dsize){

@@ -309,6 +309,7 @@ private:
   void checkCLIRescueCmd();
   bool handleCommand(const char* text, uint32_t sender_timestamp, char* reply);
   void checkSerialInterface();
+  void checkNovaSerial();   // "nova ..." lines from the Nova dashboard page (LORAGOTCHI_NOVA_LINK builds only)
   bool isValidClientRepeatFreq(uint32_t f) const;
 
   // helpers, short-cuts
