@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdint.h>
+#include "../NovaBaud.h"   // the Serial speed row and picker (NovaBaud::kRates, shown(), choice())
 
 // Stable identities keep return targets correct when optional rows appear/disappear.
 enum class LoRaFishOption : uint8_t {
@@ -42,7 +43,7 @@ constexpr bool kLoRaFishTesterFirmware = false;
 // Stable identities for the Display list. The menu index is the position among the rows that are available, so
 // hidden rows never leave a gap and up/down navigation (a modulo over count()) cannot land on them.
 enum class LoRaFishDisplayRow : uint8_t {
-  Timeout, Brightness, Theme, Colour, Rendering, Species, Orientation, DisplayUpdate, DimSlow, Count
+  Timeout, Brightness, Theme, Colour, Rendering, Species, Orientation, DisplayUpdate, DimSlow, SerialSpeed, Count
 };
 
 struct LoRaFishDisplayRows {
@@ -52,6 +53,7 @@ struct LoRaFishDisplayRows {
   bool orientation = false;
   bool partial = false;
   bool dimSlow = false;
+  bool serialSpeed = false;     // Nova link speed (NovaBaud.h): only where Serial is a real UART
   bool tester = kLoRaFishTesterFirmware;
   bool available(LoRaFishDisplayRow row) const {
     switch (row) {
@@ -60,6 +62,7 @@ struct LoRaFishDisplayRows {
       case LoRaFishDisplayRow::Orientation: return orientation;
       case LoRaFishDisplayRow::DisplayUpdate: return partial;
       case LoRaFishDisplayRow::DimSlow: return dimSlow;
+      case LoRaFishDisplayRow::SerialSpeed: return serialSpeed;
       case LoRaFishDisplayRow::Count: return false;
       default: return true;
     }
@@ -94,7 +97,8 @@ enum class LoRaFishSetting : uint8_t {
   Theme, Brightness, Rendering, Scales, Body, Eyes, SleepHour, WakeHour, UtcOffset,
   TimeoutAwake, TimeoutAsleep, DimAfter, Volume, WakeSound, SleepSound, MessageSound, MonoDisplayColour, Species, Orientation, DisplayUpdate,
   SpeciesSet, // DX-Pro only: step one of the set-then-species menu (appended so existing values keep their numbers)
-  DimSlow // Slow animation when dimmed (appended; Off/On)
+  DimSlow, // Slow animation when dimmed (appended; Off/On)
+  SerialSpeed // Nova link serial speed, one of NovaBaud::kRates (appended; saved in /lorafish.bd, not in /lorafish.cfg)
 };
 
 // Browsing is a draft: only Select produces a value to persist. Back cancels it.

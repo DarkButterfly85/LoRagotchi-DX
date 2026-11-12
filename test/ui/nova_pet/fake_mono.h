@@ -12,11 +12,15 @@ ColorVal UIColor::window_bkg = 0, UIColor::title_bkg = 0, UIColor::title_txt = 1
          UIColor::secondary_txt = 1, UIColor::warning_txt = 1, UIColor::popup_bkg = 0, UIColor::popup_txt = 1,
          UIColor::corp_blue = 1;
 
-// A stand-in for the SSD1306 OLED: it only writes every call it gets into a log.
+// A stand-in for the SSD1306 OLED (or, with the flags, a colour LCD or an e-ink panel of any size): it only
+// writes every call it gets into a log.
 class FakeMono : public DisplayDriver {
+  bool colour_, eink_;
 public:
   std::vector<std::string> log;
-  FakeMono(int w = 128, int h = 64) : DisplayDriver(w, h) {}
+  FakeMono(int w = 128, int h = 64, bool colour = false, bool eink = false) : DisplayDriver(w, h), colour_(colour), eink_(eink) {}
+  bool supportsColor() const override { return colour_; }
+  bool isEink() override { return eink_; }
   bool isOn() override { return true; }
   void turnOn() override { log.push_back("turnOn"); }
   void turnOff() override { log.push_back("turnOff"); }

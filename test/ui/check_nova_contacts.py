@@ -159,7 +159,7 @@ assert '#include "LoRaFishEligible.h"' in mesh
 # (the quoted "nova petname" is a comment on an include; the other nova commands are matched by word in the serial block)
 assert sorted(set(re.findall(r'"nova [a-z]+"', mesh))) == ['"nova contacts"', '"nova petname"'], 'unexpected quoted nova command'
 blk = mesh[mesh.index('#ifdef LORAGOTCHI_NOVA_LINK\n// ---- LORAGOTCHI NOVA serial link'):]
-assert 'n == 8 && strncmp(w, "contacts", 8) == 0' in blk and 'NovaContacts::writeJson(sink, getContact)' in blk   # normal mode too
+assert 'p.cmd == NovaCli::Cmd::Contacts' in blk and 'NovaContacts::writeJson(sink, getContact)' in blk   # normal mode too
 assert 'strcmp(command, "nova contacts") == 0 && _cli_from_serial' in mesh
 hdr = (ROOT / 'examples/companion_radio/LoRaFishEligible.h').read_text()
 assert '!strncmp(c.name, "LRX1 ", 5)' in hdr and 'c.type == ADV_TYPE_CHAT' in hdr
