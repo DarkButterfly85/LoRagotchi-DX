@@ -470,20 +470,20 @@ def check_hello(line, pet, petname, baud=0):
     check(dispatch(line) == 'hello', 'the dashboard must take the hello as a radio report: %s' % dispatch(line))
     check(o['nova']['v'] == 1 and list(o['nova']['caps']) == HELLO_KEYS + (['baud'] if baud else []), 'nova.v is 1 and caps are the ten known keys in order (baud last, only when the setter is registered): %r' % o['nova'])
     want = {k: 0 for k in HELLO_KEYS}
-    want.update(pet=pet, petname=petname, contacts=1)           # the only features this build really has
+    want.update(pet=pet, petname=petname, contacts=1, mesh=1)   # the only features this build really has (mesh: logRx/logTx feed the streams, see check_nova_streams.py)
     if baud: want['baud'] = 1
     check(o['nova']['caps'] == want, 'caps must be 1 only for what exists: %r (wanted %r)' % (o['nova']['caps'], want))
-    check(o['lg'] == {'hello': 1, 'pet': pet, 'mesh': 0}, 'the old lg object stays: %r' % o.get('lg'))
+    check(o['lg'] == {'hello': 1, 'pet': pet, 'mesh': 1}, 'the old lg object stays, mesh follows the build: %r' % o.get('lg'))
     return o
 
 
-s1 = ['SUP 1', 'SETTER 1', 'T 100', 'RX nova hello\\r\\n', 'T 110', 'RX nova mesh\\n', 'T 120', 'RX nova petname Fluffy\\n', 'T 130',
+s1 = ['SUP 1', 'SETTER 1', 'T 100', 'RX nova hello\\r\\n', 'T 110', 'RX nova battery\\n', 'T 120', 'RX nova petname Fluffy\\n', 'T 130',
       'RX nova profile away\\n', 'T 140', 'RX hello\\nls\\nnext\\nnovapet\\n', 'T 150', 'RX nova   he', 'T 160', 'RX llo\\n', 'T 170',
       'RX nova pets\\n', 'T 180', 'RXLONG 200', 'T 190']
 o = outs(run_serial(s1))
 check(o[0] == '', 'nothing may be sent before a command')
 check_hello(o[1], 1, 1)
-check(o[2] == '{"lg":{"mesh":0}}\n', 'nova mesh reply: %r' % o[2])
+check(o[2] == '{"nova_error":"battery_no_reading"}\n', 'nova battery with no reading yet: %r' % o[2])   # (the mesh stream has its own checks in check_nova_streams.py)
 check(o[3] == '{"nova_ok":"petname","name":"Fluffy"}\n', 'nova petname reply is a JSON ok line: %r' % o[3])
 check(o[4] == '{"nova_error":"unknown_command"}\n', 'unknown nova command reply: %r' % o[4])
 check(o[5] == '', 'lines that are not "nova ..." must be ignored: %r' % o[5])
@@ -499,7 +499,7 @@ for sup, setter in ((1, 1), (1, 0), (0, 1), (0, 0)):
     h = outs(run_serial(['SUP %d' % sup, 'SETTER %d' % setter, 'RX nova hello\\n', 'T 10']))[0]
     check_hello(h, sup, setter)
 check(dispatch('{"lg":{"hello":1,"pet":1,"mesh":0}}') == 'ignored', 'negative control: the OLD hello reply is ignored by the dashboard router')
-print('hello: one line, ed dx-pro first, nova after index 0, caps pet/petname follow the build, contacts 1, the other 7 caps 0')
+print('hello: one line, ed dx-pro first, nova after index 0, caps pet/petname follow the build, contacts 1, mesh 1, the other 6 caps 0')
 
 # `nova contacts` in normal mode: the production block, the shared filter, a fake contact table (8 anonymous decoy slots first)
 FISH = 'f09f909f'

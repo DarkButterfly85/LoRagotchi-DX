@@ -100,6 +100,16 @@ int main() {
       g_contacts.push_back(c);
     }
     else if (op == "FAIL") { int v; in >> v; flash.failWrites = v != 0; }
+    // the data streams (helpers/NovaStreams.h), fed the way MyMesh's logRx / novaRefreshEnv / message hooks feed them
+    else if (op == "HEARD") {                    // HEARD <repeater id byte> <snr dB>: a flood packet relayed by that repeater
+      unsigned id; float snr; in >> id >> snr;
+      const uint8_t path[1] = {(uint8_t)id}, body[3] = {1, 2, 3};
+      NovaStreams::hub().onRx(g_now, -90.0f, snr, 2, 1, 1, 1, path, body, 3, 40);
+    }
+    else if (op == "BAT") { unsigned mv, chg; in >> mv >> chg; NovaStreams::hub().bat.sample(g_now, (uint16_t)mv, chg != 0); }   // BAT <mV> <charging 0|1>
+    else if (op == "SENT") { unsigned ack, to; std::string who; in >> who >> ack >> to; NovaStreams::hub().dl.onSent(g_now, who.c_str(), ack, to, false, true); }
+    else if (op == "ACK") { unsigned ack; in >> ack; NovaStreams::hub().dl.onAck(g_now, ack); }
+    else if (op == "RADIO") { int nf, sf, cr; float bw; in >> nf >> sf >> bw >> cr; NovaStreams::Hub& h = NovaStreams::hub(); h.nf = nf; h.sf = sf; h.bw = bw; h.cr = cr; }
     else if (op == "ID") {                       // files on the fake flash, then the identity as a restart would load it
       std::string names;
       for (auto& kv : flash.files) names += (names.empty() ? "" : ",") + kv.first;

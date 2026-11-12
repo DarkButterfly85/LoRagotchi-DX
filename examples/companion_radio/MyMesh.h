@@ -221,6 +221,8 @@ protected:
   void sendFloodScoped(const mesh::GroupChannel& channel, mesh::Packet* pkt, uint32_t delay_millis=0) override;
 
   void logRxRaw(float snr, float rssi, const uint8_t raw[], int len) override;
+  void logRx(mesh::Packet* pkt, int len, float score) override;   // Nova dashboard mesh stream feed (LORAGOTCHI_NOVA_LINK builds; empty elsewhere)
+  void logTx(mesh::Packet* pkt, int len) override;
   bool isAutoAddEnabled() const override;
   bool shouldAutoAddContactType(uint8_t type) const override;
   bool shouldOverwriteWhenFull() const override;
@@ -310,6 +312,7 @@ private:
   bool handleCommand(const char* text, uint32_t sender_timestamp, char* reply);
   void checkSerialInterface();
   void checkNovaSerial();   // "nova ..." lines from the Nova dashboard page (LORAGOTCHI_NOVA_LINK builds only)
+  void novaRefreshEnv();    // radio, battery, GPS and repeater names for the dashboard streams (LORAGOTCHI_NOVA_LINK builds only)
   bool isValidClientRepeatFreq(uint32_t f) const;
 
   // helpers, short-cuts
