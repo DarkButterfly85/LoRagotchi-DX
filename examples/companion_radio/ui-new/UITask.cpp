@@ -133,6 +133,7 @@ static void tdeckTouchPoll() {
 #include "../MyMesh.h"
 #include "../LoRagotchiChannelStatus.h"
 #include "../NovaPetLink.h"   // Nova dashboard link (serial "nova pet"); a no-op unless asked
+#include "../NovaBaud.h"      // Nova link serial speed: the list, /lorafish.bd, "nova baud"
 #ifdef LORAGOTCHI_NOVA_LINK
 #include "NovaPetTee.h"
 #endif
@@ -599,6 +600,9 @@ static unsigned long loRaFishLastActivityMs = 0;
 static bool loRaFishScreenDimmed = false;
 static uint8_t loRaFishDimSlow = 0;            // 0 = Off (default), 1 = one redraw per second while dimmed
 static bool loRaFishDimSlowSupported = false;  // set at start-up: only panels whose brightness really dims, never e-ink
+// Nova link serial speed (NovaBaud.h; its state lives there: NovaBaud::shown() and NovaBaud::choice()). Saved in /lorafish.bd
+// (SafeSave, like /lorafish.id), NOT in /lorafish.cfg; used from the next start-up. Only where Serial is a real UART
+// (NovaBaud::kApplies): the row is hidden and "nova baud" unavailable elsewhere.
 static bool loRaFishBrightnessNeedsApply = false;
 static bool loRaFishPartialSupported = false;
 static uint8_t loRaFishPartial = 0;
@@ -653,6 +657,7 @@ static LoRaFishDisplayRows loRaFishDisplayRows() {
   rows.orientation = loRaFishOrientationSupported;
   rows.partial = loRaFishPartialSupported;
   rows.dimSlow = loRaFishDimSlowSupported;
+  rows.serialSpeed = NovaBaud::shown();
   return rows;
 }
 static uint8_t loRaFishDisplayOptionCount() {
@@ -729,6 +734,9 @@ static void openLoRaFishValue(LoRaFishSetting setting) {
     case LoRaFishSetting::DisplayUpdate: value = loRaFishPartial; count = loRaFishPartialSupported ? 2 : 0; break;
     case LoRaFishSetting::Orientation: value = loRaFishOrientation; count = loRaFishOrientationSupported ? 2 : 0; break;
     case LoRaFishSetting::DimSlow: value = loRaFishDimSlow; count = loRaFishDimSlowSupported ? 2 : 0; break;
+    case LoRaFishSetting::SerialSpeed:
+      value = NovaBaud::indexOf(NovaBaud::choice()) >= 0 ? (uint8_t)NovaBaud::indexOf(NovaBaud::choice()) : 0;
+      count = NovaBaud::shown() ? NovaBaud::kCount : 0; break;
     case LoRaFishSetting::Brightness: value = loRaFishBrightnessSetting; count = 4; break;
     case LoRaFishSetting::Rendering: value = loRaFishSimulationMode; count = 3; break;
     case LoRaFishSetting::Scales: value = LoRaFishColour::fallback(loRaFishScaleColor); count = LORAFISH_COLOR_ALLELE_COUNT; break;
@@ -800,6 +808,9 @@ static void selectLoRaFishValue() {
     case LoRaFishSetting::DisplayUpdate: loRaFishPartial = value; loRaFishPartialNeedsApply = true; break;
     case LoRaFishSetting::Orientation: loRaFishOrientation = value; loRaFishOrientationNeedsApply = true; break;
     case LoRaFishSetting::DimSlow: loRaFishDimSlow = value ? 1 : 0; break;
+    case LoRaFishSetting::SerialSpeed:
+      if (value < NovaBaud::kCount && NovaBaud::setterSlot()) NovaBaud::setterSlot()(NovaBaud::kRates[value]);   // saved now (setLoRaFishSerialSpeed), used from the next start-up
+      break;
     case LoRaFishSetting::Theme: loRaFishTheme = value; applyLoRaFishTheme(); break;
     case LoRaFishSetting::Brightness:
       loRaFishBrightnessSetting = value; loRaFishBrightnessNeedsApply = true; break;
@@ -827,7 +838,7 @@ static void selectLoRaFishValue() {
   if (key == LoRaFishSetting::Species || key == LoRaFishSetting::SpeciesSet || key == LoRaFishSetting::Scales ||
       key == LoRaFishSetting::Body || key == LoRaFishSetting::Eyes)
     saveLoRaFishSettings();
-  else loRaFishSettingsPending = true;
+  else if (key != LoRaFishSetting::SerialSpeed) loRaFishSettingsPending = true;   // the speed is not in /lorafish.cfg
   cancelLoRaFishValue();
 }
 static void applyLoRaFishBrightness(DisplayDriver& display, bool dimmed=false) {
@@ -1231,6 +1242,9 @@ static const char* loRaFishRecordKey(const char* path) {
   if (!strcmp(path,LoRaFishIdentity::kMain)) return "id";        // T-Deck key/value store: must not fall through to "state"
   if (!strcmp(path,LoRaFishIdentity::kBak)) return "idbak";
   if (!strcmp(path,LoRaFishIdentity::kTmp)) return "idtmp";
+  if (!strcmp(path,"/lorafish.bd")) return "bd";                // Nova link speed (NovaBaud.h): its own keys, never "state"
+  if (!strcmp(path,"/lorafish.bdb")) return "bdbak";
+  if (!strcmp(path,"/lorafish.bdt")) return "bdtmp";
   return "state";
 }
 
@@ -2824,7 +2838,7 @@ static void drawLoRaFishValuePicker(DisplayDriver& display) {
   static const char* titles[] = {"FIRMWARE THEME", "BRIGHTNESS", "GAME RENDERING",
       "ACCENT", "BODY", "EYES", "SLEEP HOUR", "WAKE HOUR", "UTC OFFSET",
       "AWAKE TIMEOUT", "ASLEEP TIMEOUT", "DIM AFTER", "VOLUME", "WAKE ALARM",
-      "SLEEP CUE", "MESSAGE TONE", "SCREEN COLOUR", "SPECIES", "ORIENTATION", "DISPLAY UPDATE", "ANIMAL SET", "SLOW WHEN DIM"};
+      "SLEEP CUE", "MESSAGE TONE", "SCREEN COLOUR", "SPECIES", "ORIENTATION", "DISPLAY UPDATE", "ANIMAL SET", "SLOW WHEN DIM", "SERIAL SPEED"};
 #if LORAGOTCHI_DXPRO
   if (setting == LoRaFishSetting::SpeciesSet || setting == LoRaFishSetting::Species) {
     // Both DX-Pro steps are lists (3 sets, then up to 39 animals). They use the same compact rows as every
@@ -2865,6 +2879,7 @@ static void drawLoRaFishValuePicker(DisplayDriver& display) {
     case LoRaFishSetting::DisplayUpdate: text = value ? "Partial" : "Full"; break;
     case LoRaFishSetting::Orientation: text = value ? "180 degrees" : "0 degrees"; break;
     case LoRaFishSetting::DimSlow: text = value ? "On" : "Off"; break;
+    case LoRaFishSetting::SerialSpeed: snprintf(valueText, sizeof(valueText), "%lu", (unsigned long)NovaBaud::kRates[value < NovaBaud::kCount ? value : 0]); break;
     case LoRaFishSetting::Rendering: text = value==2 ? "Efficient 1 FPS" : value==1 ? "Simulation" : "Smooth"; break;
     case LoRaFishSetting::Scales:
     case LoRaFishSetting::Body:
@@ -2890,6 +2905,11 @@ static void drawLoRaFishValuePicker(DisplayDriver& display) {
   display.setColor(UIColor::primary_txt);
   display.drawTextCentered(w/2, 27, text);
   display.setColor(UIColor::secondary_txt);
+  if (setting == LoRaFishSetting::SerialSpeed) {   // saved now, used after a restart: say so (18 characters, fits 128 px)
+    display.drawTextCentered(w/2, 42, "Hold: save, reboot");
+    drawLoRaFishMenuHint(display);
+    return;
+  }
 #if (defined(PIN_USER_BTN) || defined(PIN_USER_BTN_ANA)) && !defined(UI_HAS_NAV_INPUT) && !defined(WIO_TRACKER_L1) && !defined(LORAFISH_WATCH_TOUCH)
   if (loRaFishValuePicker.reversible()) {
     display.drawTextCentered(w/2, 42, loRaFishValuePicker.reverse() ? "Click:- Hold:apply" : "Click:+ Hold:apply");
@@ -3172,6 +3192,7 @@ static void drawLoRaFishDisplayMenu(DisplayDriver& display) {
       case LoRaFishDisplayRow::Orientation: label = "Orientation"; break;
       case LoRaFishDisplayRow::DisplayUpdate: label = "Display update"; break;
       case LoRaFishDisplayRow::DimSlow: label = "Slow when dimmed"; break;
+      case LoRaFishDisplayRow::SerialSpeed: label = "Serial speed"; break;
       case LoRaFishDisplayRow::Count: break;
     }
     drawLoRaFishMenuLabel(display, LoRaFishMenuLayout::rowYFor(display, row), option == loRaFishDisplayOption, label);
@@ -5524,6 +5545,25 @@ public:
 };
 #endif // !LORAFISH_UI
 
+#ifdef LORAFISH_UI
+// ---- Nova link serial speed (/lorafish.bd) ----------------------------------------------------------
+// Own small file (NovaBaud.h): /lorafish.dat, /lorafish.cfg and /lorafish.id keep their format. Read once at start-up;
+// the port is moved to the saved speed then (the port opens at 115200 in main.cpp, before the flash is up).
+static void loadLoRaFishSerialSpeed() {
+  NovaBaud::choice() = NovaBaud::load(loRaFishPetStore);           // missing / damaged / unlisted: 115200
+#if NOVA_BAUD_APPLIES   // Serial is a HardwareSerial here (updateBaudRate); native USB ports (nRF52, ESP32 CDC) have no such call
+  NovaBaud::apply(Serial, NovaBaud::choice());                     // once; does nothing at 115200
+#endif
+}
+// "nova baud <rate>" and the Display menu arrive here with a listed rate; nothing but /lorafish.bd is written.
+static NovaBaud::Status setLoRaFishSerialSpeed(uint32_t rate) {
+  if (!NovaBaud::shown() || !NovaBaud::listed(rate)) return NovaBaud::Status::Unsupported;
+  if (!NovaBaud::commit(loRaFishPetStore, rate)) return NovaBaud::Status::SaveFailed;
+  NovaBaud::choice() = rate;
+  return NovaBaud::Status::Ok;
+}
+#endif
+
 void UITask::begin(DisplayDriver* display, SensorManager* sensors, NodePrefs* node_prefs) {
 
   _display = display;
@@ -5591,6 +5631,13 @@ void UITask::begin(DisplayDriver* display, SensorManager* sensors, NodePrefs* no
   }
   loadLoRaFishIdentity();
   LoRaFishIdentity::setterSlot() = setLoRaFishPetName;
+#ifdef LORAGOTCHI_NOVA_LINK                               // only a build that carries the Nova link has a speed to set
+  NovaBaud::shown() = NovaBaud::kApplies;                 // UART builds only; native USB has no baud rate to set
+  if (NovaBaud::shown()) {
+    loadLoRaFishSerialSpeed();                            // moves the port to the saved speed, once, right here
+    NovaBaud::setterSlot() = setLoRaFishSerialSpeed;      // "nova baud" and the menu save through it; hello lists baud only now
+  }
+#endif
   applyLoRaFishTheme();
   loRaFishMonoDisplayNotice = !loRaFishColorDisplay && !loRaFishMonoDisplayColourKnown;
 #ifdef PIN_BUZZER
@@ -6540,6 +6587,8 @@ char UITask::handleLongPress(char c, bool isHold) {
     switch (loRaFishDisplayRowAt(loRaFishDisplayOption)) {
       case LoRaFishDisplayRow::DimSlow:
         loRaFishPage = 15; openLoRaFishValue(LoRaFishSetting::DimSlow); break;
+      case LoRaFishDisplayRow::SerialSpeed:
+        loRaFishPage = 15; openLoRaFishValue(LoRaFishSetting::SerialSpeed); break;
       case LoRaFishDisplayRow::DisplayUpdate:
         loRaFishPage = 15; openLoRaFishValue(LoRaFishSetting::DisplayUpdate); break;
       case LoRaFishDisplayRow::Orientation:
@@ -6738,6 +6787,7 @@ char UITask::handleDoubleClick(char c, bool oneButtonDirection) {
       LoRaFishDisplayRow row = LoRaFishDisplayRow::Rendering;
       switch (loRaFishValuePicker.key()) {
         case LoRaFishSetting::DimSlow: row = LoRaFishDisplayRow::DimSlow; break;
+        case LoRaFishSetting::SerialSpeed: row = LoRaFishDisplayRow::SerialSpeed; break;
         case LoRaFishSetting::DisplayUpdate: row = LoRaFishDisplayRow::DisplayUpdate; break;
         case LoRaFishSetting::Orientation: row = LoRaFishDisplayRow::Orientation; break;
         case LoRaFishSetting::MonoDisplayColour: row = LoRaFishDisplayRow::Colour; break;

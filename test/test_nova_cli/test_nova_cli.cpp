@@ -36,6 +36,26 @@ TEST(NovaCli, SubCommandsMatchWholeWordsOnly) {
     EXPECT_EQ(parse(l).cmd, Cmd::Unknown) << l;
 }
 
+TEST(NovaCli, BaudIsASubCommandWithItsArgument) {
+  EXPECT_EQ(parse("nova baud 460800").cmd, Cmd::Baud);
+  EXPECT_STREQ(parse("nova baud 460800").arg, "460800");
+  EXPECT_STREQ(parse("nova   baud   9600 ").arg, "9600 ");
+  EXPECT_STREQ(parse("nova baud").arg, "");
+  EXPECT_EQ(parse("nova bauds 1").cmd, Cmd::Unknown);   // whole words only
+  EXPECT_EQ(parse("nova bau").cmd, Cmd::Unknown);
+  // The generic answer (no speed setter in this build) is the unavailable line, never an echo.
+  EXPECT_EQ(say("nova baud 921600"), "{\"nova_unavailable\":\"baud\"}");
+}
+
+TEST(NovaCli, HelloListsBaudOnlyWhenTheBuildHasIt) {
+  Caps c;
+  EXPECT_EQ(say("nova hello").find("baud"), std::string::npos);   // the line is exactly what it always was
+  c.baud = 1;
+  const std::string s = say("nova hello", "DX-PRO", c);
+  EXPECT_NE(s.find("\"sendpet\":0,\"baud\":1}}"), std::string::npos) << s;
+  EXPECT_EQ(s.back(), '}');
+}
+
 TEST(NovaCli, HelloLineIsExact) {
   EXPECT_EQ(say("nova hello"),
     "{\"ed\":\"dx-pro\",\"nova\":{\"v\":1,\"caps\":{\"pet\":0,\"mesh\":0,\"contacts\":0,\"petname\":0,\"keys\":0,"

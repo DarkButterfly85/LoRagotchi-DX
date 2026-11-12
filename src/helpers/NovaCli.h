@@ -6,6 +6,9 @@
 //   nova mesh | nova pet {"nova_unavailable":"<name>"}   (so the dashboard does not wait for nothing)
 //   nova petname <name>  {"nova_unavailable":"petname"}  only as the answer of a build with no pet name to set; a build
 //                        that has one answers through helpers/NovaPetName.h ({"nova_ok":"petname","name":...})
+//   nova baud <rate>     only answered by a build that registered a speed setter (examples/companion_radio/NovaBaud.h
+//                        builds the reply: {"nova_ok":"baud","rate":N} or {"nova_error":"baud_unsupported"}); here it is
+//                        {"nova_unavailable":"baud"}. Hello lists "baud":1 in caps only for a build that really has it.
 //   nova <anything else> {"nova_error":"unknown_command"}
 // A line that does not start with the word "nova" is not ours: parse() says NotNova and the caller
 // leaves it alone. Replies never start with "nova status" or "nova profile" (the dashboard reads
@@ -16,17 +19,18 @@
 
 namespace NovaCli {
 
-enum class Cmd { NotNova, Hello, Mesh, Pet, PetName, Unknown };
+enum class Cmd { NotNova, Hello, Mesh, Pet, PetName, Baud, Unknown };
 
 struct Parsed {
   Cmd cmd;
-  const char* arg;   // text after the sub-command (petname only), points into the parsed line
+  const char* arg;   // text after the sub-command (petname, baud), points into the parsed line
 };
 
 // What this firmware can really do. Set a flag to 1 only when the feature exists (petname: only when the
 // handler really saves the name, i.e. a pet screen has registered its setter).
 struct Caps {
   int pet = 0, mesh = 0, contacts = 0, petname = 0, keys = 0, clean = 0, feed = 0, guess = 0, ping = 0, sendpet = 0;
+  int baud = 0;   // "nova baud" saves a speed (NovaBaud.h). Listed as "baud":1 only when 1; absent otherwise, so a build without it says exactly what it always said
 };
 
 static inline Parsed parse(const char* line) {
@@ -45,6 +49,7 @@ static inline Parsed parse(const char* line) {
   else if (n == 4 && strncmp(w, "mesh", 4) == 0) p.cmd = Cmd::Mesh;
   else if (n == 3 && strncmp(w, "pet", 3) == 0) p.cmd = Cmd::Pet;
   else if (n == 7 && strncmp(w, "petname", 7) == 0) { p.cmd = Cmd::PetName; p.arg = rest; }
+  else if (n == 4 && strncmp(w, "baud", 4) == 0) { p.cmd = Cmd::Baud; p.arg = rest; }
   return p;
 }
 
@@ -74,16 +79,18 @@ static inline size_t reply(const Parsed& p, const char* edition, const Caps& c, 
       editionId(edition, ed, sizeof(ed));
       n = snprintf(out, cap,
         "{\"ed\":\"%s\",\"nova\":{\"v\":1,\"caps\":{\"pet\":%d,\"mesh\":%d,\"contacts\":%d,\"petname\":%d,"
-        "\"keys\":%d,\"clean\":%d,\"feed\":%d,\"guess\":%d,\"ping\":%d,\"sendpet\":%d}},"
+        "\"keys\":%d,\"clean\":%d,\"feed\":%d,\"guess\":%d,\"ping\":%d,\"sendpet\":%d%s}},"
         "\"lg\":{\"hello\":1,\"pet\":%d,\"mesh\":%d}}",
         ed, c.pet ? 1 : 0, c.mesh ? 1 : 0, c.contacts ? 1 : 0, c.petname ? 1 : 0, c.keys ? 1 : 0,
         c.clean ? 1 : 0, c.feed ? 1 : 0, c.guess ? 1 : 0, c.ping ? 1 : 0, c.sendpet ? 1 : 0,
+        c.baud ? ",\"baud\":1" : "",
         c.pet ? 1 : 0, c.mesh ? 1 : 0);
       break;
     }
     case Cmd::Mesh:    n = snprintf(out, cap, "{\"nova_unavailable\":\"mesh\"}"); break;
     case Cmd::Pet:     n = snprintf(out, cap, "{\"nova_unavailable\":\"pet\"}"); break;
     case Cmd::PetName: n = snprintf(out, cap, "{\"nova_unavailable\":\"petname\"}"); break;
+    case Cmd::Baud:    n = snprintf(out, cap, "{\"nova_unavailable\":\"baud\"}"); break;
     case Cmd::Unknown: n = snprintf(out, cap, "{\"nova_error\":\"unknown_command\"}"); break;
   }
   if (n < 0 || (size_t)n >= cap) { out[0] = 0; return 0; }

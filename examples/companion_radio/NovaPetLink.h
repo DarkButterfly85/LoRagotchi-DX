@@ -81,6 +81,16 @@ static constexpr size_t MAX_LINE_CAP = 16384;         // the line buffer never g
                                                       // codes bigger is skipped, not cut)
 static constexpr int PALETTE_SIZE = 16;               // colour pictures: 4 bits a pixel
 
+// Output pacing (MyMesh.cpp checkNovaSerial): at most sendChunk(baud) bytes every SEND_GAP_MS, written without waiting
+// for the port. A byte on the wire is 10 bits (8N1), so the port carries baud/10 bytes a second = baud/1000 bytes per
+// 10 ms. baud/1200 of them is about 83 percent of that: 96 bytes at 115200 (what the link always sent), 192 at 230400,
+// 384 at 460800, and 512 at 921600 and above (the cap keeps one step small). Frame format unchanged.
+static constexpr uint32_t SEND_GAP_MS = 10;
+static constexpr size_t SEND_CHUNK_MIN = 96, SEND_CHUNK_MAX = 512;
+static constexpr size_t sendChunk(uint32_t baud) {
+  return baud / 1200u < SEND_CHUNK_MIN ? SEND_CHUNK_MIN : baud / 1200u > SEND_CHUNK_MAX ? SEND_CHUNK_MAX : (size_t)(baud / 1200u);
+}
+
 // What one screen looks like to the link. Built from the DisplayDriver (NovaPetTee::formatOf).
 struct Format {
   uint16_t w, h;

@@ -41,7 +41,7 @@ assert '"SLOW WHEN DIM"' in UI and UI.count('LoRaFishSetting::DimSlow') >= 4
 assert '"Slow when dimmed"' in UI
 # Display menu row exists only when supported, appended after the existing rows
 assert 'rows.dimSlow = loRaFishDimSlowSupported;' in UI
-assert re.search(r'DisplayUpdate, DimSlow, Count', MENU) or re.search(r'DisplayUpdate,\s*DimSlow,\s*Count', MENU)
+assert re.search(r'DisplayUpdate,\s*DimSlow,\s*(SerialSpeed,\s*)?Count', MENU)   # SerialSpeed was appended after DimSlow (Nova baud setting)
 
 # ---- settings format: one optional tail, size 106 -> 112 ----------------
 assert 'LORAFISH_SETTINGS_SIZE = 112;' in UI
