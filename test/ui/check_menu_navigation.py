@@ -37,6 +37,7 @@ pre=r'''
 #include <cassert>
 #include "examples/companion_radio/LoRaFishColour.h"
 #include "examples/companion_radio/LoRaFishSpecies.h"
+#include "examples/companion_radio/LoRaFishIdentity.h"
 static long random(long lo,long){return lo+42;}
 static uint16_t loRaFishSpecies=0;
 static uint32_t loRaFishMysterySeed=0;
@@ -44,6 +45,9 @@ static bool loRaFishMysterySelected=false;
 static bool loRaFishNeedsPetSetup=false;
 static uint8_t loRaFishPetSetupField=0;
 static constexpr uint8_t LORAFISH_PET_SETUP_PAGE=20;
+static constexpr uint8_t LORAFISH_RANGE_PAGE=21;
+// Range Check is colour-only and has its own host check (check_range_check.py); here Select is never its press.
+static uint8_t selectLoRaFishRange(uint32_t, uint32_t&){return 0;}
 #include "examples/companion_radio/LoRaFishEgg.h"
 static bool loRaFishAdoptionEligible=false,loRaFishEggApplying=false;
 static bool loRaFishMonoDisplayNotice=false,loRaFishMonoDisplayColourKnown=false;
@@ -106,6 +110,7 @@ static void loragotchiDXSave(){++dxWrites;}
 static bool fishSleeping=false;
 static bool loRaFishIsSleeping(){return fishSleeping;}
 static const char* loRaFishMeshNodeName="Fish";
+static char loRaFishIdName[LoRaFishIdentity::kNameMax+1]="";   // the pet's own name (/lorafish.id); empty = the radio name is shown
 struct {uint32_t ageMinutes=60,rfEvents=1;uint8_t evolution=1;} fish;
 struct {template<typename... Args> void printf(const char*,Args...){} void println(const char*){}} Serial;
 static void loRaFishClock(char* time,size_t tsize,char* date,size_t dsize){
@@ -187,12 +192,12 @@ static void loRaFishRegisterDisplayActivity(DisplayDriver&){}
 static uint32_t loRaFishScreenTimeoutMs(){return 15000;}
 class UITask;
 '''
-names='loRaFishOrientationSupported loRaFishOrientation loRaFishPartial loRaFishPartialSupported loRaFishPartialNeedsApply loRaFishOrientationNeedsApply loRaFishVisitWarning loRaFishVisitContinue loRaFishVisitWarningKey loRaFishSettingsMenuOpen loRaFishSettingsPending loRaFishChannelNotice loRaFishNameNotice loRaFishDXDestinationKey loRaFishDXDestinationKnown LORAFISH_DX_CONTACT_PAGE loRaFishPage loRaFishOption loRaFishValuePicker loRaFishDisplayOption loRaFishTimeField loRaFishTimeoutField loRaFishSoundField LORAFISH_PAGE_COUNT LORAFISH_RESET_CONFIRM_PAGE loRaFishResetConfirmation LORAFISH_ADVERT_PAGE loRaFishAdvertMenu loRaFishTheme loRaFishColor loRaFishScaleColor loRaFishEyeColor loRaFishColorField loRaFishNeedsAppearanceSetup loRaFishColorDisplay loRaFishSimulationMode loRaFishGuessNumber loRaFishGuessPrevious loRaFishGuessRounds loRaFishGuessScore loRaFishGuessHigher loRaFishGuessResultShown loRaFishGuessCorrect loRaFishGuessComplete loRaFishTimeoutAwakeSetting loRaFishTimeoutAsleepSetting loRaFishTimeoutShortNames loRaFishBrightnessSetting loRaFishBrightnessNames loRaFishBrightnessNeedsApply loRaFishAlwaysOnDimSetting loRaFishAlwaysOnDimNames loRaFishBuzzerVolume loRaFishWakeSound loRaFishSleepSound loRaFishMessageSound loRaFishVolumeNames loRaFishWakeSoundNames loRaFishSleepSoundNames loRaFishMessageSoundNames loRaFishWakeMelodies loRaFishSleepMelodies loRaFishMessageMelodies loRaFishSleepHour loRaFishWakeHour loRaFishUtcOffsetQuarters loRaFishColorNames'.split()
+names='loRaFishOrientationSupported loRaFishOrientation loRaFishPartial loRaFishPartialSupported loRaFishPartialNeedsApply loRaFishOrientationNeedsApply loRaFishVisitWarning loRaFishVisitContinue loRaFishVisitWarningKey loRaFishSettingsMenuOpen loRaFishSettingsPending loRaFishChannelNotice loRaFishNameNotice loRaFishNovaNotice loRaFishDXDestinationKey loRaFishDXDestinationKnown LORAFISH_DX_CONTACT_PAGE loRaFishPage loRaFishOption loRaFishValuePicker loRaFishDisplayOption loRaFishTimeField loRaFishTimeoutField loRaFishSoundField LORAFISH_PAGE_COUNT LORAFISH_RESET_CONFIRM_PAGE loRaFishResetConfirmation LORAFISH_ADVERT_PAGE loRaFishAdvertMenu loRaFishTheme loRaFishColor loRaFishScaleColor loRaFishEyeColor loRaFishColorField loRaFishNeedsAppearanceSetup loRaFishColorDisplay loRaFishSimulationMode loRaFishGuessNumber loRaFishGuessPrevious loRaFishGuessRounds loRaFishGuessScore loRaFishGuessHigher loRaFishGuessResultShown loRaFishGuessCorrect loRaFishGuessComplete loRaFishTimeoutAwakeSetting loRaFishTimeoutAsleepSetting loRaFishTimeoutShortNames loRaFishBrightnessSetting loRaFishBrightnessNames loRaFishBrightnessNeedsApply loRaFishAlwaysOnDimSetting loRaFishDimSlow loRaFishDimSlowSupported loRaFishAlwaysOnDimNames loRaFishBuzzerVolume loRaFishWakeSound loRaFishSleepSound loRaFishMessageSound loRaFishVolumeNames loRaFishWakeSoundNames loRaFishSleepSoundNames loRaFishMessageSoundNames loRaFishWakeMelodies loRaFishSleepMelodies loRaFishMessageMelodies loRaFishSleepHour loRaFishWakeHour loRaFishUtcOffsetQuarters loRaFishColorNames'.split()
 parts=[pre]+[declaration(name) for name in names]
 parts += [block('struct LoRaFishThemePalette')+';',declaration('loRaFishThemes'),
  'static constexpr uint8_t LORAFISH_COLOR_THEME_COUNT=4,LORAFISH_COLOR_ALLELE_COUNT=7;',
  source[source.index('static constexpr bool loRaFishHasSound'):source.index('#endif',source.index('static constexpr bool loRaFishHasSound'))+len('#endif')]]
-for name in ['static void beginLoRaFishChannelNotice(', 'static bool dismissLoRaFishNotice(', 'static void drawLoRaFishChannelNotice(', 'static void beginLoRaFishNameNotice(', 'static const char* loRaFishDisplayName(', 'static const char* loRaFishProtocolName(', 'static uint8_t loRaFishThemeCount(', 'static uint8_t loRaFishDisplayOptionCount(',
+for name in ['static void beginLoRaFishChannelNotice(', 'static bool dismissLoRaFishNotice(', 'static void drawLoRaFishChannelNotice(', 'static void beginLoRaFishNameNotice(', 'static const char* loRaFishDisplayName(', 'static const char* loRaFishProtocolName(', 'static uint8_t loRaFishThemeCount(', 'static LoRaFishDisplayRows loRaFishDisplayRows(', 'static uint8_t loRaFishDisplayOptionCount(', 'static LoRaFishDisplayRow loRaFishDisplayRowAt(', 'static uint8_t loRaFishDisplayRowIndex(', 'static uint8_t loRaFishDimSlowOptionIndex(',
  'static uint8_t loRaFishOptionCount(', 'static void returnToLoRaFishOptions(',
  'static void serviceLoRaFishSettingsMenu(', 'static void cancelLoRaFishValue(', 'static void openLoRaFishValue(', 'static void ensureLoRaFishMysterySeed(', 'static void chooseLoRaFishMysteryColours(', 'static void selectLoRaFishValue(',
  'static void loRaFishFormatUtcOffset(', 'static void drawLoRaFishHeader(',
@@ -204,6 +209,9 @@ for name in ['static void beginLoRaFishChannelNotice(', 'static bool dismissLoRa
  'static void drawLoRaFishMenuLabel(', 'static void drawLoRaFishDisplayMenu(', 'static void drawLoRaFishPetSetup(', 'static void drawLoRaFishColorMenu(',
  'static void drawLoRaFishTimeMenu(', 'static void drawLoRaFishTimeoutMenu(',
  'static void drawLoRaFishGuessGame(']:
+    if name=='static bool loRaFishDXEligible(':   # moved to the shared header (also used by MyMesh.cpp)
+        parts.append('#include "examples/companion_radio/LoRaFishEligible.h"')
+        continue
     parts.append(block(name))
 parts += ['#ifdef PIN_BUZZER', block('static void drawLoRaFishSoundMenu('),'#endif']
 parts.append(r'''
@@ -283,6 +291,21 @@ int main(){
   assert(loRaFishPage==12 && loRaFishOrientation==1 && loRaFishOrientationNeedsApply);
   loRaFishOrientationSupported=false;loRaFishOrientation=0;loRaFishOrientationNeedsApply=false;loRaFishSettingsPending=false;
 
+  // Slow animation when dimmed: optional last Display row, default Off, shown only where dimming is real.
+  assert(loRaFishDimSlow==0 && !loRaFishDimSlowSupported);
+  loRaFishDimSlowSupported=true;
+  assert(loRaFishDisplayOptionCount()==(LORAGOTCHI_SPECIES_EDITION ? 7 : 6));
+  loRaFishPage=12;loRaFishDisplayOption=loRaFishDisplayOptionCount()-1;
+  task.display.clearBounds();drawLoRaFishDisplayMenu(task.display);
+  task.handleLongPress(KEY_ENTER);
+  assert(loRaFishPage==15 && loRaFishValuePicker.key()==LoRaFishSetting::DimSlow);
+  shortPress(KEY_NEXT);task.handleDoubleClick(KEY_PREV);
+  assert(loRaFishPage==12 && loRaFishDimSlow==0 && loRaFishDisplayOption==loRaFishDimSlowOptionIndex());
+  task.handleLongPress(KEY_ENTER);shortPress(KEY_NEXT);task.handleLongPress(KEY_ENTER);
+  assert(loRaFishPage==12 && loRaFishDimSlow==1 && loRaFishSettingsPending);
+  loRaFishDimSlow=0;loRaFishSettingsPending=false;loRaFishDimSlowSupported=false;
+  // Unsupported (e-ink, T190, panels that cannot dim): no row and no picker.
+  openLoRaFishValue(LoRaFishSetting::DimSlow);assert(!loRaFishValuePicker.active());
   assert(loRaFishDisplayOptionCount()==(LORAGOTCHI_SPECIES_EDITION ? 6 : 5));
 #if LORAGOTCHI_SPECIES_EDITION
   // New-game picker enters only after notices/adoption; browsing/cancel never rolls.
@@ -301,7 +324,7 @@ int main(){
     task.handleLongPress(KEY_ENTER);assert(b==loRaFishColor && sc==loRaFishScaleColor && e==loRaFishEyeColor);
     assert(seed==loRaFishMysterySeed && mystery==loRaFishSpecies);
     assert(loRaFishMysterySelected); // Mystery colours do not change provenance.
-    loRaFishValuePicker.open(LoRaFishSetting::Species,0,LoRaFishSpecies::selectableCount+1);
+    loRaFishValuePicker.open(LoRaFishSetting::Species,1,LoRaFishSpecies::selectableCount+1);   // position 0 is Mystery egg, animal i is position i+1
     for(unsigned i=0;i<LoRaFishSpecies::selectableCount;++i) {
       if(LoRaFishSpecies::selectionId(i)==mystery) break;
       loRaFishValuePicker.step();
@@ -599,7 +622,7 @@ if __name__ == '__main__':
         cpp=Path(temporary)/'menu-host-check.cpp';cpp.write_text('\n'.join(parts))
         for sound in [False,True]:
             out=Path(temporary)/f'menu-host-check-{int(sound)}'
-            cmd=['g++','-std=c++17','-DPIN_USER_BTN=0','-DLORAGOTCHI_WATER_EDITION='+os.environ.get('LORAGOTCHI_TEST_EDITION','0'),'-DLORAGOTCHI_AIR_EDITION='+os.environ.get('LORAGOTCHI_TEST_AIR','0'),'-I',str(root),'-I',str(root/'src'),str(cpp),'-o',str(out)]
+            cmd=['g++','-std=c++17','-DPIN_USER_BTN=0','-DLORAGOTCHI_TESTER_FIRMWARE=1','-DLORAGOTCHI_WATER_EDITION='+os.environ.get('LORAGOTCHI_TEST_EDITION','0'),'-DLORAGOTCHI_AIR_EDITION='+os.environ.get('LORAGOTCHI_TEST_AIR','0'),'-I',str(root),'-I',str(root/'src'),str(cpp),'-o',str(out)]
             if sound:cmd+=['-DPIN_BUZZER=6']
             subprocess.run(cmd,check=True)
             subprocess.run([str(out)],check=True)

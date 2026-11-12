@@ -15,7 +15,13 @@ LoRagotchiChannel::Result LoRagotchiChannel::startupResult = LoRagotchiChannel::
 #endif
 #endif
 
+#include "NovaPetLink.h"   // Nova dashboard link: defines LORAGOTCHI_NOVA_LINK where it applies
+#ifdef LORAGOTCHI_NOVA_LINK
+#include "LoRaFishIdentity.h"   // /lorafish.id: the pet name that "nova petname" sets
+#endif
+
 #ifdef LORAFISH_UI
+#include "LoRaFishEligible.h"
 #include "LoRaFishCommit.h"
 #include "LoRaFishArrival.h"
 static LoRaFishCommitFrame loRaFishCommitFrame;
@@ -118,6 +124,7 @@ float lorafish_last_rssi = -127.0f;
 float lorafish_last_snr = 0.0f;
 unsigned long lorafish_last_rf_ms = 0;
 uint32_t lorafish_rf_sample_seq = 0;
+LoRaFishRfStats::Window lorafish_rf_stats;
 
 #include <Arduino.h> // needed for PlatformIO
 #ifdef ENABLE_WIFI_INTERFACE
@@ -412,6 +419,7 @@ void MyMesh::logRxRaw(float snr, float rssi, const uint8_t raw[], int len) {
   lorafish_last_snr = snr;
   lorafish_last_rf_ms = millis();
   lorafish_rf_sample_seq++;
+  lorafish_rf_stats.record(millis(), raw, len);   // only reads the frame header; reception is untouched
   if (_serial->isConnected() && len + 3 <= MAX_FRAME_SIZE) {
     int i = 0;
     out_frame[i++] = PUSH_CODE_LOG_RX_DATA;
@@ -2546,6 +2554,25 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp, char*
     return true;
   }
 
+#ifdef LORAFISH_UI
+  // Read-only: lists the contacts the DX visit picker would offer. Serial console only; the JSON
+  // line is streamed straight to Serial (it is far larger than reply_buf, and remote/app CLI
+  // callers have no room for it), so over those paths the command stays "unknown".
+  if (strcmp(command, "nova contacts") == 0 && _cli_from_serial) {
+    struct SerialSink {
+      void write(const char* p, size_t n) { Serial.write((const uint8_t*)p, n); }
+    } sink;
+    Serial.print("  ");
+    Serial.print(reply);   // reflected "xx|" prefix, if the command had one
+    NovaContacts::writeJson(sink, [this](uint32_t i, ContactInfo& c) {
+      return i < (uint32_t)getNumContacts() && getContactByIdx((uint32_t)MAX_ANON_CONTACTS + i, c);
+    });
+    Serial.println();
+    _cli_serial_printed = true;
+    return true;
+  }
+#endif
+
   if (strcmp(command, "get tz.offset") == 0) {
     sprintf(reply, "> %d", _prefs.tz_offset);
     return true;
@@ -2591,9 +2618,13 @@ void MyMesh::checkCLIRescueCmd() {
     cli_command[len - 1] = 0;  // replace newline with C string null terminator
 
     reply_buf[0] = 0;
-    if (handleCommand(cli_command, 0, reply_buf)) {
-      // command was handled, print reply output
-      Serial.print("  "); Serial.print(reply_buf); Serial.println();
+    _cli_from_serial = true;
+    _cli_serial_printed = false;
+    const bool handled = handleCommand(cli_command, 0, reply_buf);
+    _cli_from_serial = false;
+    if (handled) {
+      // command was handled, print reply output (unless it already printed its own line)
+      if (!_cli_serial_printed) { Serial.print("  "); Serial.print(reply_buf); Serial.println(); }
     } else if (strcmp(cli_command, "rebuild") == 0) {
       bool success = _store->formatFileSystem();
       if (success) {
@@ -2739,6 +2770,136 @@ void MyMesh::checkCLIRescueCmd() {
     cli_command[0] = 0;  // reset command buffer
   }
 }
+
+#ifdef LORAGOTCHI_NOVA_LINK
+// ---- LORAGOTCHI NOVA serial link --------------------------------------------------------------
+// The Nova dashboard page talks to the radio over the USB serial port in plain text lines. The
+// picture format and the dashboard come from LODESTAR ORION / LODESTAR NOVA (Aries Thorne, Todd
+// Steinhauer, FEAR REACTIVE), used with the authors' permission; see NOTICE and docs/CREDITS.md.
+// Parsing, the hello line and the petname replies live in helpers/NovaCli.h and helpers/NovaPetName.h
+// (host tested); this block only connects them to the serial port, the pet picture and /lorafish.id.
+//   nova hello           keep-alive; the radio answers with ONE JSON line: {"ed":"dx-pro","nova":{"v":1,"caps":{...}},"lg":{...}}.
+//                        "ed" comes first and "nova" after index 0, which is how the dashboard's line router
+//                        takes the line as a radio report (it never reads the other keys of this reply).
+//                        caps are 1 only for things this build really does; the rest stay 0 ("baud":1 is added
+//                        only when the speed setter is registered).
+//   nova contacts        one JSON line {"contacts":[{"n":..,"id":..}]}: the contacts the DX visit picker offers
+//                        (LoRaFishEligible.h, at most 16). Also answered in CLI Rescue (_cli_from_serial).
+//   nova mesh            mesh analyser stream: not in this build yet, answered with {"lg":{"mesh":0}}
+//   nova pet             send the pet picture, a line at a time, for the next 4 s (the page repeats it)
+//   nova baud <rate>     saves the serial speed (115200, 230400, 460800 or 921600; UART builds only), used from the
+//                        next start-up. Answer: {"nova_ok":"baud","rate":N}, {"nova_error":"baud_unsupported"} or {"nova_unavailable":"baud"}
+//   nova petname <name>  saves the pet's own name (16 characters at most, printable ASCII without " and \,
+//                        "-" clears it) in /lorafish.id and nothing else (never /lorafish.dat); the pet screen
+//                        header shows it instead of the radio's name, and the Nova frames use the radio's name until one is set. Answer: {"nova_ok":"petname","name":"..."}
+// Only lines that start with "nova" are looked at; everything else on the port is ignored. This runs
+// only when the phone is not using the USB port (no ENABLE_USB_INTERFACE) and CLI Rescue is not
+// active, so it cannot clash with either. Nothing is ever sent unless a line asked for it.
+#include "LoRaGotchiVersion.h"
+#include "helpers/NovaCli.h"
+#include "helpers/NovaPetName.h"
+#include "NovaBaud.h"
+static void novaSay(const char* s) { Serial.print(s); Serial.print('\n'); }
+
+// Streams the eligible-contacts JSON line to the serial port (same text as in CLI Rescue, but this
+// path has no reflected prefix). getContact(i, ContactInfo&) counts contacts the way the picker does.
+struct NovaSerialSink {
+  void write(const char* p, size_t n) { Serial.write((const uint8_t*)p, n); }
+};
+
+template <typename GetContact>
+static void novaCommand(const char* line, uint32_t now, GetContact getContact) {
+  const NovaCli::Parsed p = NovaCli::parse(line);
+  if (p.cmd == NovaCli::Cmd::NotNova) return;                       // not for us
+  static uint32_t next_note = 0;                  // explanations (not the pictures) at most every 30 s
+  const bool note_ok = (int32_t)(now - next_note) >= 0;
+  char msg[320];
+
+  if (p.cmd == NovaCli::Cmd::Hello) {
+    NovaCli::Caps caps;                           // a 1 only where the feature really works in this build
+    caps.pet = NovaPetLink::supported() ? 1 : 0;                    // the picture stream (any screen the copy can follow)
+    caps.contacts = 1;                            // "nova contacts" (LoRaFishEligible.h) is answered in normal mode
+    caps.petname = LoRaFishIdentity::setterSlot() ? 1 : 0;          // the pet screen registered its /lorafish.id setter
+    caps.baud = NovaBaud::setterSlot() ? 1 : 0;                     // a UART build whose UI registered the speed setter (NovaBaud.h)
+    if (NovaCli::reply(p, "dx-pro", caps, msg, sizeof(msg))) novaSay(msg);   // the edition the dashboard knows this firmware by
+  } else if (p.cmd == NovaCli::Cmd::Contacts) {
+    NovaSerialSink sink;
+    NovaContacts::writeJson(sink, getContact);
+    Serial.print('\n');
+  } else if (p.cmd == NovaCli::Cmd::Mesh) {
+    novaSay("{\"lg\":{\"mesh\":0}}");
+  } else if (p.cmd == NovaCli::Cmd::Pet) {
+    if (!NovaPetLink::supported()) {
+      if (note_ok) { next_note = now + 30000u; novaSay("# nova pet: this radio's screen cannot be copied (no screen, too big, or drawn where the copy cannot see it), so there is no picture to send"); }
+    } else if (NovaPetLink::Link* l = NovaPetLink::link(true)) {
+      l->request(now);                            // the pictures follow as the screen redraws
+    } else if (note_ok) {
+      next_note = now + 30000u; novaSay("# nova pet: not enough memory for the picture");
+    }
+  } else if (p.cmd == NovaCli::Cmd::PetName) {
+    char nm[NovaPetName::kMax + 1];
+    NovaPetName::Status st = NovaPetName::prepare(p.arg, nm, sizeof(nm));   // trims; "-" clears; refuses bad names
+    if (st == NovaPetName::Status::Ok || st == NovaPetName::Status::Cleared) {
+      switch (LoRaFishIdentity::requestName(nm)) {   // UITask: LoRaFishIdentity::saveWithName() -> /lorafish.id only
+        case LoRaFishIdentity::NameOk:      break;
+        case LoRaFishIdentity::NameTooLong: st = NovaPetName::Status::TooLong; break;
+        case LoRaFishIdentity::NameBadChar: st = NovaPetName::Status::NonAscii; break;
+        case LoRaFishIdentity::NameNoPet:   st = NovaPetName::Status::NoPet; break;
+        default:                            st = NovaPetName::Status::SaveFailed; break;
+      }
+    }
+    if (NovaPetName::reply(st, nm, msg, sizeof(msg))) novaSay(msg);
+  } else if (p.cmd == NovaCli::Cmd::Baud) {
+    uint32_t rate = 0;
+    const NovaBaud::Status st = NovaBaud::request(p.arg, &rate);   // listed speeds only; saved, used from the next start-up
+    if (NovaBaud::reply(st, rate, msg, sizeof(msg))) novaSay(msg);
+  } else if (NovaCli::reply(p, "dx-pro", NovaCli::Caps(), msg, sizeof(msg))) {
+    novaSay(msg);                                 // unknown sub-command: one error line, never an echo
+  }
+}
+
+void MyMesh::checkNovaSerial() {
+  static char line[96];
+  static size_t len = 0;
+  static bool skip = false;                       // a line that was too long: ignore the rest of it
+  static uint32_t next_out = 0, next_hint = 0;
+  const uint32_t now = millis();
+  auto contactAt = [this](uint32_t i, ContactInfo& c) {   // same indexing as the visit picker and CLI Rescue
+    return i < (uint32_t)getNumContacts() && getContactByIdx((uint32_t)MAX_ANON_CONTACTS + i, c);
+  };
+
+  while (Serial.available()) {
+    const char c = (char)Serial.read();
+    if (c == '\n' || c == '\r') {
+      if (!skip && len) { line[len] = 0; novaCommand(line, now, contactAt); }
+      len = 0; skip = false;
+      continue;
+    }
+    if (skip) continue;
+    if (len < sizeof(line) - 1) line[len++] = c; else { skip = true; len = 0; }
+  }
+
+  NovaPetLink::Link* l = NovaPetLink::link();
+  if (!l) return;
+  if (l->pending()) {
+    if (!l->active(now)) {
+      l->dropPending();                           // nobody is asking any more
+    } else if ((int32_t)(now - next_out) >= 0) {
+      // sendChunk(speed) bytes every SEND_GAP_MS: 96 bytes every 10 ms = 9.6 kB/s at the default 115200 baud (below
+      // what the port carries, so the radio loop never waits on it), more at the faster speeds of NovaBaud.h.
+      // A 2 kB whole picture takes about 0.2 s at 115200, a change far less.
+      const size_t chunk = NovaPetLink::sendChunk(NovaBaud::activeRate());
+      size_t n = l->pending() < chunk ? l->pending() : chunk;
+      l->consumed(Serial.write(l->pendingData(), n));
+      next_out = now + NovaPetLink::SEND_GAP_MS;
+    }
+  }
+  if (l->waiting(now) && (int32_t)(now - next_hint) >= 0) {
+    next_hint = now + 30000u;
+    novaSay("# nova pet: waiting for the radio's screen to draw. It is off or asleep: press a button to wake it");
+  }
+}
+#endif  // LORAGOTCHI_NOVA_LINK
 
 void MyMesh::checkSerialInterface() {
   size_t len = _serial->checkRecvFrame(cmd_frame);
@@ -2956,6 +3117,9 @@ void MyMesh::loop() {
     checkCLIRescueCmd();
   } else {
     checkSerialInterface();
+#ifdef LORAGOTCHI_NOVA_LINK
+    checkNovaSerial();
+#endif
 #if defined(ENABLE_WIFI_INTERFACE) && defined(RP2040_PLATFORM) && !defined(ENABLE_USB_INTERFACE)
     // RP2040 WiFi builds are headless and have no way into the rescue CLI (that needs a
     // display + long-press), so serve config commands on the otherwise unused USB serial

@@ -18,7 +18,13 @@ Thank you for downloading and trying our firmware! LoRaGotchi DX is a virtual pe
 
 It's actually built straight on the stock meshcore (1.17.1 at the time of writing) firmware with the idea that, you can flash to LoRagotchi-DX without losing your settings, channels, contacts etc. We've even flashed it via the meshcore.io flasher.
 
-For supported boards and PlatformIO build commands, see the [README](README.md#supported-loragotchi-targets-in-this-tree). Water-specific environments and commands are listed under [Water edition build targets](README.md#water-edition-build-targets). This guide describes the LoRaFish companion UI and behavior.
+For supported boards and PlatformIO build commands, see the [README](README.md) and the [board/edition matrix](docs/BUILDING.md#board-and-edition-selection), which lists the DX, Water, Air, Land and DX-Pro environments. This guide describes the LoRaFish companion UI and behavior.
+
+**Device-specific guides.** This is the general guide. Three devices with their own controls or hardware have a short getting-started guide of their own:
+
+- [LilyGo T-Watch S3](docs/devices/t-watch-s3/GETTING_STARTED.md) (touch screen and side button; [device page](docs/devices/t-watch-s3.md))
+- [LilyGo T-Deck](docs/devices/t-deck/GETTING_STARTED.md) (trackball, keyboard and touch; [device page](docs/devices/t-deck.md))
+- [M5Stack Cardputer](docs/devices/cardputer/GETTING_STARTED.md) (keyboard; [device page](docs/devices/cardputer.md))
 
 ## Edition and boot version
 
@@ -64,7 +70,7 @@ next startup if space is available. A failed storage write may require another
 startup to persist it. Ordinary channel chat is separate from fish transfers.
 
 0. Bringing a device already flashed with a MeshCore firmware is perfectly fine ☑️, though we do recommend making a backup first. don't erase when flashing to keep your settings, channels & ID
-1. Flash the LoRaGotchi DX build for your board. The NRF52 builds produce a UF2 file; see its README instructions. Other target build commands are listed there.
+1. Flash the LoRaGotchi DX build for your board. The NRF52 builds produce a UF2 file; see the [install instructions](docs/BUILDING.md#install-using-the-boards-matching-method). Other target build commands are listed in the [build guide](docs/BUILDING.md).
 2. Start the device and connect to it from the MeshCore app as a BLE companion. Use the PIN shown on the device's pairing screen when the app requests one.
 3. Set the device clock from the app. LoRaGotchi uses MeshCore's clock for the displayed local time and scheduled sleep. If the clock has not been set to a valid date, the UI falls back to build time plus uptime; this fallback is not a substitute for setting the clock.
 4. Use **Options → Schedule & time** to set your local UTC offset and sleep/wake hours.
@@ -139,7 +145,7 @@ During the first eight seconds after startup, long-press is reserved for MeshCor
 When the display has turned off, the first click, double-click, or long-press only wakes the screen; it does not select, save, advertise, or clean. On single-button nodes, aquarium short-click advances to Stats; long-press starts cleaning if 💩 is present.
 
 Menu footers use **1:NEXT 2:BACK L:OK** for these three gestures. The Cardputer
-keyboard uses arrows/WASD to navigate, Enter/Space to select, and Escape/Backspace to go back.
+keyboard uses arrows/WASD to navigate, Enter/Space to select, and Escape/Backspace to go back (see the [Cardputer guide](docs/devices/cardputer/GETTING_STARTED.md)).
 
 The main screens advance in this order:
 

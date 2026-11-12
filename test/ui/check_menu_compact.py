@@ -166,7 +166,7 @@ int main(){
   for(int step=0;step<2;++step){
    const bool sets=(step==0);
    loRaFishProSet=2; // Land: 39 animals, the longest list
-   const int count=sets?LoRaFishSpecies::setCount:LoRaFishSpecies::setSize(2);
+   const int count=sets?LoRaFishSpecies::setCount+1:LoRaFishSpecies::setSize(2)+1;   // + Mystery egg: last of the environments, first of an environment's animals
    for(int cand=0;cand<count;++cand){
     loRaFishValuePicker.open(sets?LoRaFishSetting::SpeciesSet:LoRaFishSetting::Species,cand,count);
     panel.clearBounds();drawLoRaFishValuePicker(panel);
@@ -184,7 +184,7 @@ int main(){
     assert(markedAt==cand-f);
     for(size_t i=0;i<labels.size();++i){
      const int item=f+(int)i;
-     const std::string want=sets?LoRaFishSpecies::setLabel(item):LoRaFishSpecies::label(LoRaFishSpecies::setSelectionId(2,item));
+     const std::string want=sets?(item>=LoRaFishSpecies::setCount?std::string("Mystery egg"):std::string(LoRaFishSpecies::setLabel(item))):(item==0?std::string("Mystery egg"):std::string(LoRaFishSpecies::label(LoRaFishSpecies::setSelectionId(2,item-1))));
      assert(labels[i]==want);                         // every item in order, none skipped or reordered
      assert(rowYs[i]==LoRaFishMenuLayout::rowYFor(panel,(int)i));
      if(i)assert(rowYs[i]-rowYs[i-1]==c.pitch);
@@ -261,7 +261,7 @@ if __name__=='__main__':
         (p/'draw.cpp').write_text(build_draw_source())
         for sound in [False,True]:
           for pro in [False,True]:
-            cmd=['g++','-std=c++17','-w','-DPIN_USER_BTN=0','-I'+str(ROOT),'-I'+str(ROOT/'src'),str(p/'draw.cpp'),'-o',str(p/'draw')]
+            cmd=['g++','-std=c++17','-w','-DPIN_USER_BTN=0','-DLORAGOTCHI_TESTER_FIRMWARE=1','-I'+str(ROOT),'-I'+str(ROOT/'src'),str(p/'draw.cpp'),'-o',str(p/'draw')]
             if sound: cmd.append('-DPIN_BUZZER=6')
             if pro: cmd.append('-DLORAGOTCHI_DXPRO=1')
             run(cmd);run([str(p/'draw')])

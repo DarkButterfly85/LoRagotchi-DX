@@ -76,14 +76,14 @@ struct UITask {
 '''
 source += block('void UITask::handleLoRaFishMessage() {')
 for name in '''loRaFishLifeArtFrameMs loRaFishBatteryValid loRaFishBatterySampledAt loRaFishBatteryMilliVolts
-loRaFishChannelNotice loRaFishNameNotice loRaFishMonoDisplayNotice loRaFishStaticFrameValid loRaFishStaticFrame loRaFishOption loRaFishDisplayOption
+loRaFishNovaNotice loRaFishChannelNotice loRaFishNameNotice loRaFishMonoDisplayNotice loRaFishStaticFrameValid loRaFishStaticFrame loRaFishOption loRaFishDisplayOption
 loRaFishTimeField loRaFishTimeoutField loRaFishSoundField loRaFishValuePicker
 loRaFishResetConfirmation loRaFishAdvertMenu loRaFishScreenDimmed
 loRaFishPartialSupported loRaFishPartialNeedsApply loRaFishOrientationNeedsApply loRaFishBrightnessNeedsApply loRaFishTimeoutSleepStateKnown loRaFishTimeoutSleepState
-loRaFishLastActivityMs loRaFishAlwaysOnDimValues loRaFishBrightnessValues
-LORAFISH_RESET_CONFIRM_PAGE LORAFISH_DX_CONTACT_PAGE'''.split():
+loRaFishLastActivityMs loRaFishAlwaysOnDimValues loRaFishBrightnessValues loRaFishDimSlowSupported
+LORAFISH_RESET_CONFIRM_PAGE LORAFISH_DX_CONTACT_PAGE LORAFISH_RANGE_PAGE'''.split():
     source += '\n' + declaration(name)
-for marker in ['static uint16_t loRaFishDisplayBattery(', 'static bool shouldRenderLoRaFish(',
+for marker in ['static uint16_t loRaFishDisplayBattery(', 'static bool shouldRenderLoRaFish(', 'static bool loRaFishDimSlowActive(',
                'static void applyLoRaFishBrightness(']:
     source += '\n' + block(marker)
 # Actual HomeScreen render cadence, with only pixel drawing mocked.
@@ -120,7 +120,7 @@ static void beginCheck(int hour=12) {
 static void message() { ui.handleLoRaFishMessage(); }
 static void report(const char* name) {
   printf("COUNTS %s pet=%d cfg=%d messages=%lu meals=%d\n",name,
-      saves["/lorafish.dat"],saves["/lorafish.cfg"],(unsigned long)fish.messages,feeds);
+      saves["/lorafish.tmp"],saves["/lorafish.cfg"],(unsigned long)fish.messages,feeds);
 }
 static void hour(int every, int hour=12) {
   beginCheck(hour);
@@ -191,23 +191,23 @@ int main() {
   assert(saves.empty());
   reboot();clearCounts();saveLoRaFish();saveLoRaFishSettings();
   assert(saves.empty());
-  assert(files["/lorafish.dat"].size()==32 && files["/lorafish.cfg"].size()==LORAFISH_SETTINGS_SIZE);
+  assert(files["/lorafish.dat"].size()==32+LoRaFishSafeSave::kTrailer && files["/lorafish.cfg"].size()==LORAFISH_SETTINGS_SIZE);
   pass("identical requests and canonical boot snapshots cause no file writes");
 
   beginCheck();for(int i=0;i<100;++i){message();service();}
-  assert(fish.messages==100 && saves["/lorafish.dat"]==1 && saves["/lorafish.cfg"]==1);
+  assert(fish.messages==100 && saves["/lorafish.tmp"]==1 && saves["/lorafish.cfg"]==1);
   report("100_message_burst");
   pass("one hundred messages batch, but their first eligible meal persists immediately");
 
   beginCheck(22);message();clockMs=299999;service();
   assert(saves.empty());clockMs=300000;service();
-  assert(saves["/lorafish.dat"]==1);
+  assert(saves["/lorafish.tmp"]==1);
   reboot();assert(fish.messages==1 && fish.ageMinutes==65);
   pass("passive counters reach disk exactly at five minutes and restore across boot");
 
-  hour(6,22);assert(fish.messages==600 && saves["/lorafish.dat"]==12);
+  hour(6,22);assert(fish.messages==600 && saves["/lorafish.tmp"]==12);
   report("600_messages_sleeping_hour");
-  hour(6);assert(fish.messages==600 && saves["/lorafish.dat"]<=14 && saves["/lorafish.cfg"]<=16);
+  hour(6);assert(fish.messages==600 && saves["/lorafish.tmp"]<=14 && saves["/lorafish.cfg"]<=16);
   report("600_messages_awake_hour");
   hour(60);report("60_messages_awake_hour");
   hour(0);report("quiet_awake_hour");
@@ -215,14 +215,14 @@ int main() {
   pass("sustained traffic cannot postpone the checkpoint indefinitely");
 
   beginCheck(22);clockMs=3600000;service();
-  assert(fish.ageMinutes==120 && saves["/lorafish.dat"]==1);
+  assert(fish.ageMinutes==120 && saves["/lorafish.tmp"]==1);
   report("one_hour_delayed_tick");
   pass("ordinary delayed age catch-up saves only the final state");
 
   beginCheck(22);clockMs=0xFFFFFF00UL;
   fishLastMinute=fishLastSave=loRaFishHappyLastMs=loRaFishHappyLastSavedMs=(uint32_t)clockMs;
   message();clockMs+=299999;service();assert(saves.empty());
-  ++clockMs;service();assert(saves["/lorafish.dat"]==1);
+  ++clockMs;service();assert(saves["/lorafish.tmp"]==1);
   pass("five-minute checkpoint deadline survives millis wraparound");
 
   beginCheck();message();clockMs=17000;flushLoRaFish();
@@ -235,7 +235,7 @@ int main() {
 
   for(bool settings:{false,true}) for(bool partial:{false,true}) {
     beginCheck();
-    const std::string path=settings?"/lorafish.cfg":"/lorafish.dat";
+    const std::string path=settings?"/lorafish.cfg":"/lorafish.tmp";  // the pet is written to tmp, then swapped in
     if(settings)loRaFishTheme=1;else ++fish.messages;
     if(partial)shortWrite=path;else failOpen=path;
     if(settings)saveLoRaFishSettings();else saveLoRaFish();
@@ -247,20 +247,21 @@ int main() {
     clockMs=4999;service();assert(opens[path]==1);
     failOpen=shortWrite="";clockMs=5000;service();assert(opens[path]==2);
     assert(!(settings?loRaFishSettingsSaveFailed:loRaFishSaveFailed));
-    assert(files[path].size()==(settings?LORAFISH_SETTINGS_SIZE:32));
+    assert(files[settings?path:std::string("/lorafish.dat")].size()==(settings?LORAFISH_SETTINGS_SIZE:32+LoRaFishSafeSave::kTrailer));
+    assert(settings || !files.count(path));
     reboot();assert(fish.messages==0 && loRaFishTheme==0);
   }
   pass("open/short-write failures remain dirty and retry at five seconds, never loop-spin");
 
 #ifndef ESP32
-  beginCheck();++fish.messages;failRemove="/lorafish.dat";
-  const auto disk=files[failRemove];saveLoRaFish();
-  assert(loRaFishSaveFailed && files[failRemove]==disk && opens.empty());
-  failRemove="";clockMs=5000;service();assert(files["/lorafish.dat"].size()==32);
+  beginCheck();++fish.messages;files["/lorafish.tmp"]={1,2,3};failRemove="/lorafish.tmp";
+  const auto disk=files["/lorafish.dat"],stale=files["/lorafish.tmp"];saveLoRaFish();
+  assert(loRaFishSaveFailed && files["/lorafish.dat"]==disk && files["/lorafish.tmp"]==stale && opens.empty());
+  failRemove="";clockMs=5000;service();assert(files["/lorafish.dat"].size()==32+LoRaFishSafeSave::kTrailer && !files.count("/lorafish.tmp"));
   pass("failed LittleFS replacement never appends to the existing record");
 #endif
 
-  beginCheck();++fish.messages;failOpen="/lorafish.dat";saveLoRaFish();
+  beginCheck();++fish.messages;failOpen="/lorafish.tmp";saveLoRaFish();
   failOpen="";clockMs=100;flushLoRaFish();
   assert(!loRaFishSaveFailed);reboot();assert(fish.messages==1);
   pass("shutdown makes one final write attempt without waiting for failure backoff");

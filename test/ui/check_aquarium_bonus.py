@@ -46,7 +46,7 @@ int main() {
   resetHappy();loRaFishHappiness.aquarium(true,fish.happiness);saveLoRaFish();
   files["/lorafish.cfg"].resize(36);reboot();
   assert(fish.happiness==85 && loRaFishGeneration==7 && loRaFishHappiness.aquariumCooldownMs==0);
-  assert(files["/lorafish.dat"].size()==sizeof(LoRaFishState));
+  assert(files["/lorafish.dat"].size()==sizeof(LoRaFishState)+LoRaFishSafeSave::kTrailer);
   pass("legacy 36-byte settings retain pet and care settings with no pre-existing aquarium cap");
 
   for(size_t length=37;length<44;length++) {

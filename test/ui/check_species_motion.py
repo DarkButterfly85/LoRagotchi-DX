@@ -10,8 +10,10 @@ source=r'''
 #include "examples/companion_radio/LoRaFishSpecies.h"
 using namespace LoRaFishSpecies;
 struct P {int x=71,y=39;bool r=false;};
+// idleMotion=false is the legacy drift (e-ink call sites); the natural idle motion of every group is covered
+// by check_natural_idle.py.
 P at(uint16_t id,uint8_t stage,uint32_t now,uint32_t offset=0,int width=128) {
- P p;habitatPosition(id,stage,width,now,offset,p.x,p.y,p.r);return p;
+ P p;habitatPosition(id,stage,width,now,offset,p.x,p.y,p.r,false);return p;
 }
 int main() {
  for(uint16_t id:{(uint16_t)ShellDweller,(uint16_t)Crab,(uint16_t)Jellyfish})
@@ -52,7 +54,7 @@ int main() {
   assert(p.y==habitatY(id,39,now+2700));
  }
  // Land animals share the Air walk/crawl/fly model: grounded or airborne, always inside the tank.
- for(uint16_t id=Dog;id<=TRex;++id)for(uint8_t stage=0;stage<4;++stage)
+ for(uint16_t id=Dog;id<=Kitsune;++id)for(uint8_t stage=0;stage<4;++stage)
  for(int width:{128,160,240})for(uint32_t now=0;now<40000;now+=113) {
   auto p=at(id,stage,now,2700,width);
   assert(p.x>=20 && p.x<=width-20);
@@ -60,7 +62,8 @@ int main() {
   auto kind=movement(id);assert(kind==Walk || kind==Crawl || kind==FlyMotion);
   if(kind==Walk || kind==Crawl)assert(p.y==37);
  }
- assert(movement(Dog)==Walk && movement(Snake)==Crawl && movement(Dragon)==FlyMotion);
+ assert(movement(Dog)==Walk && movement(Snake)==Crawl && movement(Dragon)==FlyMotion && movement(Griffin)==FlyMotion);
+ for(uint16_t id:{Wolf,Fox,Bear,Kitsune})assert(movement(id)==Walk);
 }
 '''
 with tempfile.TemporaryDirectory(prefix='dx-motion-') as tmp:
@@ -75,7 +78,7 @@ ui=(ROOT/'examples/companion_radio/ui-new/UITask.cpp').read_text()
 assert 'habitatPosition(loRaFishSpecies,fish.evolution' in ui
 assert 'guestMotionSpecies=guestPresent ? loragotchiDXGuest.species :' in ui
 assert 'habitatPosition(guestMotionSpecies,guestStage' in ui
-assert 'LORAGOTCHI_ANIMAL_EDITION || LoRaFishSpecies::waterMotion(guestMotionSpecies)' in ui
+assert 'LORAGOTCHI_HABITAT_MOTION || LoRaFishSpecies::waterMotion(guestMotionSpecies)' in ui
 assert ui.index('habitatPosition(loRaFishSpecies') < ui.index('const int foodX=w/2+18;')
 assert 'const int homeTargetY=localSleeping ? 38+bodyOffset : y;' in ui
 assert 'const int bodyOffset=LoRaFishLayout::bodyOffset(h);' in ui

@@ -4,12 +4,14 @@
 #include "LoRaFishGuestReturn.h"
 #include "LoRaFishVisit.h"
 #include "LoRaFishSpecies.h"
+#include "LoRaFishRfStats.h"
 
 
 extern float lorafish_last_rssi;
 extern float lorafish_last_snr;
 extern unsigned long lorafish_last_rf_ms;
 extern uint32_t lorafish_rf_sample_seq;
+extern LoRaFishRfStats::Window lorafish_rf_stats;   // RF Monitor+: kinds of packets heard (RAM only)
 
 
 #ifdef LORAFISH_UI
@@ -307,6 +309,7 @@ private:
   void checkCLIRescueCmd();
   bool handleCommand(const char* text, uint32_t sender_timestamp, char* reply);
   void checkSerialInterface();
+  void checkNovaSerial();   // "nova ..." lines from the Nova dashboard page (LORAGOTCHI_NOVA_LINK builds only)
   bool isValidClientRepeatFreq(uint32_t f) const;
 
   // helpers, short-cuts
@@ -331,6 +334,8 @@ private:
   bool send_unscoped;   // force un-scoped flood (instead of using send_scope)
   char cli_command[80];
   char reply_buf[166];
+  bool _cli_from_serial = false;      // handleCommand() is serving the USB serial console
+  bool _cli_serial_printed = false;   // the command already wrote its own serial line
   uint8_t app_target_ver;
   uint8_t *sign_data;
   uint32_t sign_data_len;

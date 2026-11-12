@@ -2,7 +2,7 @@
 """FIRST-PASS Land semantic masks (32x24, two frames) -- DRAFT ART, NOT FINAL.
 
 Mirrors tools/air/generate_sprites.py: original geometric masks, no emoji/font/raster
-imports. Generation-only Pillow; firmware uses 14976 packed bytes and no framebuffer.
+imports. Generation-only Pillow; firmware reads packed 2-bit masks and no framebuffer.
 0 transparent, 1 body, 2 markings/horns/mane/detail, 3 contrast eyes/nose.
 Every sprite faces right (the sprite code mirrors for left-facing pets).
 Run:  python3 tools/land/generate_sprites.py                 (writes LoRaFishLandArt.h)
@@ -16,10 +16,9 @@ ROOT = Path(__file__).resolve().parents[2]
 NAMES = ['Dog', 'Cat', 'Horse', 'Cow', 'Elephant', 'Pig', 'Ram', 'Sheep', 'Goat', 'Giraffe',
          'Kangaroo', 'Llama', 'Deer', 'Mouse', 'Hamster', 'Rabbit', 'Hedgehog', 'Koala', 'Panda',
          'Sloth', 'Otter', 'Skunk', 'Badger', 'Hippo', 'Rhino', 'Camel', 'Bactrian camel', 'Bison',
-         'Frog', 'Crocodile', 'Lizard', 'Turtle', 'Snake', 'Unicorn', 'Dragon', 'Dragon face',
-         'Phoenix', 'Sauropod', 'T-Rex']
+         'Frog', 'Crocodile', 'Lizard', 'Turtle', 'Snake', 'Unicorn', 'Dragon', 'Griffin',
+         'Phoenix', 'Sauropod', 'T-Rex', 'Wolf', 'Fox', 'Bear', 'Kitsune']
 BASE_ID = 512
-FLASH_BYTES = len(NAMES) * 2 * 192
 
 
 def frame(species, p):
@@ -205,12 +204,16 @@ def frame(species, p):
         line([(7, 14), (1, 19), (0, 22)], 1, 2)
         for x in (8, 12, 16): poly([(x, 10), (x + 1, 7), (x + 2, 10)], 2)
         dot(26, 6); legs([9, 17], 17, 22, 2, 1)
-    elif species == 35:  # Dragon face: frontal head, horns, whiskers, fangs
-        oval((7, 4, 25, 21)); poly([(8, 7), (4, 1), (12, 5)], 2); poly([(24, 7), (28, 1), (20, 5)], 2)
-        oval((9, 8, 14, 12), 2); oval((18, 8, 23, 12), 2); dot(11, 10); dot(20, 10)
-        oval((11, 14, 21, 20), 2); dot(14, 16); dot(18, 16)
-        line([(10, 20), (10, 22)], 2); line([(22, 20), (22, 22)], 2)
-        line([(7, 14), (2, 12 + p * 2)], 2); line([(25, 14), (30, 12 + p * 2)], 2)
+    elif species == 35:  # Griffin: eagle head + hooked beak, lion body, feathered wing, tufted tail
+        oval((5, 10, 22, 18))                                   # lion body
+        poly([(18, 11), (20, 6), (24, 6), (23, 12)])            # neck
+        oval((20, 3, 28, 10))                                   # eagle head
+        poly([(26, 5), (31, 8), (27, 9)], 2); dot(29, 9, 2)     # hooked beak
+        dot(25, 5); poly([(20, 3), (19, 0), (23, 2)], 2)        # eye, crest feathers
+        poly([(9, 11), (3, 3 + p * 4), (6, 1 + p * 4), (9, 3 + p * 4), (12, 2 + p * 4), (17, 10)], 2)
+        for x, y in [(5, 6 + p * 4), (8, 6 + p * 4)]: dot(x, y, 0)  # feather notches
+        line([(5, 13), (2, 15), (1, 19)], 1, 2); oval((0, 19, 3, 22), 2)  # tail + tuft
+        legs([8, 11, 18, 21], 16, 22, 2, 1, 2)
     elif species == 36:  # Phoenix: flame wings and tail, crest
         poly([(14, 12), (6, 2 + p * 6), (10, 1 + p * 6), (13, 4 + p * 6), (17, 3 + p * 6), (22, 12)], 2)
         oval((11, 8, 23, 16)); oval((21, 5, 27, 11)); poly([(26, 7), (31, 9), (26, 10)], 2)
@@ -227,6 +230,36 @@ def frame(species, p):
         for x in (23, 25, 27, 29): line([(x, 10), (x, 12)], 2)
         line([(19, 12), (22, 14)], 2); poly([(6, 9), (0, 14), (7, 15)]); dot(23, 6)
         rect((9, 19, 12 + p, 22)); rect((14, 19, 17 - p, 22))
+    elif species == 39:  # Wolf: long snout, upright ears, pale chest/muzzle, bushy hanging tail
+        oval((4, 9, 22, 18)); oval((10, 16, 18, 19), 2)                       # body, pale belly
+        poly([(19, 12), (24, 13), (21, 18)], 2)                              # chest ruff
+        oval((19, 5, 27, 13))                                                # head
+        poly([(25, 8), (31, 11), (31, 13), (25, 13)]); line([(26, 13), (30, 13)], 2)  # long muzzle
+        poly([(20, 6), (20, 1), (23, 5)]); poly([(23, 5), (25, 1), (26, 6)]) # upright ears
+        dot(21, 3, 2); dot(25, 3, 2); dot(25, 8); dot(31, 11)                # ear tips, eye, nose
+        poly([(5, 10), (1 - p, 13), (0, 20), (3 - p, 21), (4, 16), (6, 14)]); dot(1, 20, 2)  # tail
+        legs([8, 11, 17, 20], 16, 22)
+    elif species == 40:  # Fox: slim, tall ears, white cheek/socks, big tail with pale tip
+        oval((6, 11, 21, 17)); oval((19, 7, 26, 14))                         # body, head
+        poly([(25, 9), (31, 12), (25, 13)]); poly([(21, 12), (27, 14), (22, 15)], 2)  # snout, white cheek
+        poly([(19, 8), (20, 2), (23, 7)]); poly([(23, 7), (26, 2), (26, 8)]) # tall ears
+        dot(20, 4, 2); dot(25, 4, 2); dot(23, 9); dot(31, 12)
+        poly([(8, 13), (3, 8), (0, 11 + p), (1, 17), (7, 17)])               # big tail
+        poly([(0, 11 + p), (1, 16), (3, 14), (3, 10)], 2)                    # pale tail tip
+        legs([9, 12, 18, 20], 16, 22, 2, 1, 2)
+    elif species == 41:  # Bear: stocky, round ears, pale muzzle, short tail, heavy legs
+        oval((2, 7, 22, 20)); oval((17, 6, 28, 16))                          # body, head
+        oval((18, 3, 22, 7)); oval((24, 3, 28, 7)); dot(20, 5, 2); dot(26, 5, 2)  # round ears
+        oval((25, 10, 30, 15), 2); dot(29, 11); dot(23, 9)                   # muzzle, nose, eye
+        oval((0, 10, 3, 13)); legs([5, 9, 16, 19], 17, 23, 3, 1, 2)
+    elif species == 42:  # Kitsune: fox with three fanned tails (tails: Body outline, Accent fill, Eyes tip)
+        for q, pts in ((p, [(10, 11), (6, 7), (3, 4 + p)]), (0, [(9, 14), (5, 14), (3, 13)]),
+                       (-p, [(10, 16), (6, 19), (3, 20 - p)])):
+            line(pts, 1, 7); line(pts, 2, 5); rect((pts[-1][0], pts[-1][1], pts[-1][0] + 1, pts[-1][1] + 1), 3)
+        oval((9, 11, 23, 17)); oval((20, 7, 27, 14))                         # body, head
+        poly([(26, 9), (31, 12), (26, 13)]); poly([(22, 12), (28, 14), (23, 15)], 2)  # snout, cheek
+        poly([(20, 8), (21, 2), (24, 7)]); poly([(24, 7), (27, 2), (27, 8)]); dot(21, 4, 2); dot(26, 4, 2)
+        dot(24, 9); dot(31, 12); dot(23, 8, 3); legs([12, 15, 19, 21], 16, 22, 2, 1, 2)
     return im
 
 
@@ -254,7 +287,7 @@ def main():
     if '--preview' in sys.argv:
         preview(sys.argv[sys.argv.index('--preview') + 1]); return
     out = ['#pragma once', '#include <stdint.h>',
-           '// Generated by tools/land/generate_sprites.py; %d x 2 x 192 = %d bytes.' % (len(NAMES), FLASH_BYTES),
+           '// Generated by tools/land/generate_sprites.py; %d species x 2 frames x 192 bytes.' % len(NAMES),
            '// DRAFT first-pass procedural art: not reviewed on hardware, not final.',
            'namespace LoRaFishLandArt {',
            'static const uint8_t masks[%d][2][192] = {' % len(NAMES)]
@@ -263,9 +296,9 @@ def main():
         for phase in range(2):
             out.append('    {' + ','.join('0x%02x' % v for v in pack(frame(i, phase))) + '},')
         out.append('  },')
-    out += ['};', 'static_assert(sizeof(masks)==%d,"Land asset budget");' % FLASH_BYTES, '}']
+    out += ['};', '}']
     (ROOT / 'examples/companion_radio/ui-new/LoRaFishLandArt.h').write_text('\n'.join(out) + '\n')
-    print('PASS generated %d bytes, %d two-frame draft semantic masks' % (FLASH_BYTES, len(NAMES)))
+    print('PASS generated %d bytes, %d two-frame draft semantic masks' % (len(NAMES) * 2 * 192, len(NAMES)))
 
 
 if __name__ == '__main__':

@@ -37,6 +37,7 @@ public:
   virtual void forceFullRefresh() {} // next refresh will be full for eink
   virtual void turnOn() = 0;
   virtual void turnOff() = 0;
+  virtual bool supportsBrightness() const { return false; } // true only where setBrightness() visibly dims
   virtual void setBrightness(uint8_t brightness) {}
   virtual void clear() = 0;
   virtual void startFrame(ColorVal bkg = UIColor::window_bkg) = 0;

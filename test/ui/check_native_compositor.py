@@ -18,7 +18,7 @@ code=r'''
 #include "examples/companion_radio/ui-new/LoRaFishLayout.h"
 ColorVal UIColor::primary_txt=1,UIColor::secondary_txt=2;
 struct UITask { bool hasConnection(){return true;} };
-static bool loRaFishChannelNotice=false,loRaFishNameNotice=false,loRaFishMonoDisplayNotice=false,
+static bool loRaFishNovaNotice=false,loRaFishChannelNotice=false,loRaFishNameNotice=false,loRaFishMonoDisplayNotice=false,
  loRaFishAdoptionEligible=false,loRaFishNeedsPetSetup=false;
 static int loRaFishPage=0,loRaFishGeneration=65535;
 enum class LoRaFishSetting{Species,SpeciesSet,Theme};
@@ -54,7 +54,7 @@ int main(){
   assert(sceneW==dims.first-LoRaFishLayout::sidebarWidth(dims.first) && sceneH==dims.second-24);
   loRaFishPage=8;Recorder m(dims.first,dims.second);drawLoRaFishNative(m,&task);
   assert(sceneW==dims.first && sceneH==dims.second);loRaFishPage=0;
-  for(bool* notice:{&loRaFishChannelNotice,&loRaFishNameNotice,&loRaFishMonoDisplayNotice,
+  for(bool* notice:{&loRaFishNovaNotice,&loRaFishChannelNotice,&loRaFishNameNotice,&loRaFishMonoDisplayNotice,
                   &loRaFishAdoptionEligible,&loRaFishNeedsPetSetup}){
    *notice=true;Recorder n(dims.first,dims.second);drawLoRaFishNative(n,&task);
    assert(sceneW==dims.first && sceneH==dims.second);*notice=false;

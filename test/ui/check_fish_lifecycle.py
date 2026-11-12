@@ -42,6 +42,8 @@ static uint8_t loRaFishOrientation = 0;
 #include <string>
 #include <vector>
 #include "examples/companion_radio/ui-new/LoRaFishHappiness.h"
+#include "examples/companion_radio/ui-new/LoRaFishSafeSave.h"
+#include "examples/companion_radio/LoRaFishIdentity.h"
 using std::min;
 #define LORAFISH_UI 1
 #define FILE_READ 0
@@ -85,6 +87,10 @@ struct MemoryFS {
   }
   bool exists(const char* path) { return files.count(path); }
   bool remove(const char* path) { return files.erase(path); }
+  bool rename(const char* from, const char* to) {
+    if (!files.count(from)) return false;
+    auto data = files[from]; files.erase(from); files[to] = data; return true;
+  }
 } SPIFFS, InternalFS;
 struct {
   template<typename... Args> void printf(const char*, Args...) {}
@@ -108,7 +114,7 @@ static LoRaFishGuestReturn loragotchiDXGuestReturn;
 
 parts += [block('struct ' + name + ' {') + ';' for name in
           ['LoRaFishStateV1', 'LoRaFishState', 'LoRaFishAppearance']]
-names = '''loRaFishMysterySelected loRaFishMemorialCaptured loRaFishMemorialKey loRaFishMemorialBody loRaFishMemorialScales loRaFishSpecies loRaFishEggSpecies loRaFishMysterySeed loRaFishNeedsPetSetup loRaFishPetSetupField LORAFISH_PET_SETUP_PAGE loRaFishMonoDisplayColour loRaFishMonoDisplayColourKnown LORAFISH_MONO_DISPLAY_COLOUR_COUNT LORAFISH_MAGIC LORAFISH_MAGIC_V1 LORAFISH_EGG_MINUTES
+names = '''loRaFishIdName loRaFishMysterySelected loRaFishMemorialCaptured loRaFishMemorialKey loRaFishMemorialBody loRaFishMemorialScales loRaFishSpecies loRaFishEggSpecies loRaFishMysterySeed loRaFishNeedsPetSetup loRaFishPetSetupField LORAFISH_PET_SETUP_PAGE loRaFishMonoDisplayColour loRaFishMonoDisplayColourKnown LORAFISH_MONO_DISPLAY_COLOUR_COUNT LORAFISH_MAGIC LORAFISH_MAGIC_V1 LORAFISH_EGG_MINUTES
 LORAFISH_LIFESPAN_MINUTES LORAFISH_PACKETS_PER_FEED LORAFISH_MONOCHROME_COLOR
 LORAFISH_MAX_POOP fish fishLastMinute fishLastSave fishReaction fishReactionUntil
 loRaFishGeneration loRaFishPendingEgg loRaFishEggAppearance loRaFishMemorialEggSide
@@ -119,7 +125,7 @@ loRaFishFeedLastXValid loRaFishFeedStarted loRaFishNextAutoFeed loRaFishPage
 loRaFishColorField loRaFishColorDisplay loRaFishAppearanceLoaded loRaFishSimulationMode
 loRaFishTimeoutAwakeSetting loRaFishTheme loRaFishSleepHour loRaFishWakeHour
 loRaFishUtcOffsetQuarters loRaFishTimeoutAsleepSetting loRaFishBrightnessSetting
-loRaFishAlwaysOnDimSetting loRaFishBuzzerVolume loRaFishWakeSound loRaFishSleepSound
+loRaFishAlwaysOnDimSetting loRaFishDimSlow loRaFishBuzzerVolume loRaFishWakeSound loRaFishSleepSound
 loRaFishMessageSound lastWrittenLoRaFish haveLastWrittenLoRaFish
 loRaFishHappiness lastWrittenLoRaFishHappiness haveLastWrittenLoRaFishHappiness
 loRaFishHappyLastMs loRaFishHappyLastSavedMs LORAFISH_HAPPY_SETTINGS_MAGIC LORAFISH_AQUARIUM_SETTINGS_MAGIC
@@ -138,6 +144,8 @@ markers = [
     'static void encodeLoRaFishSettings(',
     'static const char* loRaFishRecordKey(',
     'static bool writeLoRaFishRecord(',
+    'struct LoRaFishPetStore {',
+    'static bool loRaFishPetRecordValid(',
     'static void saveLoRaFishSettings() {',
     'static void loadLoRaFishSettings() {',
     'static void serviceLoRaFishSettingsMenu(',
@@ -151,7 +159,9 @@ if 'static void ensureLoRaFishOffspring(' in SOURCE:
     markers.append('static void ensureLoRaFishOffspring(')
 markers.append('static uint32_t loRaFishLifeArtKey(')
 markers += ['static void hatchLoRaFishOffspring(', 'static void advanceLoRaFishHappiness(uint32_t until) {', 'static void checkpointLoRaFish(', 'static void flushLoRaFish(', 'static void tickLoRaFish() {']
-parts += [block(marker) for marker in markers]
+IDENTITY = SOURCE[SOURCE.index('// ---- static pet identity (/lorafish.id)'):SOURCE.index('static bool loRaFishPetRecordValid(')]
+for marker in markers:
+    parts.append(block(marker) + (';\nstatic LoRaFishPetStore loRaFishPetStore;\n' + IDENTITY if marker.startswith('struct LoRaFishPetStore') else ''))
 parts.append(r'''
 static void resetAt(uint32_t age, bool egg=false) {
   files.clear(); loRaFishMysterySelected=false; loRaFishMemorialCaptured=false; loRaFishMemorialKey=0; loRaFishNeedsPetSetup=false; loRaFishMysterySeed=0;
@@ -169,6 +179,7 @@ static void resetAt(uint32_t age, bool egg=false) {
   loRaFishColorDisplay=false; loRaFishSimulationMode=false;
   loragotchiDXHome={}; loragotchiDXGuest={false,true,0,2,3,4,5};
   settingsWrites=0;loRaFishAdoptionEligible=false;
+  loRaFishIdName[0]=0; loRaFishPetRestored=true; loadLoRaFishIdentity();   // begin(): the identity baseline is the pet as it starts
 }
 static void minute() { clockMs+=60000; tickLoRaFish(); }
 static void traits(uint8_t scales, uint8_t body, uint8_t eyes) {
@@ -186,6 +197,7 @@ static void reboot() {
   loRaFishGeneration=1; loRaFishPendingEgg=false; loRaFishEggAppearance={0,0,0};
   loRaFishColor=loRaFishScaleColor=loRaFishEyeColor=0;
   loadLoRaFish(); loadLoRaFishSettings();
+  loadLoRaFishIdentity();                                                // begin(): after the pet record and settings
 }
 static void pass(const char* name) { printf("PASS: %s\n", name); fflush(stdout); }
 int main() {
