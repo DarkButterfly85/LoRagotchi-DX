@@ -309,6 +309,9 @@ private:
   void checkCLIRescueCmd();
   bool handleCommand(const char* text, uint32_t sender_timestamp, char* reply);
   void checkSerialInterface();
+#if defined(LORAGOTCHI_NOVA_LINK) && !defined(ENABLE_USB_INTERFACE)
+  void checkNovaSerial();   // "nova ..." lines from the Nova dashboard page (see helpers/NovaCli.h)
+#endif
   bool isValidClientRepeatFreq(uint32_t f) const;
 
   // helpers, short-cuts

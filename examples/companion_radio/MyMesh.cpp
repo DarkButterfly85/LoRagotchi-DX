@@ -2742,6 +2742,41 @@ void MyMesh::checkCLIRescueCmd() {
   }
 }
 
+#if defined(LORAGOTCHI_NOVA_LINK) && !defined(ENABLE_USB_INTERFACE)
+// ---- LORAGOTCHI NOVA serial text link ---------------------------------------------------------
+// The Nova dashboard sends plain text lines over the USB serial port; each "nova ..." line gets
+// exactly one JSON line back. Parsing and wording live in helpers/NovaCli.h (host tested). Other
+// lines are ignored here. This runs only outside CLI Rescue (which has its own line reader on the
+// same port) and only when the phone link is not using USB, so the two cannot clash. It is not part
+// of handleCommand(), which can also be reached from mesh text messages.
+// Nothing is a feature yet: hello reports every capability as 0 and mesh/pet/petname answer
+// {"nova_unavailable":...}. Nothing is saved and nothing is sent over the radio.
+#include "LoRaGotchiVersion.h"
+#include "helpers/NovaCli.h"
+void MyMesh::checkNovaSerial() {
+  static char line[96];
+  static size_t len = 0;
+  static bool skip = false;                       // a line that was too long: ignore the rest of it
+
+  while (Serial.available()) {
+    const char c = (char)Serial.read();
+    if (c == '\n' || c == '\r') {
+      if (!skip && len) {
+        line[len] = 0;
+        char out[320];
+        if (NovaCli::reply(NovaCli::parse(line), LORAGOTCHI_EDITION_NAME, NovaCli::Caps(), out, sizeof(out))) {
+          Serial.print(out); Serial.print('\n');
+        }
+      }
+      len = 0; skip = false;
+      continue;
+    }
+    if (skip) continue;
+    if (len < sizeof(line) - 1) line[len++] = c; else { skip = true; len = 0; }
+  }
+}
+#endif  // LORAGOTCHI_NOVA_LINK
+
 void MyMesh::checkSerialInterface() {
   size_t len = _serial->checkRecvFrame(cmd_frame);
   if (len > 0) {
@@ -2958,6 +2993,9 @@ void MyMesh::loop() {
     checkCLIRescueCmd();
   } else {
     checkSerialInterface();
+#if defined(LORAGOTCHI_NOVA_LINK) && !defined(ENABLE_USB_INTERFACE)
+    checkNovaSerial();
+#endif
 #if defined(ENABLE_WIFI_INTERFACE) && defined(RP2040_PLATFORM) && !defined(ENABLE_USB_INTERFACE)
     // RP2040 WiFi builds are headless and have no way into the rescue CLI (that needs a
     // display + long-press), so serve config commands on the otherwise unused USB serial
