@@ -56,7 +56,7 @@ public:
   void clear() override { _d.clear(); _l.canvas.clear(); }
   void startFrame(ColorVal bkg = UIColor::window_bkg) override {
     _d.startFrame(bkg);
-    if (_colour) _l.canvas.beginFrameColor((uint16_t)bkg);
+    if (_colour) _l.beginColourFrame(_now, (uint16_t)bkg);   // key picture due: palette rebuilt from the seed first
     else _l.canvas.beginFrame(bkg != UIColor::window_bkg);
   }
   void endFrame() override { _d.endFrame(); _l.frameDone(_now); }

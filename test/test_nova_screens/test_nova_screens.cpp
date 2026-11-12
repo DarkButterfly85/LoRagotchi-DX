@@ -678,6 +678,109 @@ TEST(NovaColourScreen, StreamRestartsWithAFreshPalette) {
 }
 
 // =============================================================================================
+// 4b. Palette seed: which colours get the first slots, and that every key picture starts the same way
+// =============================================================================================
+namespace {
+// 20 strips drawn background-first, then the strips the picture cares about LAST (sprite colours): without a seed
+// they would be the ones that overflow.
+const uint16_t kPrio[4] = {0xF81F, 0x07E0, 0xFFE0, 0x2104};              // seeded, in this order
+void drawLateSprite(DisplayDriver& d, void*) {
+  for (int i = 0; i < 18; i++) { d.setColor((ColorVal)(0x0841u * (i + 1))); d.fillRect(i * 4, 0, 4, 10); }   // 18 background shades
+  for (int i = 3; i >= 0; i--) { d.setColor(kPrio[i]); d.fillRect(i * 4, 20, 4, 4); }                      // drawn in the reverse order
+}
+}  // namespace
+
+TEST(NovaPaletteSeed, SeededColoursTakeTheLowestSlotsInOrderAndNeverSnap) {
+  UIColor::window_bkg = 0xFFFF;
+  FakeScreen scr(100, 30, true);
+  Link l(NovaPetTee::formatOf(scr));
+  ASSERT_TRUE(l.ok());
+  l.setPaletteSeed(kPrio, 4);
+  l.request(1000);
+  Pic p;
+  ASSERT_TRUE(p.apply(frame(l, scr, 1000, drawLateSprite)));
+  EXPECT_EQ(0xFFFF, p.pal[0]) << "the window background is still slot 0";
+  for (int i = 0; i < 4; i++) EXPECT_EQ(kPrio[i], p.pal[1 + i]) << "seed slot " << i;
+  for (int i = 0; i < 4; i++) EXPECT_EQ((uint32_t)kPrio[i], p.pixel(i * 4 + 1, 21)) << "strip " << i << " is exact";
+  EXPECT_GT(l.canvas.overflowed(), 0u) << "18 shades do not all fit: the shades overflow";
+  UIColor::window_bkg = 0;
+}
+
+TEST(NovaPaletteSeed, WithoutASeedTheLateColoursAreTheOnesThatSnap) {   // what the seed fixes
+  UIColor::window_bkg = 0xFFFF;
+  FakeScreen scr(100, 30, true);
+  Link l(NovaPetTee::formatOf(scr));
+  l.request(1000);
+  Pic p;
+  ASSERT_TRUE(p.apply(frame(l, scr, 1000, drawLateSprite)));
+  int exact = 0;
+  for (int i = 0; i < 4; i++) exact += p.pixel(i * 4 + 1, 21) == (uint32_t)kPrio[i];
+  EXPECT_LT(exact, 4);
+  UIColor::window_bkg = 0;
+}
+
+TEST(NovaPaletteSeed, DuplicatesAndTheBackgroundTakeOneSlot) {
+  UIColor::window_bkg = 0xFFFF;
+  FakeScreen scr(100, 30, true);
+  Link l(NovaPetTee::formatOf(scr));
+  const uint16_t seed[] = {0xFFFF, 0xF81F, 0xF81F, 0x07E0, 0xFFFF};
+  l.setPaletteSeed(seed, 5);
+  l.request(1000);
+  Pic p;
+  ASSERT_TRUE(p.apply(frame(l, scr, 1000, drawDot)));
+  EXPECT_EQ(0xFFFF, p.pal[0]);
+  EXPECT_EQ(0xF81F, p.pal[1]);
+  EXPECT_EQ(0x07E0, p.pal[2]);
+  EXPECT_EQ(3, l.canvas.paletteCount());
+  UIColor::window_bkg = 0;
+}
+
+TEST(NovaPaletteSeed, EveryKeyPictureStartsFromTheSameSeedWhateverTheDrawingOrder) {
+  UIColor::window_bkg = 0xFFFF;
+  FakeScreen scr(100, 30, true);
+  Link l(NovaPetTee::formatOf(scr));
+  l.setPaletteSeed(kPrio, 4);
+  l.request(1000);
+  Pic p1;
+  ASSERT_TRUE(p1.apply(frame(l, scr, 1000, drawLateSprite)));
+  uint16_t first[16];
+  memcpy(first, l.canvas.palette(), sizeof(first));
+  l.dropPending();                                           // the next picture is a key picture again
+  l.request(1300);
+  Pic p2;
+  ASSERT_TRUE(p2.apply(frame(l, scr, 1300, drawStrips)));    // a different picture, other colours, other order
+  EXPECT_EQ(0xFFFF, p2.pal[0]);
+  for (int i = 0; i < 4; i++) EXPECT_EQ(first[1 + i], p2.pal[1 + i]) << "seed slot " << i;
+  l.dropPending();
+  l.request(1600);
+  Pic p3;
+  ASSERT_TRUE(p3.apply(frame(l, scr, 1600, drawLateSprite)));   // the first scene again: the same palette as the first time
+  EXPECT_EQ(0, memcmp(first, p3.pal, sizeof(first)));
+  UIColor::window_bkg = 0;
+}
+
+TEST(NovaPaletteSeed, DeltaPicturesKeepTheirKeyPicturesPalette) {
+  UIColor::window_bkg = 0xFFFF;
+  FakeScreen scr(100, 30, true);
+  Link l(NovaPetTee::formatOf(scr));
+  l.setPaletteSeed(kPrio, 4);
+  l.request(1000);
+  Pic p;
+  ASSERT_TRUE(p.apply(frame(l, scr, 1000, drawLateSprite)));
+  uint16_t before[16];
+  memcpy(before, l.canvas.palette(), sizeof(before));
+  l.request(1300);
+  const std::string d = frame(l, scr, 1300, drawLateSprite);
+  EXPECT_TRUE(d.empty()) << "nothing moved: nothing to say";
+  int x = 4;
+  l.request(1600);
+  const std::string d2 = frame(l, scr, 1600, drawDot2, &x);
+  if (!d2.empty()) EXPECT_EQ("0", parseFields(d2).get("k"));
+  EXPECT_EQ(0, memcmp(before, l.canvas.palette(), 5 * sizeof(uint16_t))) << "the seeded slots do not move";
+  UIColor::window_bkg = 0;
+}
+
+// =============================================================================================
 // 5. E-ink: a still picture, black on white, no animation
 // =============================================================================================
 namespace {
