@@ -409,6 +409,34 @@ check(pt.startswith('PASSTHROUGH same'), 'the real screen got different calls wi
 print('tee passes every call to the real screen unchanged (' + pt + ')')
 
 
+# ---- 6b. a screen with narrower text than the copy's 6-column cells (T096) --------------------------------------
+# The T096 scales its 160x80 panel to a 128x64 layout and reports its text width as physical/1.25, so a
+# character is 4.8 layout columns. The real screen fits a string that ends at x=138 on the copy's scale, but the
+# copy used 6-column cells, ran out of row at x=124 and wrapped the last characters onto the next line. Each
+# character must land where the driver puts it.
+def adv_pos(i):                      # the driver's width of the first i characters: floor(4.8 i)
+    return i * 24 // 5
+
+
+m = Model()
+txt = 'AgAgAgAg'
+for i, ch in enumerate(txt):
+    m.text(100 + adv_pos(i), 10, 1, ch)
+m.text(100 + adv_pos(len(txt)), 10, 1, 'A')          # a second print carries on from where the first ended
+out = run_harness('\n'.join(['ADV 24 5', 'REQ 1000', 'F 1000', 'cursor 100 10', 'print ' + txt, 'print A', 'DUMP', 'E']) + '\n').splitlines()
+dump = bytes.fromhex([l for l in out if re.fullmatch(r'[0-9a-f]{2048}', l)][0])
+check(dump == m.frame_bytes(), 'narrow-text screen: the copy must put each character where the real screen does (no wrap onto the next line)')
+check(not any(m.g[y][x] for y in range(19, 64) for x in range(W)), 'model sanity: nothing below the first text row')
+pt = [l for l in out if l.startswith('PASSTHROUGH')][0]
+check(pt.startswith('PASSTHROUGH same'), 'narrow-text screen: the real screen must still get the same calls: ' + pt)
+# the OLED path (width 6n-1) is unchanged: 6-column cells, wrap at the right edge, as before
+m = Model()
+m.text(100, 10, 1, 'AgAg'); m.text(0, 18, 1, 'Ag')
+out = run_harness('\n'.join(['REQ 1000', 'F 1000', 'cursor 100 10', 'print AgAgAg', 'DUMP', 'E']) + '\n').splitlines()
+dump = bytes.fromhex([l for l in out if re.fullmatch(r'[0-9a-f]{2048}', l)][0])
+check(dump == m.frame_bytes(), 'OLED text keeps 6-column cells and its wrap')
+print('narrow-text screen (T096, 4.8 columns a character): copy places each character like the real screen, no wrap; OLED unchanged')
+
 # ---- 7. the waiting hint (screen off) -------------------------------------------------------------
 wt = re.findall(r'^WAIT (\d)$', run_harness('\n'.join(['REQ 1000', 'WAIT 2000', 'WAIT 4500', 'F 4600', 'rect 1 1 2 2', 'E', 'WAIT 4700',
                                                          'REQ 9000', 'WAIT 9500', 'WAIT 12500']) + '\n'), re.M)

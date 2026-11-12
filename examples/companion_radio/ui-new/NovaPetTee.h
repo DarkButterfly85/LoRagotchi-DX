@@ -66,7 +66,30 @@ public:
     if (_colour) _l.canvas.setColor565((uint16_t)c); else _l.canvas.setOn(c != UIColor::window_bkg);
   }
   void setCursor(int x, int y) override { _d.setCursor(x, y); _l.canvas.setCursor(x, y); }
-  void print(const char* s) override { _d.print(s); _l.canvas.print(s); }
+  void print(const char* s) override {
+    _d.print(s);
+    NovaPetLink::Canvas& c = _l.canvas;
+    const size_t n = strlen(s);
+    const int sz = c.textSize();
+    // The copy sets text in 6-column cells. A screen whose own text is narrower (the T096 scales its 160x80
+    // panel to a 128x64 layout, so a character is 4.8 layout columns) fits more characters on a line than the
+    // copy would: the copy then wrapped the last characters onto the next line. Put each character where the
+    // real screen puts it instead, taking the width from the driver. Widths the driver reports within one
+    // column a character of the cell (the OLED reports 6n-1) keep the original path.
+    char buf[96];
+    if (n == 0 || n >= sizeof(buf) || strchr(s, '\n') || (int)_d.getTextWidth(s) + sz >= 6 * sz * (int)n) {
+      c.print(s);
+      return;
+    }
+    memcpy(buf, s, n + 1);
+    const int x0 = c.cursorX(), y = c.cursorY();
+    for (size_t i = 0; i < n; i++) {
+      int off = 0;
+      if (i) { const char keep = buf[i]; buf[i] = 0; off = _d.getTextWidth(buf); buf[i] = keep; }
+      c.glyph((unsigned char)buf[i], x0 + off, y);
+    }
+    c.setCursor(x0 + _d.getTextWidth(s), y);
+  }
   void fillRect(int x, int y, int w, int h) override { _d.fillRect(x, y, w, h); _l.canvas.fillRect(x, y, w, h); }
   void drawRect(int x, int y, int w, int h) override { _d.drawRect(x, y, w, h); _l.canvas.drawRect(x, y, w, h); }
   void drawXbm(int x, int y, const uint8_t* bits, int w, int h) override {
