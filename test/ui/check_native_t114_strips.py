@@ -76,6 +76,6 @@ with tempfile.TemporaryDirectory() as t:
  p=Path(t);(p/'helpers').mkdir()
  for name in ['Wire.h','SPI.h','Adafruit_GFX.h','Adafruit_ST7789.h','helpers/RefCountedDigitalPin.h']:(p/name).write_text('#include "mock.h"'+chr(10))
  (p/'mock.h').write_text(mock);(p/'main.cpp').write_text(main)
- flags=['LORAGOTCHI_NATIVE_UI','HELTEC_T114_WITH_DISPLAY','LORAFISH_STRIP_REDRAW','DISPLAY_WIDTH=135','DISPLAY_HEIGHT=240','DISPLAY_ROTATION=1','DISPLAY_SCALE_X=1.875f','DISPLAY_SCALE_Y=2.109375f','PIN_TFT_CS=39','PIN_TFT_DC=47','PIN_TFT_RST=40','PIN_TFT_SDA=48','PIN_TFT_SCL=38','PIN_TFT_VDD_CTL=7','PIN_TFT_LEDA_CTL=17']
+ flags=['LORAGOTCHI_NATIVE_UI','HELTEC_T114_WITH_DISPLAY','LORAFISH_STRIP_REDRAW','DISPLAY_WIDTH=135','DISPLAY_HEIGHT=240','DISPLAY_ROTATION=1','PIN_TFT_CS=39','PIN_TFT_DC=47','PIN_TFT_RST=40','PIN_TFT_SDA=48','PIN_TFT_SCL=38','PIN_TFT_VDD_CTL=7','PIN_TFT_LEDA_CTL=17']
  subprocess.run(['g++','-std=c++17','-Wall','-Wextra','-Wno-unused-parameter','-I'+t,'-I'+str(ROOT),'-I'+str(ROOT/'src'),'-I'+str(ROOT/'src/helpers/ui'),*['-D'+f for f in flags],str(p/'main.cpp'),str(ROOT/'src/helpers/ui/ST7789LCDDisplay.cpp'),'-o',str(p/'check')],check=True)
  subprocess.run([str(p/'check')],check=True)

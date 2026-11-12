@@ -45,7 +45,8 @@ int main(int argc,char**) {
  assert(LoRaFishLayout::bodyOffset(135)==35);
  assert(LoRaFishLayout::bodyOffset(170)==53);
  assert(LoRaFishLayout::sidebarWidth(240)==0 && LoRaFishLayout::sidebarWidth(320)==0);
- for(int h:{111,146,216}) {
+ assert(LoRaFishLayout::bodyOffset(80)==8 && LoRaFishLayout::bodyOffset(128)==32);   // 160x80 and 220x128 panels
+ for(int h:{80,111,128,146,216}) {
    int low=999,high=0;
    for(int y=19;y<=41;++y){int p=LoRaFishLayout::habitatY(y,h);assert(p>=34 && p<=h-34);low=std::min(low,p);high=std::max(high,p);}
    assert(high-low>(h-68)*8/10);
@@ -61,7 +62,7 @@ with tempfile.TemporaryDirectory() as t:
  p=Path(t);(p/'helpers').mkdir()
  for name in ['Wire.h','SPI.h','Adafruit_GFX.h','Adafruit_ST7789.h','helpers/RefCountedDigitalPin.h']:(p/name).write_text('#include "mock.h"'+chr(10))
  (p/'mock.h').write_text(mock);(p/'main.cpp').write_text(main)
- flags=['LORAGOTCHI_NATIVE_UI','HELTEC_VISION_MASTER_T190','LORAGOTCHI_T190_COLOR','LORAFISH_TDECK_FRAMEBUFFER','DISPLAY_WIDTH=170','DISPLAY_HEIGHT=320','DISPLAY_ROTATION=1','DISPLAY_SCALE_X=2.5f','DISPLAY_SCALE_Y=2.65625f','PIN_TFT_CS=39','PIN_TFT_DC=47','PIN_TFT_RST=40','PIN_TFT_SDA=48','PIN_TFT_SCL=38','PIN_TFT_VDD_CTL=7','PIN_TFT_LEDA_CTL=17','PIN_TFT_LEDA_CTL_ACTIVE=HIGH']
+ flags=['LORAGOTCHI_NATIVE_UI','HELTEC_VISION_MASTER_T190','LORAGOTCHI_T190_COLOR','LORAFISH_TDECK_FRAMEBUFFER','DISPLAY_WIDTH=170','DISPLAY_HEIGHT=320','DISPLAY_ROTATION=1','PIN_TFT_CS=39','PIN_TFT_DC=47','PIN_TFT_RST=40','PIN_TFT_SDA=48','PIN_TFT_SCL=38','PIN_TFT_VDD_CTL=7','PIN_TFT_LEDA_CTL=17','PIN_TFT_LEDA_CTL_ACTIVE=HIGH']
  subprocess.run(['g++','-std=c++17','-Wall','-Wextra','-Wno-unused-parameter','-I'+t,'-I'+str(ROOT),'-I'+str(ROOT/'src'),'-I'+str(ROOT/'src/helpers/ui'),*['-D'+f for f in flags],str(p/'main.cpp'),str(ROOT/'src/helpers/ui/ST7789LCDDisplay.cpp'),'-o',str(p/'check')],check=True)
  subprocess.run([str(p/'check')],check=True);subprocess.run([str(p/'check'),'allocation-failure'],check=True)
 print('PASS native T190: 1:1 text/bitmap/rectangles, edges, clipped regions, full/partial, wake/orientation, allocation fallback')

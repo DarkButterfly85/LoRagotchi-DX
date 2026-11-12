@@ -4,12 +4,14 @@
 #include <SPI.h>
 #include <helpers/RefCountedDigitalPin.h>
 
-#ifndef NV3001B_LOGICAL_WIDTH
-  #define NV3001B_LOGICAL_WIDTH 128
+// The UI draws at the panel's own size, in the mounted orientation (DISPLAY_ROTATION 0: 220 wide, 128
+// high). One UI pixel is one panel pixel; there is no logical-to-physical mapping.
+#ifndef NV3001B_SCREEN_WIDTH
+  #define NV3001B_SCREEN_WIDTH 220
 #endif
 
-#ifndef NV3001B_LOGICAL_HEIGHT
-  #define NV3001B_LOGICAL_HEIGHT 64
+#ifndef NV3001B_SCREEN_HEIGHT
+  #define NV3001B_SCREEN_HEIGHT 128
 #endif
 
 #ifndef NV3001B_PANEL_WIDTH
@@ -44,7 +46,7 @@ class NV3001BDisplay : public DisplayDriver {
 
 public:
   NV3001BDisplay(RefCountedDigitalPin* power = nullptr) :
-      DisplayDriver(NV3001B_LOGICAL_WIDTH, NV3001B_LOGICAL_HEIGHT), spi(NV3001B_SPI_HOST), periph_power(power) { }
+      DisplayDriver(NV3001B_SCREEN_WIDTH, NV3001B_SCREEN_HEIGHT), spi(NV3001B_SPI_HOST), periph_power(power) { }
 
   bool begin();
   static const char* driverName() { return "NV3001B"; }
