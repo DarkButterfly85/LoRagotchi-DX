@@ -2752,31 +2752,37 @@ void MyMesh::checkCLIRescueCmd() {
 // The Nova dashboard page talks to the radio over the USB serial port in plain text lines. The
 // picture format and the dashboard come from LODESTAR ORION / LODESTAR NOVA (Aries Thorne, Todd
 // Steinhauer, FEAR REACTIVE), used with the authors' permission; see NOTICE and docs/CREDITS.md.
-//   nova hello           keep-alive; the radio answers with one JSON line saying what it can do
+// Parsing, the hello line and the petname replies live in helpers/NovaCli.h and helpers/NovaPetName.h
+// (host tested); this block only connects them to the serial port, the pet picture and /lorafish.id.
+//   nova hello           keep-alive; one JSON line: edition ("ed") and what this firmware really does (caps)
 //   nova mesh            mesh analyser stream: not in this build yet, answered with {"lg":{"mesh":0}}
 //   nova pet             send the pet picture, a line at a time, for the next 4 s (the page repeats it)
-//   nova petname <name>  saves the pet's own name (16 characters at most, "-" clears it) in /lorafish.id and
-//                        nothing else; the pet screen header shows it instead of the radio's name
+//   nova petname <name>  saves the pet's own name (16 characters at most, printable ASCII without " and \,
+//                        "-" clears it) in /lorafish.id and nothing else (never /lorafish.dat); the pet screen
+//                        header shows it instead of the radio's name. Answer: {"nova_ok":"petname","name":"..."}
 // Only lines that start with "nova" are looked at; everything else on the port is ignored. This runs
 // only when the phone is not using the USB port (no ENABLE_USB_INTERFACE) and CLI Rescue is not
 // active, so it cannot clash with either. Nothing is ever sent unless a line asked for it.
+#include "LoRaGotchiVersion.h"
+#include "helpers/NovaCli.h"
+#include "helpers/NovaPetName.h"
 static void novaSay(const char* s) { Serial.print(s); Serial.print('\n'); }
 
 static void novaCommand(const char* line, uint32_t now) {
-  if (strncmp(line, "nova", 4) != 0 || (line[4] != 0 && line[4] != ' ')) return;   // not for us
-  const char* w = line + 4;
-  while (*w == ' ') w++;
-  size_t n = 0;
-  while (w[n] && w[n] != ' ') n++;
+  const NovaCli::Parsed p = NovaCli::parse(line);
+  if (p.cmd == NovaCli::Cmd::NotNova) return;                       // not for us
   static uint32_t next_note = 0;                  // explanations (not the pictures) at most every 30 s
   const bool note_ok = (int32_t)(now - next_note) >= 0;
+  char msg[320];
 
-  if (n == 5 && strncmp(w, "hello", 5) == 0) {
-    novaSay(NovaPetLink::supported() ? "{\"lg\":{\"hello\":1,\"pet\":1,\"mesh\":0}}"
-                                     : "{\"lg\":{\"hello\":1,\"pet\":0,\"mesh\":0}}");
-  } else if (n == 4 && strncmp(w, "mesh", 4) == 0) {
+  if (p.cmd == NovaCli::Cmd::Hello) {
+    NovaCli::Caps caps;                           // a 1 only where the feature really works in this build
+    caps.pet = NovaPetLink::supported() ? 1 : 0;                    // the picture stream (128x64 mono screens)
+    caps.petname = LoRaFishIdentity::setterSlot() ? 1 : 0;          // the pet screen registered its /lorafish.id setter
+    if (NovaCli::reply(p, LORAGOTCHI_EDITION_NAME, caps, msg, sizeof(msg))) novaSay(msg);
+  } else if (p.cmd == NovaCli::Cmd::Mesh) {
     novaSay("{\"lg\":{\"mesh\":0}}");
-  } else if (n == 3 && strncmp(w, "pet", 3) == 0) {
+  } else if (p.cmd == NovaCli::Cmd::Pet) {
     if (!NovaPetLink::supported()) {
       if (note_ok) { next_note = now + 30000u; novaSay("# nova pet: this radio has no 128x64 black-and-white screen, so there is no picture to send yet"); }
     } else if (NovaPetLink::Link* l = NovaPetLink::link(true)) {
@@ -2784,33 +2790,21 @@ static void novaCommand(const char* line, uint32_t now) {
     } else if (note_ok) {
       next_note = now + 30000u; novaSay("# nova pet: not enough memory for the picture");
     }
-  } else if (n == 7 && strncmp(w, "petname", 7) == 0) {
-    const char* arg = w + n;
-    while (*arg == ' ') arg++;
-    char nm[96];                                  // the rest of the line (the line buffer is 96 bytes)
-    strncpy(nm, arg, sizeof(nm) - 1);
-    nm[sizeof(nm) - 1] = 0;
-    size_t nl = strlen(nm);
-    while (nl && nm[nl - 1] == ' ') nm[--nl] = 0;
-    if (nl == 0) {
-      novaSay("# petname: usage: nova petname <name> (16 characters at most; - clears the name); nothing was changed");
-    } else {
-      if (nl == 1 && nm[0] == '-') nm[0] = 0;     // the dashboard sends "-" to clear
-      char msg[128];
-      switch (LoRaFishIdentity::requestName(nm)) {
-        case LoRaFishIdentity::NameOk:
-          if (nm[0]) snprintf(msg, sizeof(msg), "# petname: saved \"%.16s\" in /lorafish.id (shown in the pet screen header)", nm);
-          else snprintf(msg, sizeof(msg), "# petname: name cleared; the pet screen header shows the radio's name again");
-          novaSay(msg);
-          break;
-        case LoRaFishIdentity::NameTooLong: novaSay("# petname: too long (16 characters at most); nothing was changed"); break;
-        case LoRaFishIdentity::NameBadChar: novaSay("# petname: plain keyboard characters only (no accents or symbols outside ASCII); nothing was changed"); break;
-        case LoRaFishIdentity::NameNoPet:   novaSay("# petname: this build has no pet name to set; nothing was changed"); break;
-        default:                            novaSay("# petname: could not save /lorafish.id; nothing was changed"); break;
+  } else if (p.cmd == NovaCli::Cmd::PetName) {
+    char nm[NovaPetName::kMax + 1];
+    NovaPetName::Status st = NovaPetName::prepare(p.arg, nm, sizeof(nm));   // trims; "-" clears; refuses bad names
+    if (st == NovaPetName::Status::Ok || st == NovaPetName::Status::Cleared) {
+      switch (LoRaFishIdentity::requestName(nm)) {   // UITask: LoRaFishIdentity::saveWithName() -> /lorafish.id only
+        case LoRaFishIdentity::NameOk:      break;
+        case LoRaFishIdentity::NameTooLong: st = NovaPetName::Status::TooLong; break;
+        case LoRaFishIdentity::NameBadChar: st = NovaPetName::Status::NonAscii; break;
+        case LoRaFishIdentity::NameNoPet:   st = NovaPetName::Status::NoPet; break;
+        default:                            st = NovaPetName::Status::SaveFailed; break;
       }
     }
-  } else {
-    novaSay("# nova: not supported by this firmware. Known: hello, mesh, pet, petname");
+    if (NovaPetName::reply(st, nm, msg, sizeof(msg))) novaSay(msg);
+  } else if (NovaCli::reply(p, LORAGOTCHI_EDITION_NAME, NovaCli::Caps(), msg, sizeof(msg))) {
+    novaSay(msg);                                 // unknown sub-command: one error line, never an echo
   }
 }
 

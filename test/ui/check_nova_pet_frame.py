@@ -284,6 +284,57 @@ for f, cl in zip(frames, cpp_lines):
     check(r[0] and r[2] == f, 'dashboard decoded a C++ key line wrongly')
 print('dashboard decoder reads the C++ lines back to the original pictures')
 
+# ---- 3b. the pet's name on key pictures ("n"), always JSON safe ---------------------------------------
+def with_name(line, name):             # the reference: a key line gets "n" before "d" only when the name is not empty
+    return line if not name else line.replace('"k":1,', '"k":1,"n":"%s",' % name, 1)
+
+
+def jsafe(raw):                        # NovaPetName::jsonSafe: printable ASCII, no quote, no backslash, 16 at most
+    return ''.join(c for c in raw if 0x20 <= ord(c) <= 0x7E and c not in '"\\')[:16]
+
+
+name_cases = ['Fluffy', 'Mr Bubbles', '0123456789ABCDEF', '0123456789ABCDEFGHIJ', 'a"b', 'a\\b', '"}},{"pet":{"s":9', 'caf\u00e9', 'tab\there', '"\\"\\', '']
+ns = []
+for i, nm in enumerate(name_cases):
+    ns.append('ENCN %d %s %s' % (i + 1, frames[6].hex(), nm.encode('utf-8').hex() or '00'))
+ns.append('ENCN 77 %s %s' % (frames[5].hex(), 'Fluffy'.encode().hex()))                        # key line from the worst-case picture, with a name
+ns.append('ENCN 78 %s %s %s' % (frames[5].hex(), 'Fluffy'.encode().hex(), frames[4].hex()))     # delta line: no name
+nout = [l for l in run_harness('\n'.join(ns) + '\n').splitlines() if l.startswith('ENCN ')]
+check(len(nout) == len(name_cases) + 2, 'name encoder reply count')
+for i, nm in enumerate(name_cases):
+    nlen, nline = nout[i].split(' ', 2)[1], nout[i].split(' ', 2)[2]
+    want_name = jsafe(nm.encode('utf-8').decode('latin-1')) if nm else ''
+    if nm == '': want_name = ''
+    want = with_name(ref_line(frames[6], None, i + 1), want_name)
+    check(int(nlen) == len(want) and nline + '\n' == want, 'name %r: C++ line differs from the reference:\n %s\n %s' % (nm, nline[:120], want[:120]))
+    obj = json.loads(nline)                                              # still valid JSON, whatever the name
+    check(obj['pet'].get('n', '') == want_name and len(obj['pet'].get('n', '')) <= 16, 'name %r came out as %r' % (nm, obj['pet'].get('n')))
+    check('\\' not in nline.split('"d"')[0].replace('\\"', '') and nline.count('\n') == 0, 'name %r left a stray backslash' % nm)
+    r = dashboard_decode([nline + '\n'])[0]
+    check(r[0] and r[2] == frames[6], 'the dashboard must still decode a key picture that carries a name (%r)' % nm)
+longline = nout[len(name_cases)].split(' ', 2)
+check(int(longline[1]) < MAX_LINE and json.loads(longline[2])['pet']['n'] == 'Fluffy', 'worst-case picture plus a name still fits MAX_LINE (%s of %d)' % (longline[1], MAX_LINE))
+dl = json.loads(nout[len(name_cases) + 1].split(' ', 2)[2])
+check(dl['pet']['k'] == 0 and 'n' not in dl['pet'], 'delta pictures never carry the name')
+print('key pictures carry the pet name as "n" (16 characters, printable ASCII, no quote or backslash, none when empty); deltas never do')
+
+# through the link: the name given with setName() is on every key picture and on no delta
+def frame_ops_n(t, x, req=None):
+    return (['REQ %d' % req] if req is not None else []) + ['F %d' % t, 'rect %d 20 6 4' % x, 'box 0 0 128 64', 'rect 60 30 3 3', 'E']
+
+
+ls = ['NAMEHEX %s' % 'Fluffy"\\'.encode().hex(), 'REQ 1000'] + [x for k in range(12) for x in frame_ops_n(1000 + 300 * k, 5 + k, req=1000 + 300 * k)]
+lout = run_harness('\n'.join(ls) + '\n').splitlines()
+ll = [json.loads(l[5:]) for l in lout if l.startswith('LINE ')]
+check(len(ll) >= 8 and any(o['pet']['k'] == 1 for o in ll), 'the stream produced %d lines' % len(ll))
+for o in ll:
+    if o['pet']['k'] == 1: check(o['pet'].get('n') == 'Fluffy', 'key picture name: %r' % o['pet'].get('n'))
+    else: check('n' not in o['pet'], 'a delta picture must not carry the name')
+ls2 = ['REQ 1000', 'F 1000', 'rect 1 1 4 4', 'E']
+first = [json.loads(l[5:]) for l in run_harness('\n'.join(ls2) + '\n').splitlines() if l.startswith('LINE ')][0]
+check(first['pet']['k'] == 1 and 'n' not in first['pet'], 'with no name set the key picture has no "n" field at all')
+print('through the link: name on every key picture, none without one')
+
 # ---- 4. a moving picture: key, deltas, quiet, repeat key, dropped line ------------------------------
 def scene(x):
     mm = Model(); mm.fill(x, 20, 6, 4); mm.box(0, 0, 128, 64); mm.fill(60, 30, 3, 3)
@@ -395,28 +446,31 @@ def dispatch(line):                    # the dashboard's onLine(), conditions co
     line = line.strip()
     if line[:1] == '{' and line.find('"mesh"') == 1: return 'mesh'
     if line[:1] == '{' and line.find('"pet"') == 1: return 'pet'
+    if line.startswith('{"ed":') and line.find('"nova":{') > 0: return 'hello'     # edition + caps: the router reads "ed" first
     if line[:1] == '{' and line.find('"nova"') > 0: return 'frame'          # would be read as radio telemetry
     if line[:1] == '#':
         return 'nosupport' if re.match(r'^nova \[status\|profile', line[1:].strip()) else 'log'
     return 'ignored'
 
 
-s1 = ['SUP 1', 'T 100', 'RX nova hello\\r\\n', 'T 110', 'RX nova mesh\\n', 'T 120', 'RX nova petname Fluffy\\n', 'T 130',
+s1 = ['SUP 1', 'SETTER 1', 'T 100', 'RX nova hello\\r\\n', 'T 110', 'RX nova mesh\\n', 'T 120', 'RX nova petname Fluffy\\n', 'T 130',
       'RX nova profile away\\n', 'T 140', 'RX hello\\nls\\nnext\\nnovapet\\n', 'T 150', 'RX nova   he', 'T 160', 'RX llo\\n', 'T 170',
       'RX nova pets\\n', 'T 180', 'RXLONG 200', 'T 190']
 o = outs(run_serial(s1))
 check(o[0] == '', 'nothing may be sent before a command')
-check(o[1] == '{"lg":{"hello":1,"pet":1,"mesh":0}}\n', 'nova hello reply: %r' % o[1])
+HELLO1 = '{"ed":"dx","nova":{"v":1,"caps":{"pet":1,"mesh":0,"contacts":0,"petname":1,"keys":0,"clean":0,"feed":0,"guess":0,"ping":0,"sendpet":0}},"lg":{"hello":1,"pet":1,"mesh":0}}\n'
+HELLO0 = HELLO1.replace('"pet":1,"mesh":0,"contacts":0,"petname":1', '"pet":0,"mesh":0,"contacts":0,"petname":0').replace('"lg":{"hello":1,"pet":1', '"lg":{"hello":1,"pet":0')
+check(o[1] == HELLO1, 'nova hello reply (pet screen registered, so petname 1): %r' % o[1])
 check(o[2] == '{"lg":{"mesh":0}}\n', 'nova mesh reply: %r' % o[2])
-check(o[3].startswith('# petname: ') and o[3].count('\n') == 1, 'nova petname reply: %r' % o[3])
-check(o[4].startswith('# nova: not supported') and o[4].count('\n') == 1, 'unknown nova command reply: %r' % o[4])
+check(o[3] == '{"nova_ok":"petname","name":"Fluffy"}\n', 'nova petname reply is a JSON ok line: %r' % o[3])
+check(o[4] == '{"nova_error":"unknown_command"}\n', 'unknown nova command reply: %r' % o[4])
 check(o[5] == '', 'lines that are not "nova ..." must be ignored: %r' % o[5])
-check(o[6] == '' and o[7] == '{"lg":{"hello":1,"pet":1,"mesh":0}}\n', 'a command split over two reads, extra spaces: %r %r' % (o[6], o[7]))
-check(o[8].startswith('# nova: not supported'), '"nova pets" is not "nova pet": %r' % o[8])
+check(o[6] == '' and o[7] == HELLO1, 'a command split over two reads, extra spaces: %r %r' % (o[6], o[7]))
+check(o[8] == '{"nova_error":"unknown_command"}\n', '"nova pets" is not "nova pet": %r' % o[8])
 check(o[9] == '', 'a 200 character line must be dropped whole: %r' % o[9])
 d = [dispatch(x) for x in (o[1], o[2], o[3], o[4], o[8])]
-check(d == ['ignored', 'ignored', 'log', 'log', 'log'], 'the dashboard must ignore the JSON replies and log the # lines: %s' % d)
-print('commands: hello, mesh, petname, unknown, partial/long/non-nova lines behave; the dashboard ignores the JSON, logs the # lines')
+check(d == ['hello', 'ignored', 'ignored', 'ignored', 'ignored'], 'hello is routed by its ed field, the other JSON replies are ignored: %s' % d)
+print('commands: hello (ed + honest caps), mesh, petname (JSON ok line), unknown (JSON error), partial/long/non-nova lines behave')
 
 # "nova petname": the real handler from MyMesh.cpp -> the real LoRaFishIdentity.h -> the real SafeSave, on a fake flash
 def run_id(script):
@@ -440,33 +494,40 @@ pn = ['SETTER 1', 'LIVE 0 1 2 3', 'ID',
       'RX nova petname -\\n', 'T 60', 'ID',                          # dash clears (the dashboard's way)
       'RX nova petname\\n', 'T 70', 'ID',                            # no name: usage, nothing written
       'FAIL 1', 'RX nova petname Nope\\n', 'T 80', 'FAIL 0', 'ID',    # flash write fails: reported, file unchanged
-      'SETTER 0', 'RX nova petname Y\\n', 'T 90']                    # no pet screen in this build
+      'RX nova petname a"b\\n', 'T 100', 'ID',                      # a quote would break the JSON line: refused, file unchanged
+      'RX nova petname back\\slash\\n', 'T 110', 'ID',               # so would a backslash
+      'RX nova hello\\n', 'T 120',                                   # hello says petname 1 while the setter is there ...
+      'SETTER 0', 'RX nova petname Y\\n', 'T 90',                    # no pet screen in this build
+      'RX nova hello\\n', 'T 130']                                   # ... and petname 0 when it is not
 rows = run_id(pn)
 texts = [v for k, v in rows if k == 'OUT']
 ids = [v for k, v in rows if k == 'ID']
-check(len(ids) == 9 and len(texts) == 9, 'petname script produced %d ID rows, %d replies' % (len(ids), len(texts)))
+check(len(ids) == 11 and len(texts) == 13, 'petname script produced %d ID rows, %d replies' % (len(ids), len(texts)))
 check(ids[0]['files'] == '-' and ids[0]['src'] == '0', 'before any name there is no file at all: %s' % ids[0])
-check(texts[0].startswith('# petname: saved "Fluffy" in /lorafish.id') and texts[0].count('\n') == 1, 'petname reply: %r' % texts[0])
+check(texts[0] == '{"nova_ok":"petname","name":"Fluffy"}\n', 'petname reply: %r' % texts[0])
 files = sorted(ids[1]['files'].split(','))
 check(files == ['/lorafish.id'], 'only /lorafish.id may be written (no pet record, no settings): %s' % files)
 check(ids[1]['name'] == '[Fluffy]' and ids[1]['sp'] == '0' and ids[1]['genes'] == '1,2,3', 'name saved with the live species and colours: %s' % ids[1])
-check(texts[1].startswith('# petname: too long') and ids[2] == ids[1], 'a 17 character name is refused and changes nothing: %r %s' % (texts[1], ids[2]))
-check(texts[2].startswith('# petname: plain keyboard') and ids[3] == ids[1], 'a non-ASCII name is refused: %r' % texts[2])
-check(ids[4]['name'] == '[Mr Bubbles]' and texts[3].startswith('# petname: saved "Mr Bubbles"'), 'trimmed name: %s %r' % (ids[4], texts[3]))
+check(texts[1] == '{"nova_error":"petname_too_long"}\n' and ids[2] == ids[1], 'a 17 character name is refused and changes nothing: %r %s' % (texts[1], ids[2]))
+check(texts[2] == '{"nova_error":"petname_not_ascii"}\n' and ids[3] == ids[1], 'a non-ASCII name is refused: %r' % texts[2])
+check(ids[4]['name'] == '[Mr Bubbles]' and texts[3] == '{"nova_ok":"petname","name":"Mr Bubbles"}\n', 'trimmed name: %s %r' % (ids[4], texts[3]))
 check(ids[5]['name'] == '[0123456789ABCDEF]', '16 characters are accepted: %s' % ids[5])
-check(ids[6]['name'] == '[]' and ids[6]['sp'] == '0' and texts[5].startswith('# petname: name cleared'), 'dash clears the name, keeps species/colours: %s %r' % (ids[6], texts[5]))
-check(texts[6].startswith('# petname: usage') and ids[7] == ids[6], 'no name: usage line only: %r' % texts[6])
-check(texts[7].startswith('# petname: could not save') and ids[8] == ids[6], 'a failed write is reported and changes nothing: %r' % texts[7])
-check(texts[8].startswith('# petname: this build has no pet name'), 'no pet screen: %r' % texts[8])
-for t in texts: check(dispatch(t) == 'log' and t.count('\n') == 1, 'petname replies are single # lines: %r' % t)
-print('petname: writes only /lorafish.id, 16 ok / 17 refused / non-ASCII refused, dash clears, failures and no-pet builds answer in one # line')
+check(ids[6]['name'] == '[]' and ids[6]['sp'] == '0' and texts[5] == '{"nova_ok":"petname","name":""}\n', 'dash clears the name, keeps species/colours: %s %r' % (ids[6], texts[5]))
+check(texts[6] == '{"nova_error":"petname_usage"}\n' and ids[7] == ids[6], 'no name: usage line only: %r' % texts[6])
+check(texts[7] == '{"nova_error":"petname_save_failed"}\n' and ids[8] == ids[6], 'a failed write is reported and changes nothing: %r' % texts[7])
+check(texts[8] == '{"nova_error":"petname_bad_char"}\n' and ids[9] == ids[6], 'a quote is refused and changes nothing: %r %s' % (texts[8], ids[9]))
+check(texts[9] == '{"nova_error":"petname_bad_char"}\n' and ids[10] == ids[6], 'a backslash is refused and changes nothing: %r %s' % (texts[9], ids[10]))
+check('"petname":1' in texts[10] and '"petname":0' in texts[12], 'caps.petname follows the setter: %r / %r' % (texts[10], texts[12]))
+check(texts[11] == '{"nova_unavailable":"petname"}\n', 'no pet screen: %r' % texts[11])
+for t in texts[:10] + [texts[11]]: check(dispatch(t) == 'ignored' and t.count('\n') == 1 and t.startswith('{'), 'petname replies are single JSON lines the dashboard ignores: %r' % t)
+print('petname: JSON ok line, writes only /lorafish.id, 16 ok / 17, non-ASCII, quote, backslash refused, dash clears, failures and no-pet builds answer in one JSON line, caps.petname follows the setter')
 
 s2 = ['SUP 0', 'RX nova hello\\n', 'T 10', 'RX nova pet\\n', 'T 20', 'RX nova pet\\n', 'T 3020', 'RX nova pet\\n', 'T 31000']
 o = outs(run_serial(s2))
-check(o[0] == '{"lg":{"hello":1,"pet":0,"mesh":0}}\n', 'hello on a screen that cannot be copied: %r' % o[0])
+check(o[0] == HELLO0, 'hello on a screen that cannot be copied (no setter either): %r' % o[0])
 check(o[1].startswith('# nova pet: this radio has no 128x64') and o[2] == '' and o[3].startswith('# nova pet:'), 'unsupported screen: one note, then quiet for 30 s: %r' % o)
 check(dispatch(o[1]) == 'log', 'the dashboard must log the unsupported note (not mistake it for "no pet support")')
-print('screen that cannot be copied: hello says pet 0; "nova pet" explains itself once every 30 s')
+print('screen that cannot be copied: hello says pet 0, petname 0; "nova pet" explains itself once every 30 s')
 
 # end to end: nova pet, the screen draws, the lines go out 96 bytes per 10 ms, the dashboard decodes them
 sc1, sc2 = Model(), Model()
@@ -517,6 +578,20 @@ ui = (CR / 'ui-new/UITask.cpp').read_text()
 check('#if defined(LORAFISH_SERIAL_TEST)' in ui and '!defined(LORAFISH_SERIAL_TEST)' in hdr, 'LORAFISH_SERIAL_TEST builds read USB serial themselves: the link must be left out of them')
 check('!defined(ENABLE_USB_INTERFACE)' in hdr, 'the link must be left out of builds that carry the phone protocol on USB')
 check(ui.count('NovaPetTee tee(') == 1 and 'NovaPetLink::supported() ? NovaPetLink::link() : NULL' in ui, 'UITask must only use the tee when the link is asked')
+# the pet's name: one accessor, fed from /lorafish.id, never the radio's node name
+acc = ui[ui.index('static inline const char* loRaFishPetNameForNova()'):]
+acc = acc[:acc.index('\n')]
+check('return loRaFishIdName;' in acc, 'loRaFishPetNameForNova() must return the /lorafish.id name variable: %r' % acc)
+check(ui.count('->setName(') == 1 and 'nova->setName(loRaFishPetNameForNova());' in ui, 'the only thing that feeds the Nova frame name is loRaFishPetNameForNova()')
+dn = ui[ui.index('static const char* loRaFishDisplayName()'):]
+dn = dn[:dn.index('\n}\n')]
+check('loRaFishIdName[0]' in dn and 'loRaFishMeshNodeName' in dn, 'the header prefers the /lorafish.id name and still falls back to the radio name, for display only')
+check('loRaFishMeshNodeName' not in acc and 'node_name' not in acc, 'the Nova name accessor must not read the radio node name')
+nb = (CR / 'MyMesh.cpp').read_text()
+nb = nb[nb.index('static void novaCommand'):nb.index('void MyMesh::checkNovaSerial()')]
+check('node_name' not in nb and 'requestName(nm)' in nb and 'NovaPetName::prepare(' in nb, 'nova petname goes through prepare() and requestName() only')
+check('lorafish.dat' not in nb and 'saveLoRaFish' not in nb, 'the serial handler must not touch the pet record')
+check('caps.petname = LoRaFishIdentity::setterSlot() ? 1 : 0;' in nb, 'caps.petname must follow the registered setter')
 print('wiring checks ok')
 
 shutil.rmtree(work, ignore_errors=True)

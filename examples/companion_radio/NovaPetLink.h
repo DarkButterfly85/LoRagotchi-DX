@@ -10,6 +10,10 @@
 // One line per picture, only while asked (see Link::request):
 //   {"pet":{"s":SEQ,"k":KEY,"d":"BASE64"}}
 // The picture is 128x64 pixels, 16 bytes a row, top row first, leftmost pixel = the top bit (0x80).
+// A key picture also carries the pet's own name from /lorafish.id as "n" (before "d"), only when it has one:
+//   {"pet":{"s":SEQ,"k":1,"n":"Fluffy","d":"BASE64"}}
+// The name is printable ASCII without '"' and '\' (NovaPetName::jsonSafe), 16 characters at most; it is never the
+// radio's node name. Same field as PetMirror.h's key frames.
 // When KEY is 1, d is the whole picture; otherwise d is the XOR with the previous picture and SEQ is
 // exactly one more than the last line. d is run-length coded: a 0x00 byte is followed by a count
 // (1..255) of zero bytes; every other byte stands for itself. Then base64 (standard alphabet, padded).
@@ -21,6 +25,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <new>
+#include <helpers/NovaPetName.h>   // the pet's name, made safe for a JSON line
 
 // The link needs the pet UI and a free USB serial port (the phone talks over Bluetooth). Builds that
 // carry the phone protocol on USB, RP2040 WiFi builds that use USB for the rescue CLI, and the
@@ -35,7 +40,7 @@ namespace NovaPetLink {
 
 static constexpr int W = 128, H = 64, ROW = W / 8;
 static constexpr int BYTES = ROW * H;                 // 1024
-// Longest possible line: prefix 34 + base64 of at most 1536 coded bytes (2048) + '"}}' + newline + NUL.
+// Longest possible line: prefix 34 + name field 23 + base64 of at most 1536 coded bytes (2048) + '"}}' + newline + NUL.
 static constexpr size_t MAX_LINE = 2112;
 static constexpr uint32_t WINDOW_MS = 4000;           // a "nova pet" keeps the stream going this long
 static constexpr uint32_t MIN_GAP_MS = 250;           // at most four changed pictures a second
@@ -164,9 +169,14 @@ private:
 
 // Builds one line, newline included, NUL after it. prev == NULL makes a key picture (the whole thing).
 // Returns the length (without the NUL), or 0 if cap < MAX_LINE.
-inline size_t encodeLine(const uint8_t* fb, const uint8_t* prev, uint32_t seq, char* out, size_t cap) {
+// name (key pictures only, "" or NULL = no field) is made JSON safe here, whatever the caller passes.
+inline size_t encodeLine(const uint8_t* fb, const uint8_t* prev, uint32_t seq, char* out, size_t cap, const char* name = NULL) {
   if (cap < MAX_LINE) return 0;
-  const int w = snprintf(out, cap, "{\"pet\":{\"s\":%lu,\"k\":%d,\"d\":\"", (unsigned long)seq, prev ? 0 : 1);
+  char safe[NovaPetName::kMax + 1];
+  NovaPetName::jsonSafe(prev ? NULL : name, safe, sizeof(safe));
+  int w;
+  if (safe[0]) w = snprintf(out, cap, "{\"pet\":{\"s\":%lu,\"k\":1,\"n\":\"%s\",\"d\":\"", (unsigned long)seq, safe);
+  else w = snprintf(out, cap, "{\"pet\":{\"s\":%lu,\"k\":%d,\"d\":\"", (unsigned long)seq, prev ? 0 : 1);
   if (w <= 0) return 0;
   B64Out b(out + w, cap - (size_t)w - 5);              // room for  "}}  newline  NUL
   for (int i = 0; i < BYTES;) {
@@ -189,7 +199,7 @@ class Link {
 public:
   Canvas canvas;                 // the tee draws into this while a page is asking
   Link() : seq_(0), since_key_(0), last_key_(0), last_sent_(0), until_(0), started_(0), want_key_(true),
-           got_frame_(false), len_(0), off_(0) { memset(prev_, 0, sizeof(prev_)); line_[0] = 0; }
+           got_frame_(false), len_(0), off_(0) { memset(prev_, 0, sizeof(prev_)); line_[0] = 0; name_[0] = 0; }
 
   // "nova pet": keep the stream going for WINDOW_MS. A stream that lapsed starts again with a key picture.
   void request(uint32_t now) {
@@ -199,6 +209,10 @@ public:
   // Asked for more than 3 s ago and the screen has not drawn once: it is off or asleep. The caller says so.
   bool waiting(uint32_t now) const { return active(now) && !got_frame_ && (uint32_t)(now - started_) > 3000; }
   bool active(uint32_t now) const { return until_ != 0 && (int32_t)(until_ - now) > 0; }
+
+  // The pet's own name (/lorafish.id; "" = none) for the next key picture. UITask calls this with
+  // loRaFishPetNameForNova(); nothing else may feed it (never the radio's node name).
+  void setName(const char* name) { NovaPetName::jsonSafe(name, name_, sizeof(name_)); }
 
   // A finished screen picture is in canvas. Builds the next line unless one is still going out.
   void frameDone(uint32_t now) {
@@ -210,7 +224,7 @@ public:
       if ((uint32_t)(now - last_sent_) < MIN_GAP_MS) return;
       if (memcmp(canvas.px, prev_, sizeof(prev_)) == 0) return;       // nothing moved: nothing to say
     }
-    const size_t n = encodeLine(canvas.px, key ? (const uint8_t*)NULL : prev_, seq_ + 1, line_, sizeof(line_));
+    const size_t n = encodeLine(canvas.px, key ? (const uint8_t*)NULL : prev_, seq_ + 1, line_, sizeof(line_), name_);
     if (!n) return;
     seq_++;
     memcpy(prev_, canvas.px, sizeof(prev_));
@@ -232,6 +246,7 @@ public:
 private:
   uint8_t prev_[BYTES];
   char line_[MAX_LINE];
+  char name_[NovaPetName::kMax + 1] = "";
   uint32_t seq_, since_key_, last_key_, last_sent_, until_, started_;
   bool want_key_, got_frame_;
   size_t len_, off_;

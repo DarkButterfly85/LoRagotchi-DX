@@ -35,6 +35,18 @@ int main() {
       size_t n = NovaPetLink::encodeLine(f.data(), pv.empty() ? nullptr : p.data(), seq, buf, sizeof buf);
       printf("ENC %zu %s", n, n ? buf : "\n");
     }
+    else if (op == "NAMEHEX") {     // NAMEHEX <hex of the name bytes>: what UITask hands to Link::setName()
+      std::string h; in >> h; auto b = unhex(h); std::string nm(b.begin(), b.end());
+      link->setName(nm.c_str());
+    }
+    else if (op == "ENCN") {        // ENCN <seq> <hexfb> <hexname> [<hexprev>]: the bare encoder with a name (key lines only carry it)
+      unsigned seq; std::string fb, nh, pv; in >> seq >> fb >> nh >> pv;
+      auto f = unhex(fb), p = unhex(pv), nb = unhex(nh);
+      std::string nm(nb.begin(), nb.end());
+      static char buf[NovaPetLink::MAX_LINE];
+      size_t n = NovaPetLink::encodeLine(f.data(), pv.empty() ? nullptr : p.data(), seq, buf, sizeof buf, nm.c_str());
+      printf("ENCN %zu %s", n, n ? buf : "\n");
+    }
     else if (op == "ENCSMALL") {    // a buffer below MAX_LINE must be refused, not overrun
       std::vector<uint8_t> f(NovaPetLink::BYTES, 0x55); char buf[NovaPetLink::MAX_LINE - 1];
       printf("ENCSMALL %zu\n", NovaPetLink::encodeLine(f.data(), nullptr, 1, buf, sizeof buf));

@@ -4,7 +4,8 @@
 //
 //   nova hello           one JSON line saying which dashboard features this firmware really has
 //   nova mesh | nova pet {"nova_unavailable":"<name>"}   (so the dashboard does not wait for nothing)
-//   nova petname <name>  {"nova_unavailable":"petname"}  (the argument is ignored, nothing is saved)
+//   nova petname <name>  {"nova_unavailable":"petname"}  only as the answer of a build with no pet name to set; a build
+//                        that has one answers through helpers/NovaPetName.h ({"nova_ok":"petname","name":...})
 //   nova <anything else> {"nova_error":"unknown_command"}
 // A line that does not start with the word "nova" is not ours: parse() says NotNova and the caller
 // leaves it alone. Replies never start with "nova status" or "nova profile" (the dashboard reads
@@ -22,7 +23,8 @@ struct Parsed {
   const char* arg;   // text after the sub-command (petname only), points into the parsed line
 };
 
-// What this firmware can really do. Set a flag to 1 only when the feature exists.
+// What this firmware can really do. Set a flag to 1 only when the feature exists (petname: only when the
+// handler really saves the name, i.e. a pet screen has registered its setter).
 struct Caps {
   int pet = 0, mesh = 0, contacts = 0, petname = 0, keys = 0, clean = 0, feed = 0, guess = 0, ping = 0, sendpet = 0;
 };

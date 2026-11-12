@@ -305,6 +305,12 @@ static const char* loRaFishDisplayName() {
   return shortName;
 }
 
+// The pet's own name for anything that is not the screen header (the Nova dashboard frames): the same
+// /lorafish.id variable loRaFishDisplayName() prefers above, in full (16 characters), and "" when the pet
+// has none. Never the radio's node name; the radio-name fallback exists only in loRaFishDisplayName(), for
+// the header, and changes nothing that is saved or sent.
+static inline const char* loRaFishPetNameForNova() { return loRaFishIdName; }   // inline: unused in builds without the Nova link
+
 // ============================================================
 // LoRaFish MeshCore Edition v0.3.2 - DisplayDriver compatibility
 // MeshCore owns radio + Companion BLE. This pet layer only observes UI events.
@@ -6240,6 +6246,7 @@ void UITask::loop() {
         // copies the frame for the dashboard. The real screen gets exactly the same calls.
         NovaPetLink::Link* nova = NovaPetLink::supported() ? NovaPetLink::link() : NULL;
         if (nova && nova->active(millis())) {
+          nova->setName(loRaFishPetNameForNova());   // key pictures carry the pet's own name (/lorafish.id)
           NovaPetTee tee(*_display, *nova, millis());
           tee.startFrame();
           delay_millis = curr->render(tee);
