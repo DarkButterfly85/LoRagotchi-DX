@@ -3,12 +3,17 @@
 // Pure text handling, no Arduino, no radio, no storage; host tested (test/test_nova_pet_name).
 //
 // The pet's own name lives in /lorafish.id (LoRaFishIdentity.h, 16 characters at most, printable ASCII
-// 0x20..0x7E). It is NEVER the radio's node name. This file does three jobs:
+// 0x20..0x7E). /lorafish.id is the ONLY place a name is ever set or saved: "nova petname" writes it and
+// nothing here writes the radio's node name anywhere. The name on the dashboard frame, though, has a
+// fallback (frameName): the /lorafish.id name, else the radio's node name, so a frame never goes out
+// without a name when one exists. This file does four jobs:
 //   prepare()   the argument of "nova petname <name>": trim, "-" clears, refuse anything that would
 //               make a bad name or a bad JSON line (longer than 16, not printable ASCII, a '"' or a '\\')
 //   jsonSafe()  the name as it goes into a JSON line: printable ASCII only, '"' and '\\' stripped, 16 at
 //               most. Applied to every name that is printed into a line, so even a name that is already
 //               stored (older file, other tool) can never break the line.
+//   frameName() the name for a dashboard frame: the /lorafish.id name, else the radio's node name, both
+//               made JSON safe (see below)
 //   reply()     the one JSON line that answers "nova petname":
 //                 {"nova_ok":"petname","name":"Fluffy"}   saved (name "" = cleared)
 //                 {"nova_error":"petname_<why>"}          refused or failed, nothing changed
@@ -60,6 +65,30 @@ static inline void jsonSafe(const char* in, char* out, size_t cap) {
     out[n++] = (char)c;
   }
   out[n] = 0;
+}
+
+// The name that goes on a dashboard frame ("n"): the pet's own name from /lorafish.id when it has one,
+// otherwise the radio's node name (node_prefs->node_name). Both go through jsonSafe(), so the result is
+// printable ASCII without '"' or '\\', 16 characters at most. A pet name that is empty, only spaces, or
+// nothing but characters jsonSafe() removes counts as not set. The radio name is also trimmed of spaces
+// at both ends. "" only when neither gives a visible character. Nothing is saved or changed anywhere:
+// /lorafish.id stays the only source of a name that is actually set. out needs kMax + 1 bytes.
+static inline bool blankName(const char* s) {
+  if (!s) return true;
+  for (; *s; ++s) if (*s != ' ') return false;
+  return true;
+}
+static inline void frameName(const char* pet, const char* radio, char* out, size_t cap) {
+  if (!out || cap == 0) return;
+  out[0] = 0;
+  if (cap < kMax + 1) return;
+  jsonSafe(pet, out, cap);
+  if (!blankName(out)) return;
+  jsonSafe(radio, out, cap);
+  size_t n = strlen(out), lead = 0;
+  while (n && out[n - 1] == ' ') out[--n] = 0;
+  while (out[lead] == ' ') lead++;
+  if (lead) memmove(out, out + lead, n - lead + 1);
 }
 
 // Writes the reply line (no line ending) and returns its length; 0 (and "") if it does not fit.

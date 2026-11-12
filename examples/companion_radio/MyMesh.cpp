@@ -2759,7 +2759,7 @@ void MyMesh::checkCLIRescueCmd() {
 //   nova pet             send the pet picture, a line at a time, for the next 4 s (the page repeats it)
 //   nova petname <name>  saves the pet's own name (16 characters at most, printable ASCII without " and \,
 //                        "-" clears it) in /lorafish.id and nothing else (never /lorafish.dat); the pet screen
-//                        header shows it instead of the radio's name. Answer: {"nova_ok":"petname","name":"..."}
+//                        header shows it instead of the radio's name, and the Nova frames use the radio's name until one is set. Answer: {"nova_ok":"petname","name":"..."}
 // Only lines that start with "nova" are looked at; everything else on the port is ignored. This runs
 // only when the phone is not using the USB port (no ENABLE_USB_INTERFACE) and CLI Rescue is not
 // active, so it cannot clash with either. Nothing is ever sent unless a line asked for it.
@@ -2777,14 +2777,14 @@ static void novaCommand(const char* line, uint32_t now) {
 
   if (p.cmd == NovaCli::Cmd::Hello) {
     NovaCli::Caps caps;                           // a 1 only where the feature really works in this build
-    caps.pet = NovaPetLink::supported() ? 1 : 0;                    // the picture stream (128x64 mono screens)
+    caps.pet = NovaPetLink::supported() ? 1 : 0;                    // the picture stream (any screen the copy can follow)
     caps.petname = LoRaFishIdentity::setterSlot() ? 1 : 0;          // the pet screen registered its /lorafish.id setter
     if (NovaCli::reply(p, LORAGOTCHI_EDITION_NAME, caps, msg, sizeof(msg))) novaSay(msg);
   } else if (p.cmd == NovaCli::Cmd::Mesh) {
     novaSay("{\"lg\":{\"mesh\":0}}");
   } else if (p.cmd == NovaCli::Cmd::Pet) {
     if (!NovaPetLink::supported()) {
-      if (note_ok) { next_note = now + 30000u; novaSay("# nova pet: this radio has no 128x64 black-and-white screen, so there is no picture to send yet"); }
+      if (note_ok) { next_note = now + 30000u; novaSay("# nova pet: this radio's screen cannot be copied (no screen, too big, or drawn where the copy cannot see it), so there is no picture to send"); }
     } else if (NovaPetLink::Link* l = NovaPetLink::link(true)) {
       l->request(now);                            // the pictures follow as the screen redraws
     } else if (note_ok) {

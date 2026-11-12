@@ -2,7 +2,8 @@
 // Source: wolf_companion src/PetMirror.h. Used with their permission for this LodeStar project.
 // The logic is unchanged; the include path <helpers/ui/DisplayDriver.h> already matches LoRagotchi.
 // LoRagotchi notes:
-//  - name is the pet's own name (the dedicated pet-name value), never the radio's node name.
+//  - name is the pet's own name from /lorafish.id, or the radio's node name when it has none (NovaPetName::frameName);
+//    the caller passes it cleaned. (This copy of the encoder is not in the firmware; the live one is examples/companion_radio/NovaPetLink.h.)
 //  - uname (the "u" field) is left as "" unless the pet state has a separate owner name.
 //  - the encoder prints name/uname verbatim: callers pass printable ASCII without '"' or '\'.
 #pragma once

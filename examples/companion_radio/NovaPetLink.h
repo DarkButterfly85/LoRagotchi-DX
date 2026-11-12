@@ -9,15 +9,43 @@
 //
 // One line per picture, only while asked (see Link::request):
 //   {"pet":{"s":SEQ,"k":KEY,"d":"BASE64"}}
-// The picture is 128x64 pixels, 16 bytes a row, top row first, leftmost pixel = the top bit (0x80).
-// A key picture also carries the pet's own name from /lorafish.id as "n" (before "d"), only when it has one:
-//   {"pet":{"s":SEQ,"k":1,"n":"Fluffy","d":"BASE64"}}
-// The name is printable ASCII without '"' and '\' (NovaPetName::jsonSafe), 16 characters at most; it is never the
-// radio's node name. Same field as PetMirror.h's key frames.
+// d is the picture, coded as below; k is 1 for a whole picture ("key"), 0 for a change ("delta").
+//
+// ---- screens: one encoder for every screen -------------------------------------------------------
+// The size and colour depth come from the active DisplayDriver (NovaPetTee::formatOf): width(), height(),
+// supportsColor(), isEink(). A key picture says what it is, only when it is not the original case:
+//   mono 128x64 (the OLEDs)   nothing extra: {"pet":{"s":1,"k":1,"d":"..."}}  (byte for byte what it always was)
+//   any other size            "w":WIDTH,"h":HEIGHT before d
+//   e-ink                     "e":1 before d: a still picture, black ink on white paper, no animation
+//   colour                    "c":{"b":4,"p":"BASE64"} before d, see below
+// A frame with no "c" is a one-colour (mono) picture: the dashboard draws it as it always did, so a
+// dashboard (or a radio) that knows nothing of colour keeps working. No "w"/"h" means 128x64.
+// w, h, e and c are only on key pictures (like the name n); a delta picture continues the last key picture.
+//
+// Mono picture (1 bit a pixel): rows padded to whole bytes, (w+7)/8 bytes a row, top row first, leftmost pixel =
+// the top bit (0x80). A set bit is "ink" (anything but the window background colour).
+//
+// Colour picture ("c" present, 4 bits a pixel): (w+1)/2 bytes a row, top row first, leftmost pixel = the high
+// nibble. A pixel is an index into the palette p: 16 colours, each 2 bytes of RGB565 (big endian, as the
+// screen takes them), base64 of 32 bytes. The palette is built as the screen draws (the first colour is the
+// window background), is the same in every delta that follows its key picture, and a colour that is new
+// forces a new key picture. More than 16 distinct colours: the extras are drawn in the nearest palette colour.
+// Colour d is coded one more way than mono, so flat areas of any colour cost little: after the XOR with the
+// previous picture (key: none), every byte is XORed with the byte before it (h[0] = t[0], h[i] = t[i] ^ t[i-1]).
+// Decode: run-length decode, then t[i] = h[i] ^ t[i-1], then (delta) XOR with the previous picture.
+//
 // When KEY is 1, d is the whole picture; otherwise d is the XOR with the previous picture and SEQ is
 // exactly one more than the last line. d is run-length coded: a 0x00 byte is followed by a count
 // (1..255) of zero bytes; every other byte stands for itself. Then base64 (standard alphabet, padded).
-// No colour field is sent, so the dashboard draws the picture in one colour.
+// E-ink: every picture is a key picture (no deltas), sent only when the screen changed (at most one
+// every 2 s) and now and then as a keep-alive.
+//
+// A key picture also carries the pet's name as "n" (before w/h/e/c/d), only when there is one:
+//   {"pet":{"s":SEQ,"k":1,"n":"Fluffy","d":"BASE64"}}
+// The name is the pet's own name from /lorafish.id; when the pet has none, the radio's node name
+// (NovaPetName::frameName). Printable ASCII without '"' and '\', 16 characters at most. Same field as
+// PetMirror.h's key frames. (PetMirror.h's key frames also use "c" for a pet count; there it is a number, here it
+// is an object, and the two encoders are never in one build: only this one is in the firmware.)
 
 #include <stdint.h>
 #include <stddef.h>
@@ -38,14 +66,42 @@
 
 namespace NovaPetLink {
 
-static constexpr int W = 128, H = 64, ROW = W / 8;
+static constexpr int W = 128, H = 64, ROW = W / 8;    // the original screen: 128x64, one bit a pixel
 static constexpr int BYTES = ROW * H;                 // 1024
-// Longest possible line: prefix 34 + name field 23 + base64 of at most 1536 coded bytes (2048) + '"}}' + newline + NUL.
+// Longest possible line of the original screen: prefix 34 + name field 23 + base64 of at most 1536 coded bytes (2048) + '"}}' + newline + NUL.
 static constexpr size_t MAX_LINE = 2112;
 static constexpr uint32_t WINDOW_MS = 4000;           // a "nova pet" keeps the stream going this long
 static constexpr uint32_t MIN_GAP_MS = 250;           // at most four changed pictures a second
+static constexpr uint32_t EINK_MIN_GAP_MS = 2000;     // e-ink: a still picture at most every 2 s
 static constexpr uint32_t KEY_EVERY_FRAMES = 40;      // and a whole picture now and then, so a page
 static constexpr uint32_t KEY_EVERY_MS = 5000;        // that joins late or misses a line recovers
+static constexpr int MAX_DIM = 512;                   // widest/tallest screen the link copies
+static constexpr size_t MAX_FRAME_BYTES = 40000;      // 320x240 in 4 bits is 38400; bigger is refused
+static constexpr size_t MAX_LINE_CAP = 16384;         // the line buffer never grows past this (a rare picture that
+                                                      // codes bigger is skipped, not cut)
+static constexpr int PALETTE_SIZE = 16;               // colour pictures: 4 bits a pixel
+
+// What one screen looks like to the link. Built from the DisplayDriver (NovaPetTee::formatOf).
+struct Format {
+  uint16_t w, h;
+  uint8_t bpp;        // 1 = mono (one ink), 4 = colour (16-entry palette)
+  bool eink;          // a still picture, black on white, no animation (always 1 bit)
+  Format() : w(W), h(H), bpp(1), eink(false) {}
+  Format(int w_, int h_, bool color, bool eink_)
+    : w((uint16_t)(w_ < 0 ? 0 : w_ > 65535 ? 65535 : w_)), h((uint16_t)(h_ < 0 ? 0 : h_ > 65535 ? 65535 : h_)),
+      bpp((color && !eink_) ? 4 : 1), eink(eink_) {}
+  bool colour() const { return bpp == 4; }
+  size_t rowBytes() const { return bpp == 4 ? (size_t)(w + 1) / 2 : (size_t)(w + 7) / 8; }
+  size_t bytes() const { return rowBytes() * h; }
+  bool valid() const { return w > 0 && h > 0 && w <= MAX_DIM && h <= MAX_DIM && bytes() <= MAX_FRAME_BYTES; }
+  bool isDefault() const { return w == W && h == H && bpp == 1 && !eink; }   // the original 128x64 mono OLED
+  // The longest line this format can make: run-length coding grows a picture by half at worst.
+  size_t maxLine() const {
+    const size_t n = bytes(), coded = n + (n + 1) / 2;
+    return (coded + 2) / 3 * 4 + (isDefault() ? 64 : 64 + 112);
+  }
+  bool operator==(const Format& o) const { return w == o.w && h == o.h && bpp == o.bpp && eink == o.eink; }
+};
 
 // The classic 5x7 font (characters 32..126), five columns each, bit 0 = top row. Same glyphs as the
 // OLED text, so names and clocks look the same on the dashboard. 475 bytes of read-only data.
@@ -87,27 +143,77 @@ inline const uint8_t* font5x7() {
   return t;
 }
 
-// ---- a 128x64 one-bit picture with the few drawing calls the pet screens use -------------------
+// ---- a one-bit or 16-colour picture with the few drawing calls the pet screens use --------------------
 class Canvas {
 public:
-  uint8_t px[BYTES];
-  Canvas() : cx_(0), cy_(0), size_(1), on_(true) { memset(px, 0, sizeof(px)); }
+  uint8_t* px;                   // the picture, Format::bytes() long (NULL when memory was short)
+  Canvas() : px(NULL), cx_(0), cy_(0), size_(1), on_(true), cur_(0xFFFF), idx_(0xFF), npal_(0), dirty_(false), overflow_(0) {
+    memset(pal_, 0, sizeof(pal_));
+  }
+  ~Canvas() { free(px); }
+  Canvas(const Canvas&) = delete;
+  Canvas& operator=(const Canvas&) = delete;
 
-  void clear() { memset(px, 0, sizeof(px)); }
-  void beginFrame(bool fillAll) { memset(px, fillAll ? 0xFF : 0, sizeof(px)); cx_ = cy_ = 0; size_ = 1; on_ = true; }
+  bool init(const Format& f) {
+    fmt_ = f;
+    free(px);
+    px = f.valid() ? (uint8_t*)calloc(1, f.bytes()) : NULL;
+    return px != NULL;
+  }
+  const Format& format() const { return fmt_; }
+  size_t bytes() const { return fmt_.bytes(); }
+
+  void clear() { if (px) memset(px, 0, bytes()); }
+  // mono
+  void beginFrame(bool fillAll) { if (px) memset(px, fillAll ? 0xFF : 0, bytes()); cx_ = cy_ = 0; size_ = 1; on_ = true; }
   void setOn(bool on) { on_ = on; }
+  // colour: the frame background (RGB565) is the first palette colour, and fills the picture
+  void beginFrameColor(uint16_t bkg) {
+    if (npal_ == 0) { pal_[0] = bkg; npal_ = 1; dirty_ = true; }
+    const uint8_t b = indexFor(bkg);
+    if (px) memset(px, (uint8_t)(b << 4 | b), bytes());
+    cx_ = cy_ = 0; size_ = 1; cur_ = 0xFFFF; idx_ = 0xFF;
+  }
+  void setColor565(uint16_t c) { cur_ = c; idx_ = 0xFF; }     // resolved to a palette index when something is drawn
   void setTextSize(int s) { size_ = s < 1 ? 1 : s; }
   void setCursor(int x, int y) { cx_ = x; cy_ = y; }
 
+  // palette (colour pictures)
+  const uint16_t* palette() const { return pal_; }
+  int paletteCount() const { return npal_; }
+  bool paletteDirty() const { return dirty_; }          // a colour was added since the last key picture went out
+  void clearPaletteDirty() { dirty_ = false; }
+  void resetPalette() { npal_ = 0; dirty_ = false; overflow_ = 0; idx_ = 0xFF; memset(pal_, 0, sizeof(pal_)); }
+  uint32_t overflowed() const { return overflow_; }     // pixels drawn in a "nearest" colour because the palette was full
+
   void set(int x, int y) {
-    if (x < 0 || x >= W || y < 0 || y >= H) return;
+    if (!px || x < 0 || x >= fmt_.w || y < 0 || y >= fmt_.h) return;
+    if (fmt_.bpp == 4) {
+      const uint8_t v = ink();
+      uint8_t* b = px + (size_t)y * fmt_.rowBytes() + (x >> 1);
+      *b = (x & 1) ? (uint8_t)((*b & 0xF0) | v) : (uint8_t)((*b & 0x0F) | (v << 4));
+      return;
+    }
     const uint8_t m = (uint8_t)(0x80 >> (x & 7));
-    if (on_) px[y * ROW + (x >> 3)] |= m; else px[y * ROW + (x >> 3)] &= (uint8_t)~m;
+    uint8_t* b = px + (size_t)y * fmt_.rowBytes() + (x >> 3);
+    if (on_) *b |= m; else *b &= (uint8_t)~m;
   }
   void fillRect(int x, int y, int w, int h) {
     if (w <= 0 || h <= 0) return;
     const int x0 = x < 0 ? 0 : x, y0 = y < 0 ? 0 : y;
-    const int x1 = x + w > W ? W : x + w, y1 = y + h > H ? H : y + h;
+    const int x1 = x + w > fmt_.w ? fmt_.w : x + w, y1 = y + h > fmt_.h ? fmt_.h : y + h;
+    if (x0 >= x1 || y0 >= y1) return;
+    if (fmt_.bpp == 4 && px) {                          // colour: whole bytes where it can
+      const uint8_t v = ink();
+      for (int j = y0; j < y1; j++) {
+        uint8_t* row = px + (size_t)j * fmt_.rowBytes();
+        int i = x0;
+        if (i & 1) { set(i, j); i++; }
+        if (i + 1 < x1) { memset(row + (i >> 1), (uint8_t)(v << 4 | v), (size_t)((x1 - i) >> 1)); i += ((x1 - i) >> 1) * 2; }
+        if (i < x1) set(i, j);
+      }
+      return;
+    }
     for (int j = y0; j < y1; j++) for (int i = x0; i < x1; i++) set(i, j);
   }
   void drawRect(int x, int y, int w, int h) {
@@ -129,7 +235,7 @@ public:
       const unsigned char ch = (unsigned char)*s;
       if (ch == '\n') { cx_ = 0; cy_ += 8 * size_; continue; }
       if (ch == '\r') continue;
-      if (cx_ + 6 * size_ > W) { cx_ = 0; cy_ += 8 * size_; }
+      if (cx_ + 6 * size_ > fmt_.w) { cx_ = 0; cy_ += 8 * size_; }
       if (ch >= 32 && ch <= 126) {
         const uint8_t* g = f + (ch - 32) * 5;
         for (int col = 0; col < 5; col++)
@@ -141,8 +247,30 @@ public:
   }
 
 private:
+  Format fmt_;
   int cx_, cy_, size_;
   bool on_;
+  uint16_t cur_;
+  uint8_t idx_;                  // palette index of cur_, 0xFF = not looked up yet
+  uint16_t pal_[PALETTE_SIZE];
+  uint8_t npal_;
+  bool dirty_;
+  uint32_t overflow_;
+
+  uint8_t ink() { if (idx_ == 0xFF) idx_ = indexFor(cur_); return idx_; }
+  static int dist(uint16_t a, uint16_t b) {
+    const int ar = a >> 11, ag = (a >> 5) & 63, ab = a & 31, br = b >> 11, bg = (b >> 5) & 63, bb = b & 31;
+    const int dr = (ar - br) * 8, dg = (ag - bg) * 4, db = (ab - bb) * 8;      // about the same scale per channel
+    return dr * dr + dg * dg + db * db;
+  }
+  uint8_t indexFor(uint16_t c) {
+    for (uint8_t i = 0; i < npal_; i++) if (pal_[i] == c) return i;
+    if (npal_ < PALETTE_SIZE) { pal_[npal_] = c; dirty_ = true; return npal_++; }
+    uint8_t best = 0; int bd = dist(c, pal_[0]);
+    for (uint8_t i = 1; i < npal_; i++) { const int d = dist(c, pal_[i]); if (d < bd) { bd = d; best = i; } }
+    overflow_++;
+    return best;
+  }
 };
 
 // ---- base64, written straight into the output line --------------------------------------------
@@ -167,23 +295,51 @@ private:
   }
 };
 
-// Builds one line, newline included, NUL after it. prev == NULL makes a key picture (the whole thing).
-// Returns the length (without the NUL), or 0 if cap < MAX_LINE.
+// Builds one line for any screen format, newline included, NUL after it. prev == NULL makes a key picture
+// (the whole thing). Returns the length (without the NUL), or 0 if it does not fit in cap (nothing is cut).
 // name (key pictures only, "" or NULL = no field) is made JSON safe here, whatever the caller passes.
-inline size_t encodeLine(const uint8_t* fb, const uint8_t* prev, uint32_t seq, char* out, size_t cap, const char* name = NULL) {
-  if (cap < MAX_LINE) return 0;
+// pal (colour key pictures): the 16 palette colours (RGB565) that go in "c"; NULL writes a black palette.
+// Formats that are not the original 128x64 mono carry w/h (and e / c) on key pictures, see the top of this file.
+inline size_t encodeFrame(const Format& f, const uint8_t* fb, const uint8_t* prev, uint32_t seq, char* out, size_t cap,
+                          const char* name = NULL, const uint16_t* pal = NULL) {
+  if (!f.valid() || !fb || cap < 192) return 0;
+  const bool key = prev == NULL;
   char safe[NovaPetName::kMax + 1];
-  NovaPetName::jsonSafe(prev ? NULL : name, safe, sizeof(safe));
-  int w;
-  if (safe[0]) w = snprintf(out, cap, "{\"pet\":{\"s\":%lu,\"k\":1,\"n\":\"%s\",\"d\":\"", (unsigned long)seq, safe);
-  else w = snprintf(out, cap, "{\"pet\":{\"s\":%lu,\"k\":%d,\"d\":\"", (unsigned long)seq, prev ? 0 : 1);
+  NovaPetName::jsonSafe(key ? name : NULL, safe, sizeof(safe));
+  int w = snprintf(out, cap, "{\"pet\":{\"s\":%lu,\"k\":%d,", (unsigned long)seq, key ? 1 : 0);
   if (w <= 0) return 0;
+  if (key && safe[0]) w += snprintf(out + w, cap - (size_t)w, "\"n\":\"%s\",", safe);
+  if (key && !f.isDefault()) {
+    w += snprintf(out + w, cap - (size_t)w, "\"w\":%u,\"h\":%u,", (unsigned)f.w, (unsigned)f.h);
+    if (f.eink) w += snprintf(out + w, cap - (size_t)w, "\"e\":1,");
+    if (f.colour()) {
+      uint8_t pb[PALETTE_SIZE * 2];
+      for (int i = 0; i < PALETTE_SIZE; i++) { const uint16_t c = pal ? pal[i] : 0; pb[i * 2] = (uint8_t)(c >> 8); pb[i * 2 + 1] = (uint8_t)c; }
+      static const char T[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+      w += snprintf(out + w, cap - (size_t)w, "\"c\":{\"b\":4,\"p\":\"");
+      if ((size_t)w + 44 + 8 >= cap) return 0;
+      for (size_t i = 0; i < sizeof(pb); i += 3) {                 // 32 bytes: 10 groups of 3 and a padded one of 2
+        const uint32_t v = (uint32_t)pb[i] << 16 | (i + 1 < sizeof(pb) ? (uint32_t)pb[i + 1] << 8 : 0) | (i + 2 < sizeof(pb) ? pb[i + 2] : 0);
+        out[w++] = T[(v >> 18) & 63]; out[w++] = T[(v >> 12) & 63];
+        out[w++] = i + 1 < sizeof(pb) ? T[(v >> 6) & 63] : '=';
+        out[w++] = i + 2 < sizeof(pb) ? T[v & 63] : '=';
+      }
+      w += snprintf(out + w, cap - (size_t)w, "\"},");
+    }
+  }
+  if (w <= 0 || (size_t)w >= cap) return 0;
+  w += snprintf(out + w, cap - (size_t)w, "\"d\":\"");
+  if (w <= 0 || (size_t)w + 5 >= cap) return 0;
   B64Out b(out + w, cap - (size_t)w - 5);              // room for  "}}  newline  NUL
-  for (int i = 0; i < BYTES;) {
-    const uint8_t v = prev ? (uint8_t)(fb[i] ^ prev[i]) : fb[i];
-    if (v) { b.put(v); i++; continue; }
+  const size_t N = f.bytes();
+  const bool hx = f.colour();                          // colour: also XOR each byte with the one before it
+  auto t = [&](size_t i) -> uint8_t { return prev ? (uint8_t)(fb[i] ^ prev[i]) : fb[i]; };
+  auto v = [&](size_t i) -> uint8_t { return hx && i ? (uint8_t)(t(i) ^ t(i - 1)) : t(i); };
+  for (size_t i = 0; i < N;) {
+    const uint8_t x = v(i);
+    if (x) { b.put(x); i++; continue; }
     int run = 0;
-    while (i < BYTES && run < 255 && !(prev ? (uint8_t)(fb[i] ^ prev[i]) : fb[i])) { run++; i++; }
+    while (i < N && run < 255 && !v(i)) { run++; i++; }
     b.put(0); b.put((uint8_t)run);
   }
   b.finish();
@@ -193,43 +349,69 @@ inline size_t encodeLine(const uint8_t* fb, const uint8_t* prev, uint32_t seq, c
   return n;
 }
 
+// The original 128x64 mono line (kept for callers and tests that only know that screen). Returns 0 if cap < MAX_LINE.
+inline size_t encodeLine(const uint8_t* fb, const uint8_t* prev, uint32_t seq, char* out, size_t cap, const char* name = NULL) {
+  if (cap < MAX_LINE) return 0;
+  return encodeFrame(Format(), fb, prev, seq, out, cap, name, NULL);
+}
+
 // ---- the link: the picture being drawn, the previous one, and the line waiting to go out ---------
-// Allocated with new on the first "nova pet", so a radio nobody asks costs a few bytes of RAM.
+// Allocated with malloc on the first "nova pet", so a radio nobody asks costs a few bytes of RAM. The
+// picture, the previous picture and the line buffer are sized for this radio's screen (see ok()).
 class Link {
 public:
   Canvas canvas;                 // the tee draws into this while a page is asking
-  Link() : seq_(0), since_key_(0), last_key_(0), last_sent_(0), until_(0), started_(0), want_key_(true),
-           got_frame_(false), len_(0), off_(0) { memset(prev_, 0, sizeof(prev_)); line_[0] = 0; name_[0] = 0; }
+  explicit Link(const Format& f = Format())
+    : fmt_(f), prev_(NULL), line_(NULL), cap_(0), seq_(0), since_key_(0), last_key_(0), last_sent_(0), until_(0), started_(0),
+      want_key_(true), got_frame_(false), len_(0), off_(0) {
+    name_[0] = 0;
+    if (!f.valid() || !canvas.init(f)) return;
+    cap_ = f.maxLine() < MAX_LINE_CAP ? f.maxLine() : MAX_LINE_CAP;
+    prev_ = (uint8_t*)calloc(1, f.bytes());
+    line_ = (char*)malloc(cap_);
+    if (!prev_ || !line_) { free(prev_); free(line_); prev_ = NULL; line_ = NULL; cap_ = 0; }
+    else line_[0] = 0;
+  }
+  ~Link() { free(prev_); free(line_); }
+  Link(const Link&) = delete;
+  Link& operator=(const Link&) = delete;
+
+  bool ok() const { return canvas.px && prev_ && line_; }   // false: the format was refused or memory was short
+  const Format& format() const { return fmt_; }
 
   // "nova pet": keep the stream going for WINDOW_MS. A stream that lapsed starts again with a key picture.
   void request(uint32_t now) {
-    if (!active(now)) { want_key_ = true; len_ = off_ = 0; started_ = now; got_frame_ = false; }
+    if (!active(now)) { want_key_ = true; len_ = off_ = 0; started_ = now; got_frame_ = false; canvas.resetPalette(); }
     until_ = now + WINDOW_MS;
   }
   // Asked for more than 3 s ago and the screen has not drawn once: it is off or asleep. The caller says so.
   bool waiting(uint32_t now) const { return active(now) && !got_frame_ && (uint32_t)(now - started_) > 3000; }
   bool active(uint32_t now) const { return until_ != 0 && (int32_t)(until_ - now) > 0; }
 
-  // The pet's own name (/lorafish.id; "" = none) for the next key picture. UITask calls this with
-  // loRaFishPetNameForNova(); nothing else may feed it (never the radio's node name).
-  void setName(const char* name) { NovaPetName::jsonSafe(name, name_, sizeof(name_)); }
+  // The name for the next key picture: the pet's own name (/lorafish.id; "" = none), else the radio's node
+  // name (node_prefs->node_name). UITask calls this with loRaFishPetNameForNova() and the node name; nothing
+  // else may feed it. Both are made JSON safe, see NovaPetName::frameName().
+  void setNames(const char* pet, const char* radio) { NovaPetName::frameName(pet, radio, name_, sizeof(name_)); }
+  void setName(const char* name) { setNames(name, NULL); }   // the pet's name only, no fallback
 
   // A finished screen picture is in canvas. Builds the next line unless one is still going out.
   void frameDone(uint32_t now) {
-    if (!active(now)) return;
+    if (!active(now) || !ok()) return;
     got_frame_ = true;
     if (off_ < len_) return;
-    bool key = want_key_ || since_key_ >= KEY_EVERY_FRAMES || (uint32_t)(now - last_key_) >= KEY_EVERY_MS;
+    bool key = want_key_ || since_key_ >= KEY_EVERY_FRAMES || (uint32_t)(now - last_key_) >= KEY_EVERY_MS || canvas.paletteDirty();
     if (!key) {
-      if ((uint32_t)(now - last_sent_) < MIN_GAP_MS) return;
-      if (memcmp(canvas.px, prev_, sizeof(prev_)) == 0) return;       // nothing moved: nothing to say
+      if ((uint32_t)(now - last_sent_) < (fmt_.eink ? EINK_MIN_GAP_MS : MIN_GAP_MS)) return;
+      if (memcmp(canvas.px, prev_, fmt_.bytes()) == 0) return;       // nothing moved: nothing to say
+      if (fmt_.eink) key = true;                                      // e-ink: still pictures only, never a delta
     }
-    const size_t n = encodeLine(canvas.px, key ? (const uint8_t*)NULL : prev_, seq_ + 1, line_, sizeof(line_), name_);
+    const size_t n = encodeFrame(fmt_, canvas.px, key ? (const uint8_t*)NULL : prev_, seq_ + 1, line_, cap_, name_,
+                                 fmt_.colour() ? canvas.palette() : NULL);
     if (!n) return;
     seq_++;
-    memcpy(prev_, canvas.px, sizeof(prev_));
+    memcpy(prev_, canvas.px, fmt_.bytes());
     since_key_ = key ? 0 : since_key_ + 1;
-    if (key) last_key_ = now;
+    if (key) { last_key_ = now; canvas.clearPaletteDirty(); }
     want_key_ = false;
     last_sent_ = now;
     len_ = n; off_ = 0;
@@ -242,29 +424,44 @@ public:
   void dropPending() { len_ = off_ = 0; want_key_ = true; }   // stream lapsed mid-line: start clean next time
 
   uint32_t sequence() const { return seq_; }
+  size_t lineCapacity() const { return cap_; }
 
 private:
-  uint8_t prev_[BYTES];
-  char line_[MAX_LINE];
-  char name_[NovaPetName::kMax + 1] = "";
+  Format fmt_;
+  uint8_t* prev_;
+  char* line_;
+  size_t cap_;
+  char name_[NovaPetName::kMax + 1];
   uint32_t seq_, since_key_, last_key_, last_sent_, until_, started_;
   bool want_key_, got_frame_;
   size_t len_, off_;
 };
 
-// One shared Link. make = true allocates it on first use; NULL means it does not exist (or no memory).
+// ---- which screen this radio has, and the one shared Link ------------------------------------------
+// Set once at start-up from the display (NovaPetTee::formatOf); supported() is false until then.
+inline bool& supportedSlot() { static bool s = false; return s; }
+inline Format& formatSlot() { static Format f; return f; }
+inline bool supported() { return supportedSlot(); }
+inline const Format& format() { return formatSlot(); }
+inline bool setFormat(const Format& f) {
+  supportedSlot() = f.valid();
+  if (f.valid()) formatSlot() = f;
+  return f.valid();
+}
+inline void setSupported(bool s) { supportedSlot() = s; if (s) formatSlot() = Format(); }   // s = the original 128x64 mono screen
+
 inline Link*& linkSlot() { static Link* l = NULL; return l; }
+// make = true allocates it on first use (for the screen set by setFormat); NULL means it does not exist (or no memory).
 inline Link* link(bool make = false) {
   Link*& l = linkSlot();
-  if (!l && make) {
+  if (!l && make && supported()) {
     void* m = malloc(sizeof(Link));                       // not new: a full heap must not abort the radio
-    if (m) l = new (m) Link();
+    if (m) {
+      Link* n = new (m) Link(formatSlot());
+      if (n->ok()) l = n; else { n->~Link(); free(m); }
+    }
   }
   return l;
 }
-// Set once at start-up: does this radio have a screen the link can copy (128x64, black and white)?
-inline bool& supportedSlot() { static bool s = false; return s; }
-inline bool supported() { return supportedSlot(); }
-inline void setSupported(bool s) { supportedSlot() = s; }
 
 }  // namespace NovaPetLink

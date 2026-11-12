@@ -305,11 +305,22 @@ static const char* loRaFishDisplayName() {
   return shortName;
 }
 
-// The pet's own name for anything that is not the screen header (the Nova dashboard frames): the same
-// /lorafish.id variable loRaFishDisplayName() prefers above, in full (16 characters), and "" when the pet
-// has none. Never the radio's node name; the radio-name fallback exists only in loRaFishDisplayName(), for
-// the header, and changes nothing that is saved or sent.
+// The pet's own name for the Nova dashboard frames: the same /lorafish.id variable loRaFishDisplayName()
+// prefers above, in full (16 characters), and "" when the pet has none. /lorafish.id is the only place a
+// name is set. The frame's name falls back to the radio's node name when this is empty (see
+// loRaFishNovaLinkIfAsked below, NovaPetName::frameName); nothing is saved or changed by the fallback.
 static inline const char* loRaFishPetNameForNova() { return loRaFishIdName; }   // inline: unused in builds without the Nova link
+
+#ifdef LORAGOTCHI_NOVA_LINK
+// The Nova link when a dashboard page is asking right now ("nova pet" in the last 4 s), else NULL. Gives it the
+// frame name first: the pet's name from /lorafish.id, else the radio's node name (node_prefs->node_name).
+static inline NovaPetLink::Link* loRaFishNovaLinkIfAsked(uint32_t now) {
+  NovaPetLink::Link* nova = NovaPetLink::supported() ? NovaPetLink::link() : NULL;
+  if (!nova || !nova->active(now)) return NULL;
+  nova->setNames(loRaFishPetNameForNova(), loRaFishMeshNodeName);
+  return nova;
+}
+#endif
 
 // ============================================================
 // LoRaFish MeshCore Edition v0.3.2 - DisplayDriver compatibility
@@ -5532,8 +5543,14 @@ void UITask::begin(DisplayDriver* display, SensorManager* sensors, NodePrefs* no
 
   _node_prefs = node_prefs;
 #ifdef LORAGOTCHI_NOVA_LINK
-  // Can the Nova dashboard copy this screen? (black and white 128x64 only for now)
-  NovaPetLink::setSupported(_display != NULL && NovaPetTee::suitable(*_display));
+  // Can the Nova dashboard copy this screen? Any screen, at its own size and colour depth (NovaPetTee::formatOf):
+  // mono OLEDs, colour LCDs, e-ink (a still picture). The T-Watch S3 (LORAFISH_TALL_TANK) draws its aquarium page on
+  // a second canvas the tee cannot see, so it stays out.
+#if defined(LORAFISH_TALL_TANK)
+  NovaPetLink::setSupported(false);
+#else
+  if (_display != NULL) NovaPetLink::setFormat(NovaPetTee::formatOf(*_display)); else NovaPetLink::setSupported(false);
+#endif
 #endif
 #ifdef LORAFISH_UI
   loRaFishMeshNodeName = node_prefs ? node_prefs->node_name : nullptr;
@@ -6233,8 +6250,26 @@ void UITask::loop() {
       if (banded) {
         const int rows = _display->stripRows();
         const int panelRows = _display->physicalHeight();
+#ifdef LORAGOTCHI_NOVA_LINK
+        // Every band draws the whole frame (the driver keeps only its own rows), so the first band goes through
+        // the tee, which copies the whole frame for the dashboard; the real screen gets the same calls.
+        NovaPetLink::Link* novaBand = loRaFishNovaLinkIfAsked(millis());
+        bool novaBandDone = false;
+#endif
         for (int y0 = 0; y0 < panelRows; y0 += rows) {
           _display->beginStrip(y0);
+#ifdef LORAGOTCHI_NOVA_LINK
+          if (novaBand && !novaBandDone) {
+            NovaPetTee tee(*_display, *novaBand, millis());
+            tee.startFrame();
+            delay_millis = curr->render(tee);
+            if (millis() < _alert_expiry) drawUIAlertBox(tee, _alert);
+            _display->endStrip();
+            novaBand->frameDone(millis());
+            novaBandDone = true;
+            continue;
+          }
+#endif
           _display->startFrame();
           delay_millis = curr->render(*_display);
           if (millis() < _alert_expiry) drawUIAlertBox(*_display, _alert);
@@ -6244,9 +6279,8 @@ void UITask::loop() {
 #ifdef LORAGOTCHI_NOVA_LINK
         // Only while the Nova page is asking ("nova pet" in the last 4 s): draw through a tee that also
         // copies the frame for the dashboard. The real screen gets exactly the same calls.
-        NovaPetLink::Link* nova = NovaPetLink::supported() ? NovaPetLink::link() : NULL;
-        if (nova && nova->active(millis())) {
-          nova->setName(loRaFishPetNameForNova());   // key pictures carry the pet's own name (/lorafish.id)
+        NovaPetLink::Link* nova = loRaFishNovaLinkIfAsked(millis());   // key pictures carry the pet's name (/lorafish.id, else the radio's name)
+        if (nova) {
           NovaPetTee tee(*_display, *nova, millis());
           tee.startFrame();
           delay_millis = curr->render(tee);
