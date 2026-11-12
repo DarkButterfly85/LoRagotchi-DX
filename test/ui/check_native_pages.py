@@ -77,7 +77,7 @@ for name in ['drawLoRaFishHeader','drawLoRaFishStats','drawLoRaFishClockPage','d
 code+=r'''
 int main(){
  UITask task;
- for(bool colour:{false,true})for(auto dims:{std::pair<int,int>{320,170},{320,240},{240,135}}){
+ for(bool colour:{false,true})for(auto dims:{std::pair<int,int>{320,170},{320,240},{240,135},{220,128},{160,80}}){
   loRaFishColorDisplay=colour;
   auto render=[&](auto draw){Recorder out(dims.first,dims.second);LoRaFishLayout::Page card(out);draw(card);return out;};
   for(uint32_t pin:{0u,123456u}){
@@ -113,7 +113,7 @@ int main(){
    auto out=render(draw);assert(out.has("CLICK TO DISMISS"));
   }
  }
- puts("PASS actual native pairing PIN/no-PIN, stats, clock valid/fallback, RF/battery/history, GNSS all states and notices: glyph bounds/overlap at 320x170/320x240/240x135");
+ puts("PASS actual native pairing PIN/no-PIN, stats, clock valid/fallback, RF/battery/history, GNSS all states and notices: glyph bounds/overlap at 320x170/320x240/240x135/220x128/160x80");
 }
 '''
 with tempfile.TemporaryDirectory() as t:

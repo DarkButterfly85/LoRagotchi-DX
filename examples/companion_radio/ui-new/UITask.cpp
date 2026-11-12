@@ -2851,7 +2851,7 @@ static const char* loRaFishOptionLabel(LoRaFishOption option) {
 // the panel's bottom edge. Pages still drawn in the stretched 64 px frame keep their historic row 56.
 static void drawLoRaFishMenuHint(DisplayDriver& display, bool flow=false) {
   display.setColor(UIColor::secondary_txt);
-  const int y = flow ? LoRaFishMenuLayout::hintY(display.height()) : 56;
+  const int y = flow ? LoRaFishMenuLayout::hintY(display.height(), display.menuRowPitch()) : 56;
 #if defined(LORAFISH_WATCH_TOUCH)
   // LilyGo T-Watch S3: the footer already shows the taps; only hold needs a hint.
   display.drawTextCentered(display.width()/2, y, "LONG HOLD:SELECT");
@@ -3013,7 +3013,7 @@ static void drawLoRaFishWatchOptions(DisplayDriver& display) {
   }
 #if defined(LORAFISH_WATCH_TOUCH)
   display.setColor(UIColor::secondary_txt);
-  display.drawTextCentered(display.width()/2, LoRaFishMenuLayout::hintY(display.height()), "LONG HOLD:OPEN");
+  display.drawTextCentered(display.width()/2, LoRaFishMenuLayout::hintY(display.height(), display.menuRowPitch()), "LONG HOLD:OPEN");
 #else
   drawLoRaFishMenuHint(display, true);
 #endif
@@ -4757,7 +4757,7 @@ static void drawLoRaFishNative(DisplayDriver& display, UITask* task) {
   const bool notice=loRaFishNovaNotice || loRaFishChannelNotice || loRaFishNameNotice ||
       loRaFishMonoDisplayNotice || loRaFishAdoptionEligible || loRaFishNeedsPetSetup || loRaFishValuePicker.active();
   if(loRaFishPage==0 && !notice) {
-    const int ribbon=h>64 ? 24 : 0;
+    const int ribbon=h>=96 ? 24 : 0;   // 160x80 panels have no room for a ribbon above the tank
     if(ribbon) {
       display.setTextSize(1);display.setColor(UIColor::secondary_txt);
       char line[80];
@@ -5172,12 +5172,12 @@ public:
           32, 32);
       display.setColor(UIColor::secondary_txt);
       display.setTextSize(1);
-      display.drawTextCentered(display.width() / 2, 64 - 11, "toggle: " PRESS_LABEL);
+      display.drawTextCentered(display.width() / 2, display.height() - 11, "toggle: " PRESS_LABEL);
     } else if (_page == HomePage::ADVERT) {
       display.setColor(UIColor::corp_blue);
       display.drawXbm((display.width() - 32) / 2, 18, advert_icon, 32, 32);
       display.setColor(UIColor::secondary_txt);
-      display.drawTextCentered(display.width() / 2, 64 - 11, "advert: " PRESS_LABEL);
+      display.drawTextCentered(display.width() / 2, display.height() - 11, "advert: " PRESS_LABEL);
 #if ENV_INCLUDE_GPS == 1
     } else if (_page == HomePage::GPS) {
       LocationProvider* nmea = sensors.getLocationProvider();
@@ -5344,7 +5344,7 @@ public:
       } else {
         display.setColor(UIColor::secondary_txt);
         display.drawXbm((display.width() - 32) / 2, 18, power_icon, 32, 32);
-        display.drawTextCentered(display.width() / 2, 64 - 11, "hibernate:" PRESS_LABEL);
+        display.drawTextCentered(display.width() / 2, display.height() - 11, "hibernate:" PRESS_LABEL);
       }
 #endif
     }

@@ -151,14 +151,17 @@ constexpr int kTop = 18;        // first row: just below the 16 px header rule
 constexpr int kHintGap = 8;     // hint line height on panels taller than the 64 px reference
 constexpr int kLegacyPitch = 9; // the pitch the 64 px reference menus have always used (8 px font + 1)
 
-// Hint line baseline. The 64 px reference keeps its historic row (56); taller panels anchor it to the bottom edge.
-constexpr int hintY(int height) { return height <= 64 ? 56 : height - kHintGap; }
+// Hint line baseline. The 64 px reference keeps its historic row (56); taller panels anchor it to the bottom edge,
+// leaving a glyph's height: 8 px for the usual 9 px pitch, pitch - 1 for a driver whose text rows are taller.
+constexpr int hintY(int height, int pitch = kLegacyPitch) {
+  return height <= 64 ? 56 : height - (pitch > kLegacyPitch ? pitch - 1 : kHintGap);
+}
 
 // Rows that fit between `top` and the hint line (or the panel bottom when the page has no hint). Never 0.
 constexpr int rows(int height, int pitch, int top = kTop, bool hint = true) {
   return pitch < 1 ? 1
-       : ((hint ? hintY(height) : height) - top) / pitch < 1 ? 1
-       : ((hint ? hintY(height) : height) - top) / pitch;
+       : ((hint ? hintY(height, pitch) : height) - top) / pitch < 1 ? 1
+       : ((hint ? hintY(height, pitch) : height) - top) / pitch;
 }
 
 // First visible item for a list of `count` items showing `visible` rows. The selection rides the last row until

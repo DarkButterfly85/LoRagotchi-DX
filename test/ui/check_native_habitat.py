@@ -31,7 +31,7 @@ struct Memory:DisplayDriver {
 };
 '''+block('static void drawLoRaFishBubbles(')+block('static void drawLoRaFishNativeScenery(')+r'''
 int main(int argc,char** argv){
- for(auto dims:{std::pair<int,int>{320,170},{240,135}}){
+ for(auto dims:{std::pair<int,int>{320,170},{240,135},{220,128},{160,80}}){
   Memory d(dims.first,dims.second);LoRaFishLayout::Region habitat(d,0,24,d.width(),d.height()-24);
   int minY=999,maxY=0;
   for(tick=0;tick<50000;tick+=200){

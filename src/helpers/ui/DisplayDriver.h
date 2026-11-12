@@ -11,6 +11,10 @@ public:
   static ColorVal window_bkg, title_bkg, title_txt, primary_txt, secondary_txt, warning_txt, popup_bkg, popup_txt, corp_blue;
 };
 
+// A DisplayDriver draws at the panel's own size: width() x height() are panel pixels in the mounted
+// orientation, every coordinate and size passed in is a panel pixel, and a driver never scales,
+// zooms or maps a logical canvas onto the panel. (Layouts that were written for 128x64 adapt to the
+// reported size; see LoRaFishLayout.h.)
 class DisplayDriver {
   int _w, _h;
 protected:

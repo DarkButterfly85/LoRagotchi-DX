@@ -14,8 +14,8 @@
 #error "T190 colour requires the T190 board and full-frame RGB565 canvas"
 #endif
 
-// Opt-in per target; generic MeshCore and touch retain their coordinate contract.
-#ifdef LORAGOTCHI_NATIVE_UI
+// The driver reports the panel's own size, in the orientation it is mounted (DISPLAY_ROTATION): T190
+// 320x170, T-Deck and V4 TFT 320x240, T114 240x135. The UI draws 1:1; nothing here scales it.
 #ifndef DISPLAY_WIDTH
 #define DISPLAY_WIDTH 240
 #endif
@@ -27,10 +27,6 @@
 #endif
 #define LORAGOTCHI_LCD_WIDTH ((DISPLAY_ROTATION & 1) ? DISPLAY_HEIGHT : DISPLAY_WIDTH)
 #define LORAGOTCHI_LCD_HEIGHT ((DISPLAY_ROTATION & 1) ? DISPLAY_WIDTH : DISPLAY_HEIGHT)
-#else
-#define LORAGOTCHI_LCD_WIDTH 128
-#define LORAGOTCHI_LCD_HEIGHT 64
-#endif
 
 class ST7789LCDDisplay : public DisplayDriver {
   #if defined(LILYGO_TDECK) || defined(HELTEC_LORA_V4_TFT) || defined(HELTEC_V4_R8_TFT) || defined(LORAGOTCHI_T190_COLOR)
@@ -125,7 +121,6 @@ public:
   void drawRect(int x, int y, int w, int h) override;
   void drawXbm(int x, int y, const uint8_t* bits, int w, int h) override;
   uint16_t getTextWidth(const char* str) override;
-  int menuRowPitch() const override;
   void endFrame() override;
 
   int stripRows() const override;
