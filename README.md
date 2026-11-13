@@ -28,6 +28,8 @@ testing notes in [docs/BUILDING.md](docs/BUILDING.md).
 For setup, controls, menus, pet behaviour and DX travel, see
 [Getting Started](Getting_Started.md).
 
+## [Check out the Nova Web Dashboard!](https://drtoxic.github.io/lodestar_nova_alpha/)
+
 ## Documentation
 
 - [Getting Started](Getting_Started.md): setup, controls and menus
