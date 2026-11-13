@@ -34,7 +34,7 @@ For setup, controls, menus, pet behaviour and DX travel, see
 - [Building and board matrix](docs/BUILDING.md): exact build names and outputs
 - [Device pages](docs/devices/): [T-Watch S3](docs/devices/t-watch-s3.md), [T-Deck](docs/devices/t-deck.md) and [Cardputer](docs/devices/cardputer.md), each with its own getting-started guide ([T-Watch S3](docs/devices/t-watch-s3/GETTING_STARTED.md), [T-Deck](docs/devices/t-deck/GETTING_STARTED.md), [Cardputer](docs/devices/cardputer/GETTING_STARTED.md))
 - [Feature history and testing notes](docs/HISTORY.md): what changed and when
-- [Credits](docs/CREDITS.md): who made what
+- [Credits](docs/CREDITS.mdd): who made what
 - [Licence](LICENSE) and [NOTICE](NOTICE)
 
 ## Easy install
@@ -102,7 +102,7 @@ LoRaGotchi DX is by **Robert Rayner / M0YNW** and is based on **MeshCore** by Sc
 LODESTAR Orion is made by **Aries Thorne / Todd Steinhauer** of **Wolf Reactive Systems / FEAR REACTIVE**, and provides the underlying dashboard connector and mesh analysis platform.
 
 See [`NOTICE`](NOTICE) for attribution details.
-See [`CREDITS`](docs/credits.md) for detailed credit info.
+See [`CREDITS`](docs/CREDITS.md) for detailed credit info.
 
 ## License
 
