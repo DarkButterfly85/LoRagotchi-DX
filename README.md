@@ -28,14 +28,25 @@ testing notes in [docs/BUILDING.md](docs/BUILDING.md).
 For setup, controls, menus, pet behaviour and DX travel, see
 [Getting Started](Getting_Started.md).
 
+## [Check out the Nova Web Dashboard!](https://drtoxic.github.io/lodestar_nova_alpha/)
+
 ## Documentation
 
 - [Getting Started](Getting_Started.md): setup, controls and menus
 - [Building and board matrix](docs/BUILDING.md): exact build names and outputs
 - [Device pages](docs/devices/): [T-Watch S3](docs/devices/t-watch-s3.md), [T-Deck](docs/devices/t-deck.md) and [Cardputer](docs/devices/cardputer.md), each with its own getting-started guide ([T-Watch S3](docs/devices/t-watch-s3/GETTING_STARTED.md), [T-Deck](docs/devices/t-deck/GETTING_STARTED.md), [Cardputer](docs/devices/cardputer/GETTING_STARTED.md))
 - [Feature history and testing notes](docs/HISTORY.md): what changed and when
-- [Credits](docs/CREDITS.md): who made what
+- [Credits](docs/CREDITS.mdd): who made what
 - [Licence](LICENSE) and [NOTICE](NOTICE)
+
+## Easy install
+ESP32
+1. Download the latest from the [Latest release page](https://github.com/DrToxic/LoRagotchi-DX/releases/tag/v1.2.0) and flash using the official [meshcore.io/flasher](https://flasher.meshcore.io/)  
+   (click "Custom Firmware" at the top right, or bottom of the list)
+#### Do not use merged binaries with the meshcore flasher
+
+NRF52
+1. Download the latest from the [Latest release page](https://github.com/DrToxic/LoRagotchi-DX/releases/tag/v1.2.0) and copy the file to the flash drive when radio is in recovery mode (Double-press-hold the reset button)
 
 ## Build and install
 
@@ -90,7 +101,10 @@ Development notes from the experimental LoRaFish/LoRaGotchi builds are retained 
 
 LoRaGotchi DX is by **Robert Rayner / M0YNW** and is based on **MeshCore** by Scott Powell / Ripple Radios. MeshCore provides the underlying mesh transport and substantial portions of the firmware foundation.
 
+LODESTAR Orion is made by **Aries Thorne / Todd Steinhauer** of **Wolf Reactive Systems / FEAR REACTIVE**, and provides the underlying dashboard connector and mesh analysis platform.
+
 See [`NOTICE`](NOTICE) for attribution details.
+See [`CREDITS`](docs/CREDITS.md) for detailed credit info.
 
 ## License
 

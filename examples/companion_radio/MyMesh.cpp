@@ -18,6 +18,8 @@ LoRagotchiChannel::Result LoRagotchiChannel::startupResult = LoRagotchiChannel::
 #include "NovaPetLink.h"   // Nova dashboard link: defines LORAGOTCHI_NOVA_LINK where it applies
 #ifdef LORAGOTCHI_NOVA_LINK
 #include "LoRaFishIdentity.h"   // /lorafish.id: the pet name that "nova petname" sets
+#include "helpers/NovaStreams.h"   // Nova dashboard streams: mesh packets, status frame, battery, messages sent
+#include "ui-new/LoRaFishBattery.h"   // the radio's voltage-to-percent curve, so the dashboard shows the same battery figure
 #endif
 
 #ifdef LORAFISH_UI
@@ -560,6 +562,9 @@ ContactInfo*  MyMesh::processAck(const uint8_t *data) {
     // Let BaseChatMesh consume the ACK and maintain the recipient's route.
     return lookupContactByPubKey(loragotchiDXGuest.ownerKey, 32);
   }
+#endif
+#ifdef LORAGOTCHI_NOVA_LINK
+  { uint32_t novaAck; memcpy(&novaAck, data, 4); NovaStreams::hub().dl.onAck(millis(), novaAck); }   // "Messages you sent" on the dashboard
 #endif
   // see if matches any in a table
   for (int i = 0; i < EXPECTED_ACK_TABLE_SIZE; i++) {
@@ -1507,6 +1512,10 @@ void MyMesh::handleCmdFrame(size_t len) {
           expected_ack_table[next_ack_idx].ack = expected_ack;
           expected_ack_table[next_ack_idx].contact = recipient;
           next_ack_idx = (next_ack_idx + 1) % EXPECTED_ACK_TABLE_SIZE;
+#ifdef LORAGOTCHI_NOVA_LINK
+          NovaStreams::hub().dl.onSent(millis(), recipient->name, expected_ack, est_timeout, result == MSG_SEND_SENT_FLOOD,
+                                       NovaStreams::hub().links.hasBest(millis()));   // "Messages you sent" on the dashboard (direct messages only)
+#endif
         }
 
         out_frame[0] = RESP_CODE_SENT;
@@ -2785,7 +2794,12 @@ void MyMesh::checkCLIRescueCmd() {
 //                        only when the speed setter is registered).
 //   nova contacts        one JSON line {"contacts":[{"n":..,"id":..}]}: the contacts the DX visit picker offers
 //                        (LoRaFishEligible.h, at most 16). Also answered in CLI Rescue (_cli_from_serial).
-//   nova mesh            mesh analyser stream: not in this build yet, answered with {"lg":{"mesh":0}}
+//   nova mesh            the mesh analyser stream and, at most every 5 s, the status frame (best uplink, repeaters, battery,
+//                        speed, messages sent). Both come from helpers/NovaStreams.h, fed by the radio's rx/tx hooks (logRx/logTx
+//                        below) and novaRefreshEnv(). Nothing is sent unless this line asked for it; at most one mesh line a second
+//                        (an empty one every 10 s as a heartbeat) and one status frame every 5 s, written at the link's pace.
+//   nova status          the status frame on demand (at most one a second).
+//   nova battery         {"nova_ok":"battery","mv":N,"pct":N,"chg":0|1}, or {"nova_error":"battery_no_reading"}.
 //   nova pet             send the pet picture, a line at a time, for the next 4 s (the page repeats it)
 //   nova baud <rate>     saves the serial speed (115200, 230400, 460800 or 921600; UART builds only), used from the
 //                        next start-up. Answer: {"nova_ok":"baud","rate":N}, {"nova_error":"baud_unsupported"} or {"nova_unavailable":"baud"}
@@ -2799,7 +2813,14 @@ void MyMesh::checkCLIRescueCmd() {
 #include "helpers/NovaCli.h"
 #include "helpers/NovaPetName.h"
 #include "NovaBaud.h"
-static void novaSay(const char* s) { Serial.print(s); Serial.print('\n'); }
+#include "helpers/NovaStreams.h"
+// One line to the port. While a mesh or status line is still being written (at the link's pace), the reply goes in behind it, whole,
+// so two lines are never mixed; otherwise it is written at once, as it always was.
+static void novaSay(const char* s) {
+  NovaStreams::Outbox& ob = NovaStreams::hub().out;
+  if (ob.pending() && ob.append(s)) return;
+  Serial.print(s); Serial.print('\n');
+}
 
 // Streams the eligible-contacts JSON line to the serial port (same text as in CLI Rescue, but this
 // path has no reflected prefix). getContact(i, ContactInfo&) counts contacts the way the picker does.
@@ -2819,15 +2840,26 @@ static void novaCommand(const char* line, uint32_t now, GetContact getContact) {
     NovaCli::Caps caps;                           // a 1 only where the feature really works in this build
     caps.pet = NovaPetLink::supported() ? 1 : 0;                    // the picture stream (any screen the copy can follow)
     caps.contacts = 1;                            // "nova contacts" (LoRaFishEligible.h) is answered in normal mode
+    caps.mesh = 1;                                // logRx/logTx feed NovaStreams.h and the nova mesh command streams it: this build really does (the hooks are below)
     caps.petname = LoRaFishIdentity::setterSlot() ? 1 : 0;          // the pet screen registered its /lorafish.id setter
     caps.baud = NovaBaud::setterSlot() ? 1 : 0;                     // a UART build whose UI registered the speed setter (NovaBaud.h)
     if (NovaCli::reply(p, "dx-pro", caps, msg, sizeof(msg))) novaSay(msg);   // the edition the dashboard knows this firmware by
   } else if (p.cmd == NovaCli::Cmd::Contacts) {
-    NovaSerialSink sink;
-    NovaContacts::writeJson(sink, getContact);
-    Serial.print('\n');
+    if (NovaStreams::hub().out.midLine()) {
+      NovaStreams::hub().contactsDue = true;      // a mesh or status line is half written: answered right after it (checkNovaSerial)
+    } else {
+      NovaSerialSink sink;
+      NovaContacts::writeJson(sink, getContact);
+      Serial.print('\n');
+    }
   } else if (p.cmd == NovaCli::Cmd::Mesh) {
-    novaSay("{\"lg\":{\"mesh\":0}}");
+    NovaStreams::Hub& hub = NovaStreams::hub();
+    hub.askMesh(now);                             // queued (not written here), only when new packets or the heartbeat are due
+    hub.askStatus(now, NovaStreams::STATUS_GAP_MS);   // the status frame rides on the same request, at most every 5 s
+  } else if (p.cmd == NovaCli::Cmd::Status) {
+    NovaStreams::hub().askStatus(now, NovaStreams::STATUS_CMD_GAP_MS);
+  } else if (p.cmd == NovaCli::Cmd::Battery) {
+    if (NovaStreams::hub().batteryReply(msg, sizeof(msg))) novaSay(msg);
   } else if (p.cmd == NovaCli::Cmd::Pet) {
     if (!NovaPetLink::supported()) {
       if (note_ok) { next_note = now + 30000u; novaSay("# nova pet: this radio's screen cannot be copied (no screen, too big, or drawn where the copy cannot see it), so there is no picture to send"); }
@@ -2868,6 +2900,9 @@ void MyMesh::checkNovaSerial() {
     return i < (uint32_t)getNumContacts() && getContactByIdx((uint32_t)MAX_ANON_CONTACTS + i, c);
   };
 
+  NovaStreams::Hub& hub = NovaStreams::hub();
+  hub.tick(now);                                  // a message sent with no acknowledgement in time turns to failed
+
   while (Serial.available()) {
     const char c = (char)Serial.read();
     if (c == '\n' || c == '\r') {
@@ -2880,11 +2915,28 @@ void MyMesh::checkNovaSerial() {
   }
 
   NovaPetLink::Link* l = NovaPetLink::link();
+  // Mesh lines, status frames and queued replies (helpers/NovaStreams.h Outbox), at the same pace as the pictures. One writer owns the
+  // port for the length of a line: a new line starts only when no picture is half sent, and the pictures wait while one of these is.
+  if (hub.contactsDue && !hub.out.midLine()) {
+    hub.contactsDue = false;
+    NovaSerialSink sink;
+    NovaContacts::writeJson(sink, contactAt);
+    Serial.print('\n');
+  }
+  if (hub.out.pending() && (int32_t)(now - next_out) >= 0 && (hub.out.midLine() || !(l && l->pending()))) {
+    const size_t chunk = NovaPetLink::sendChunk(NovaBaud::activeRate());
+    const size_t n = hub.out.pending() < chunk ? hub.out.pending() : chunk;
+    hub.out.consumed(Serial.write(hub.out.data(), n));
+    next_out = now + NovaPetLink::SEND_GAP_MS;
+  }
   if (!l) return;
+  // The radio screen went to sleep: one line, queued behind any picture half written (the outbox waits for it), once per transition.
+  // The line stays due until it is really queued (outbox full: tried again next pass; no page asking: waits for one).
+  if (l->screenOffDue(now) && hub.out.append(NovaPetLink::SCREEN_OFF_LINE)) l->screenOffQueued();
   if (l->pending()) {
     if (!l->active(now)) {
       l->dropPending();                           // nobody is asking any more
-    } else if ((int32_t)(now - next_out) >= 0) {
+    } else if ((int32_t)(now - next_out) >= 0 && !hub.out.midLine()) {
       // sendChunk(speed) bytes every SEND_GAP_MS: 96 bytes every 10 ms = 9.6 kB/s at the default 115200 baud (below
       // what the port carries, so the radio loop never waits on it), more at the faster speeds of NovaBaud.h.
       // A 2 kB whole picture takes about 0.2 s at 115200, a change far less.
@@ -2900,6 +2952,57 @@ void MyMesh::checkNovaSerial() {
   }
 }
 #endif  // LORAGOTCHI_NOVA_LINK
+
+// ---- Nova dashboard data feeds -----------------------------------------------------------------------------
+// What the dashboard's Mesh analyzer, Best uplink, Repeaters, Speed, Battery and Messages-you-sent panels show comes from here:
+// every packet the radio hears or sends (logRx / logTx, the Dispatcher's own hooks), the radio's settings, the battery, the GPS
+// and the names of the repeaters it hears (novaRefreshEnv, about once a second, nothing heavy). It all goes into
+// helpers/NovaStreams.h and stays there; the serial block above only writes it out when the dashboard asks.
+#ifdef LORAGOTCHI_NOVA_LINK
+void MyMesh::logRx(mesh::Packet* pkt, int len, float score) {
+  NovaStreams::hub().onRx(millis(), _radio->getLastRSSI(), pkt->getSNR(), pkt->getPayloadType(), pkt->getRouteType(), pkt->getPathHashCount(),
+                          pkt->getPathHashSize(), pkt->path, pkt->payload, pkt->payload_len, len);
+}
+
+void MyMesh::logTx(mesh::Packet* pkt, int len) {
+  NovaStreams::hub().onTx(millis(), pkt->getPayloadType(), pkt->getRouteType(), len);
+}
+
+void MyMesh::novaRefreshEnv() {
+  NovaStreams::Hub& hub = NovaStreams::hub();
+  const uint32_t now = millis();
+  static NovaStreams::Gate fast, slow;
+  if (fast.ready(now, 1000)) {                    // radio, GPS, one repeater name: once a second
+    fast.mark(now);
+    hub.nf = (int)_radio->getNoiseFloor();
+    hub.sf = _prefs.sf; hub.bw = _prefs.bw; hub.cr = _prefs.cr;
+    LocationProvider* gnss = sensors.getLocationProvider();
+    if (gnss != NULL && gnss->isEnabled()) hub.gps.update(now, gnss->isValid(), (int32_t)gnss->getLatitude(), (int32_t)gnss->getLongitude(), (int)gnss->satellitesCount());
+    else hub.gps.update(now, false, 0, 0, 0);
+    const int u = hub.links.nextUnnamed(now);     // a repeater heard but not named yet: its name, if exactly one repeater contact has that key
+    if (u >= 0) {
+      hub.links.triedName(u, now);
+      const NovaStreams::Links::E& r = hub.links.e[u];
+      int found = 0; char name[sizeof(r.name)] = "";
+      ContactInfo c;
+      for (int i = 0; i < getNumContacts(); i++) {
+        if (getContactByIdx((uint32_t)MAX_ANON_CONTACTS + i, c) && c.type == ADV_TYPE_REPEATER && memcmp(c.id.pub_key, r.key, r.len) == 0) {
+          if (++found == 1) { strncpy(name, c.name, sizeof(name) - 1); name[sizeof(name) - 1] = 0; }
+        }
+      }
+      if (found == 1) hub.links.setName(u, name);
+    }
+  }
+  if (slow.ready(now, 10000)) {                   // battery and charger: every 10 s (a history sample is kept every 150 s)
+    slow.mark(now);
+    hub.bat.pctOf = LoRaFishBattery::percent;
+    hub.bat.sample(now, board.getBattMilliVolts(), board.isExternalPowered());
+  }
+}
+#else
+void MyMesh::logRx(mesh::Packet*, int, float) {}
+void MyMesh::logTx(mesh::Packet*, int) {}
+#endif  // LORAGOTCHI_NOVA_LINK (data feeds)
 
 void MyMesh::checkSerialInterface() {
   size_t len = _serial->checkRecvFrame(cmd_frame);
@@ -3118,6 +3221,7 @@ void MyMesh::loop() {
   } else {
     checkSerialInterface();
 #ifdef LORAGOTCHI_NOVA_LINK
+    novaRefreshEnv();
     checkNovaSerial();
 #endif
 #if defined(ENABLE_WIFI_INTERFACE) && defined(RP2040_PLATFORM) && !defined(ENABLE_USB_INTERFACE)

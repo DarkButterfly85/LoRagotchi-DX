@@ -76,18 +76,18 @@ static ST7789LCDDisplay d;
 static std::vector<uint16_t> expected(320*170);
 static void present(int rows,int count){runs.clear();d.endFrame();int n=0;for(auto r:runs)n+=r.second;assert(n==rows&&int(runs.size())==count);assert(panel==expected);}
 static void frame(uint16_t c=0){d.startFrame(c);std::fill(expected.begin(),expected.end(),c);}
-static void rect(int x,int y,int w,int h,uint16_t c){d.setColor(c);d.fillRect(x,y,w,h);int x0=int(x*2.5f),x1=int((x+w)*2.5f),y0=int(y*2.65625f),y1=int((y+h)*2.65625f);for(int j=std::max(0,y0);j<std::min(170,y1);++j)for(int i=std::max(0,x0);i<std::min(320,x1);++i)expected[j*320+i]=c;}
+static void rect(int x,int y,int w,int h,uint16_t c){d.setColor(c);d.fillRect(x,y,w,h);int x0=x,x1=x+w,y0=y,y1=y+h;for(int j=std::max(0,y0);j<std::min(170,y1);++j)for(int i=std::max(0,x0);i<std::min(320,x1);++i)expected[j*320+i]=c;}
 int main(int argc,char**){
  if(argc>1){failCanvas=true;d.begin();assert(allocations==0);failCanvas=false;d.setPartialUpdates(true);frame();d.endFrame();assert(allocations==0);d.turnOff();d.turnOn();frame();present(170,1);frame();present(0,0);d.setPartialUpdates(false);return 0;}
  assert(d.supportsPartialUpdates());d.begin();frame();present(170,1);frame();present(170,1);assert(allocations==0);
  d.setPartialUpdates(true);assert(allocations==0);frame();present(170,1);assert(allocations==1);frame();present(0,0);
- frame();rect(4,10,5,2,7);present(5,1);
- frame();rect(20,12,5,2,7);present(11,1);
- frame();rect(20,12,5,2,7);rect(0,30,128,10,99);present(27,1);
- frame();rect(20,12,5,2,7);present(27,1);
+ frame();rect(4,10,5,2,7);present(2,1);
+ frame();rect(20,12,5,2,7);present(4,1);
+ frame();rect(20,12,5,2,7);rect(0,30,128,10,99);present(10,1);
+ frame();rect(20,12,5,2,7);present(10,1);
  frame(42);present(170,1);frame();present(170,1);
- frame();rect(1,1,1,1,4);rect(127,63,1,1,5);present(6,2);
- frame();d.clear();std::fill(expected.begin(),expected.end(),0);present(6,2);
+ frame();rect(1,1,1,1,4);rect(127,63,1,1,5);present(2,2);
+ frame();d.clear();std::fill(expected.begin(),expected.end(),0);present(2,2);
  frame(77);present(170,1);d.clear();for(auto p:panel)assert(p==0);frame(77);present(170,1);frame(77);present(0,0);
  d.forceFullRefresh();frame(77);present(170,1);d.begin();frame(77);present(170,1);
  d.setOrientation(true);frame(77);present(170,1);d.turnOff();d.turnOn();frame(77);present(170,1);
@@ -103,7 +103,7 @@ with tempfile.TemporaryDirectory() as t:
  p=Path(t);(p/'helpers').mkdir()
  for name in ['Wire.h','SPI.h','Adafruit_GFX.h','Adafruit_ST7789.h','helpers/RefCountedDigitalPin.h']:(p/name).write_text('#include "mock.h"\n')
  (p/'mock.h').write_text(mock);(p/'main.cpp').write_text(main)
- flags=['HELTEC_VISION_MASTER_T190','LORAGOTCHI_T190_COLOR','LORAFISH_TDECK_FRAMEBUFFER','DISPLAY_WIDTH=170','DISPLAY_HEIGHT=320','DISPLAY_ROTATION=1','DISPLAY_SCALE_X=2.5f','DISPLAY_SCALE_Y=2.65625f','PIN_TFT_CS=39','PIN_TFT_DC=47','PIN_TFT_RST=40','PIN_TFT_SDA=48','PIN_TFT_SCL=38','PIN_TFT_VDD_CTL=7','PIN_TFT_LEDA_CTL=17','PIN_TFT_LEDA_CTL_ACTIVE=HIGH']
+ flags=['HELTEC_VISION_MASTER_T190','LORAGOTCHI_T190_COLOR','LORAFISH_TDECK_FRAMEBUFFER','DISPLAY_WIDTH=170','DISPLAY_HEIGHT=320','DISPLAY_ROTATION=1','PIN_TFT_CS=39','PIN_TFT_DC=47','PIN_TFT_RST=40','PIN_TFT_SDA=48','PIN_TFT_SCL=38','PIN_TFT_VDD_CTL=7','PIN_TFT_LEDA_CTL=17','PIN_TFT_LEDA_CTL_ACTIVE=HIGH']
  source=(root/'src/helpers/ui/ST7789LCDDisplay.cpp').read_text().replace('malloc(bytes)','shadowMalloc(bytes)')
  (p/'driver.cpp').write_text(source)
  subprocess.run(['g++','-std=c++17','-Wall','-Wextra','-Wno-unused-parameter','-I'+t,'-I'+str(root/'src/helpers/ui'),*['-D'+f for f in flags],str(p/'main.cpp'),str(p/'driver.cpp'),'-o',str(p/'check')],check=True)

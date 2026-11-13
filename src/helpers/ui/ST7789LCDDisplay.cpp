@@ -10,21 +10,8 @@
   #define DISPLAY_ROTATION 3
 #endif
 
-#ifdef LORAGOTCHI_NATIVE_UI
-// One UI pixel is one panel pixel for text, rectangles and bitmap art.
-#undef DISPLAY_SCALE_X
-#undef DISPLAY_SCALE_Y
-#define DISPLAY_SCALE_X 1
-#define DISPLAY_SCALE_Y 1
-#endif
-
-#ifndef DISPLAY_SCALE_X
-  #define DISPLAY_SCALE_X 2.5f // 320 / 128
-#endif
-
-#ifndef DISPLAY_SCALE_Y
-  #define DISPLAY_SCALE_Y 3.75f // 240 / 64
-#endif
+// The UI draws at the panel's own size: one UI pixel is one panel pixel for text, rectangles and
+// bitmap art, on every board that uses this driver. There is no logical-to-physical scaling.
 
 // Panel size is overridable so boards like the T114 (135x240 panel, used landscape)
 // can reuse this driver. Defaults keep the 240x320 boards unchanged.
@@ -97,7 +84,7 @@ bool ST7789LCDDisplay::begin() {
 
     display.fillScreen(ST77XX_BLACK);
     display.setTextColor(ST77XX_WHITE);
-    display.setTextSize(2 * DISPLAY_SCALE_X); 
+    display.setTextSize(2);
     display.cp437(true); // Use full 256 char 'Code Page 437' font
   
 #ifdef LORAFISH_TDECK_FRAMEBUFFER
@@ -182,17 +169,17 @@ void ST7789LCDDisplay::startFrame(ColorVal bkg) {
   Adafruit_GFX& g = gfx();
   g.fillScreen(bkg);
   g.setTextColor(_color = UIColor::primary_txt);
-  g.setTextSize(1 * DISPLAY_SCALE_X); // This one affects size of Please wait... message
+  g.setTextSize(1); // This one affects size of Please wait... message
   g.cp437(true); // Use full 256 char 'Code Page 437' font
 }
 
 void ST7789LCDDisplay::setTextSize(int sz) {
-  display.setTextSize(sz * DISPLAY_SCALE_X);
+  display.setTextSize(sz);
 #ifdef LORAFISH_TDECK_FRAMEBUFFER
-  if (_frame) _frame->setTextSize(sz * DISPLAY_SCALE_X);
+  if (_frame) _frame->setTextSize(sz);
 #endif
 #ifdef LORAFISH_STRIP_REDRAW
-  if (_band) _band->setTextSize(sz * DISPLAY_SCALE_X);
+  if (_band) _band->setTextSize(sz);
 #endif
 }
 
@@ -207,7 +194,7 @@ void ST7789LCDDisplay::setColor(ColorVal c) {
 }
 
 void ST7789LCDDisplay::setCursor(int x, int y) {
-  gfx().setCursor((int)(x * DISPLAY_SCALE_X), (int)(y * DISPLAY_SCALE_Y) - bandOffset());
+  gfx().setCursor(x, y - bandOffset());
 }
 
 void ST7789LCDDisplay::print(const char* str) {
@@ -215,70 +202,26 @@ void ST7789LCDDisplay::print(const char* str) {
 }
 
 void ST7789LCDDisplay::fillRect(int x, int y, int w, int h) {
-#ifdef LORAGOTCHI_T190_COLOR
   if (w <= 0 || h <= 0) return;
-  const int x0 = static_cast<int>(x * DISPLAY_SCALE_X);
-  const int y0 = static_cast<int>(y * DISPLAY_SCALE_Y);
-  gfx().fillRect(x0, y0 - bandOffset(),
-    static_cast<int>((x + w) * DISPLAY_SCALE_X) - x0,
-    static_cast<int>((y + h) * DISPLAY_SCALE_Y) - y0, _color);
-#else
-  gfx().fillRect((int)(x * DISPLAY_SCALE_X), (int)(y * DISPLAY_SCALE_Y) - bandOffset(),
-                 (int)(w * DISPLAY_SCALE_X), (int)(h * DISPLAY_SCALE_Y), _color);
-#endif
+  gfx().fillRect(x, y - bandOffset(), w, h, _color);
 }
 
 void ST7789LCDDisplay::drawRect(int x, int y, int w, int h) {
-#ifdef LORAGOTCHI_T190_COLOR
   if (w <= 0 || h <= 0) return;
-  const int x0 = static_cast<int>(x * DISPLAY_SCALE_X);
-  const int y0 = static_cast<int>(y * DISPLAY_SCALE_Y);
-  gfx().drawRect(x0, y0 - bandOffset(),
-    static_cast<int>((x + w) * DISPLAY_SCALE_X) - x0,
-    static_cast<int>((y + h) * DISPLAY_SCALE_Y) - y0, _color);
-#else
-  gfx().drawRect((int)(x * DISPLAY_SCALE_X), (int)(y * DISPLAY_SCALE_Y) - bandOffset(),
-                 (int)(w * DISPLAY_SCALE_X), (int)(h * DISPLAY_SCALE_Y), _color);
-#endif
+  gfx().drawRect(x, y - bandOffset(), w, h, _color);
 }
 
+// XBM art is MSB first; every set bit is exactly one panel pixel.
 void ST7789LCDDisplay::drawXbm(int x, int y, const uint8_t* bits, int w, int h) {
-#ifdef LORAGOTCHI_T190_COLOR
   if (!bits || w <= 0 || h <= 0) return;
   const size_t byteWidth = (static_cast<size_t>(w) + 7) / 8;
-  // Square bitmap pixels, matching the existing driver's intended aspect.
-  // Quantize absolute edges so adjacent fractional cells neither overlap nor gap.
-  const int baseY = static_cast<int>(y * DISPLAY_SCALE_Y);
   for (int j = 0; j < h; ++j) {
-    const int y0 = baseY + static_cast<int>(j * DISPLAY_SCALE_X);
-    const int y1 = baseY + static_cast<int>((j + 1) * DISPLAY_SCALE_X);
     for (int i = 0; i < w; ++i) {
       if (pgm_read_byte(bits + static_cast<size_t>(j) * byteWidth + i / 8) & (0x80 >> (i & 7))) {
-        const int x0 = static_cast<int>((x + i) * DISPLAY_SCALE_X);
-        const int x1 = static_cast<int>((x + i + 1) * DISPLAY_SCALE_X);
-        gfx().fillRect(x0, y0 - bandOffset(), x1 - x0, y1 - y0, _color);
+        gfx().drawPixel(x + i, y + j - bandOffset(), _color);
       }
     }
   }
-#else
-  uint8_t byteWidth = (w + 7) / 8;
-
-  for (int j = 0; j < h; j++) {
-    for (int i = 0; i < w; i++) {
-      uint8_t byte = bits[j * byteWidth + i / 8];
-      bool pixelOn = byte & (0x80 >> (i & 7));
-
-      if (pixelOn) {
-        for (int dy = 0; dy < DISPLAY_SCALE_X; dy++) {
-          for (int dx = 0; dx < DISPLAY_SCALE_X; dx++) {
-            gfx().drawPixel((int)(x * DISPLAY_SCALE_X + i * DISPLAY_SCALE_X + dx),
-                            (int)(y * DISPLAY_SCALE_Y + j * DISPLAY_SCALE_X + dy) - bandOffset(), _color);
-          }
-        }
-      }
-    }
-  }
-#endif
 }
 
 uint16_t ST7789LCDDisplay::getTextWidth(const char* str) {
@@ -286,17 +229,7 @@ uint16_t ST7789LCDDisplay::getTextWidth(const char* str) {
   uint16_t w, h;
   display.getTextBounds(str, 0, 0, &x1, &y1, &w, &h);
 
-  return w / DISPLAY_SCALE_X;
-}
-
-// Size-1 text is 8 physical pixels tall times the integer text scale (setTextSize truncates the float
-// scale). A menu row needs that plus one clear pixel, expressed in UI rows (rounded up so lines never
-// touch). Native panels are 1:1, so this is the usual 9. The scaled T-Deck grid (2.5x, 3.75x) draws 16 px
-// glyphs, so it needs 5 grid rows (18.75 px) per line instead of the 9 (33.75 px) the 8 px reference uses.
-int ST7789LCDDisplay::menuRowPitch() const {
-  const int glyphPixels = 8 * static_cast<int>(DISPLAY_SCALE_X);
-  const int pitch = static_cast<int>((glyphPixels + 1) / DISPLAY_SCALE_Y + 0.999f);
-  return pitch < 4 ? 4 : pitch > 9 ? 9 : pitch;
+  return w;
 }
 
 void ST7789LCDDisplay::endFrame() {
@@ -360,7 +293,7 @@ void ST7789LCDDisplay::beginStrip(int physY0) {
     _band = new (std::nothrow) GFXcanvas16(display.width(), BAND_ROWS);
     if (_band && !_band->getBuffer()) { delete _band; _band = nullptr; }
     if (!_band) return;
-    _band->setTextSize(1 * DISPLAY_SCALE_X);
+    _band->setTextSize(1);
     _band->cp437(true);
   }
   _bandY0 = physY0;

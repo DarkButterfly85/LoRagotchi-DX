@@ -17,6 +17,7 @@ ColorVal UIColor::window_bkg = 0, UIColor::title_bkg = 0, UIColor::title_txt = 1
 class FakeMono : public DisplayDriver {
   bool colour_, eink_;
 public:
+  int advNum = 0, advDen = 1;      // advNum > 0: text is advNum/advDen columns a character (the T096 reports 6/1.25), else the OLED's 6n-1
   std::vector<std::string> log;
   FakeMono(int w = 128, int h = 64, bool colour = false, bool eink = false) : DisplayDriver(w, h), colour_(colour), eink_(eink) {}
   bool supportsColor() const override { return colour_; }
@@ -38,7 +39,10 @@ public:
     char t[4]; for (int i = 0; i < ((w + 7) / 8) * h; i++) { snprintf(t, sizeof t, "%02x", b[i]); s += t; }
     log.push_back(s);
   }
-  uint16_t getTextWidth(const char* s) override { return (uint16_t)(strlen(s) * 6 - 1); }
+  uint16_t getTextWidth(const char* s) override {
+    if (advNum > 0) return (uint16_t)(strlen(s) * advNum / advDen);
+    return (uint16_t)(strlen(s) * 6 - 1);
+  }
 };
 
 static std::vector<uint8_t> unhex(const std::string& h) {

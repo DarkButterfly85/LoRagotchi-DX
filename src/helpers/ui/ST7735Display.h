@@ -17,15 +17,18 @@ class ST7735Display : public DisplayDriver {
 
   bool i2c_probe(TwoWire& wire, uint8_t addr);
 public:
+  // The panel is 160x80 and the UI draws at that size: one UI pixel is one panel pixel, no scaling.
+  static const int NATIVE_WIDTH = 160;
+  static const int NATIVE_HEIGHT = 80;
 #ifdef USE_PIN_TFT
-  ST7735Display(RefCountedDigitalPin* peripher_power=NULL) : DisplayDriver(128, 64), 
+  ST7735Display(RefCountedDigitalPin* peripher_power=NULL) : DisplayDriver(NATIVE_WIDTH, NATIVE_HEIGHT),
     //  display(PIN_TFT_CS, PIN_TFT_DC, PIN_TFT_SDA, PIN_TFT_SCL, PIN_TFT_RST),
       _peripher_power(peripher_power)
   {
     _isOn = false;
   }
 #else
-  ST7735Display(RefCountedDigitalPin* peripher_power=NULL) : DisplayDriver(128, 64),
+  ST7735Display(RefCountedDigitalPin* peripher_power=NULL) : DisplayDriver(NATIVE_WIDTH, NATIVE_HEIGHT),
     //  display(&SPI1, PIN_TFT_CS, PIN_TFT_DC, PIN_TFT_RST),
       _peripher_power(peripher_power)
   {

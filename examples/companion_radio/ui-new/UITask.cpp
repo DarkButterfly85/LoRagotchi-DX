@@ -344,12 +344,15 @@ static const char* loRaFishDisplayName() {
 static inline const char* loRaFishPetNameForNova() { return loRaFishIdName; }   // inline: unused in builds without the Nova link
 
 #ifdef LORAGOTCHI_NOVA_LINK
+static void loRaFishNovaPaletteSeed(NovaPetLink::Link& nova);   // defined with the scenery, below
 // The Nova link when a dashboard page is asking right now ("nova pet" in the last 4 s), else NULL. Gives it the
-// frame name first: the pet's name from /lorafish.id, else the radio's node name (node_prefs->node_name).
+// frame name first: the pet's name from /lorafish.id, else the radio's node name (node_prefs->node_name), and
+// the palette seed (which colours get exact slots, in which order).
 static inline NovaPetLink::Link* loRaFishNovaLinkIfAsked(uint32_t now) {
   NovaPetLink::Link* nova = NovaPetLink::supported() ? NovaPetLink::link() : NULL;
   if (!nova || !nova->active(now)) return NULL;
   nova->setNames(loRaFishPetNameForNova(), loRaFishMeshNodeName);
+  loRaFishNovaPaletteSeed(*nova);
   return nova;
 }
 #endif
@@ -2851,7 +2854,7 @@ static const char* loRaFishOptionLabel(LoRaFishOption option) {
 // the panel's bottom edge. Pages still drawn in the stretched 64 px frame keep their historic row 56.
 static void drawLoRaFishMenuHint(DisplayDriver& display, bool flow=false) {
   display.setColor(UIColor::secondary_txt);
-  const int y = flow ? LoRaFishMenuLayout::hintY(display.height()) : 56;
+  const int y = flow ? LoRaFishMenuLayout::hintY(display.height(), display.menuRowPitch()) : 56;
 #if defined(LORAFISH_WATCH_TOUCH)
   // LilyGo T-Watch S3: the footer already shows the taps; only hold needs a hint.
   display.drawTextCentered(display.width()/2, y, "LONG HOLD:SELECT");
@@ -3013,7 +3016,7 @@ static void drawLoRaFishWatchOptions(DisplayDriver& display) {
   }
 #if defined(LORAFISH_WATCH_TOUCH)
   display.setColor(UIColor::secondary_txt);
-  display.drawTextCentered(display.width()/2, LoRaFishMenuLayout::hintY(display.height()), "LONG HOLD:OPEN");
+  display.drawTextCentered(display.width()/2, LoRaFishMenuLayout::hintY(display.height(), display.menuRowPitch()), "LONG HOLD:OPEN");
 #else
   drawLoRaFishMenuHint(display, true);
 #endif
@@ -4116,6 +4119,74 @@ static bool loRaFishColourTank() {
 #endif
 }
 
+#ifdef LORAGOTCHI_NOVA_LINK
+// Nova colour pictures hold 16 colours, and a scene draws more than that, so the order the slots are reserved
+// in decides who keeps an exact colour: 1 the theme, 2 the pet (body, fins, eyes), 3 the plants, 4 the
+// background blues, in whatever slots are left. The seed only reserves slots; it changes nothing on the real
+// screen. The plant and blue lists repeat the literals of the scenes above (check_nova_palette_seed.py fails
+// if a plant colour drifts from the scene).
+static void loRaFishNovaPaletteSeed(NovaPetLink::Link& nova) {
+  if (!nova.format().colour()) return;
+  uint16_t c[40];
+  int n=0;
+  // 1. theme (the window background is always slot 0; Link drops the duplicates)
+  c[n++]=UIColor::window_bkg; c[n++]=UIColor::title_bkg; c[n++]=UIColor::title_txt;
+  c[n++]=UIColor::primary_txt; c[n++]=UIColor::secondary_txt; c[n++]=UIColor::corp_blue;
+  // 2. the pet, as its sprite draws it: juveniles are tinted with an ink-coloured eye; adults use their genes
+  const LoRaFishAppearance a=loRaFishLocalAppearance();
+  const uint8_t stage=fish.evolution;
+  ColorVal body=loRaFishColorValue(a.body), fins=loRaFishColorValue(a.scales), eyes=loRaFishColorValue(a.eyes);
+  bool ink=(eyes==body || a.eyes==LORAFISH_MONOCHROME_COLOR || a.eyes==LORAFISH_MONOCHROME_RENDER_TINT);
+  if (stage<2 && loRaFishColorDisplay && a.body!=0xFF) {
+    body=loRaFishJuvenileTint(a.body,stage==0?2:5);
+    fins=loRaFishJuvenileTint(stage==0?a.body:a.scales,stage==0?5:6);
+    ink=true;
+  }
+  c[n++]=body; c[n++]=fins;
+  if (ink) {
+    const unsigned light=((body>>11)&31)*299*2+((body>>5)&63)*587+(body&31)*114*2;
+    c[n++]=light>=31500 ? 0x2104 : 0xDEFB;
+  } else c[n++]=eyes;
+  // 3 and 4. plants, then blues, for the scene this radio draws (an animal home: meadow or sky; else the tank)
+  static const uint16_t tankDeepWater[]={0x010B,0x012D,0x014F,0x0170,0x0190,0x01B0,0x01D0,0x01EF};
+  static const uint16_t tankFlatWater[]={0x0129,0x016B,0x01AD,0x01EF};
+  static const uint16_t landSky[]={0x2317,0x3397,0x4C18,0x5CB9,0x753A,0x85BB,0x965C,0xAEDD};
+  static const uint16_t airSky[]={0x118F,0x2231,0x32D3,0x4375,0x5416,0x64D8,0x757A,0x8E1C};
+  const uint16_t* plants=NULL; int nplants=0; const uint16_t* blues=NULL; int nblues=0;
+  if (loRaFishColorDisplay) {
+#if defined(LORAFISH_COLOUR_SCENES)
+    if (loRaFishAnimalHome()) {
+#if LORAGOTCHI_DXPRO
+      const bool land=LoRaFishSpecies::landKnown(loRaFishSpecies);
+#else
+      const bool land=LORAGOTCHI_LAND_EDITION!=0;
+#endif
+      static const uint16_t meadow[]={0x7E0C,0x44AA,0x1AE5,0x59E5};   // ridge, hills, tufts, turf
+      if (land) { plants=meadow; nplants=4; blues=landSky; nblues=8; }
+      else { blues=airSky; nblues=8; }
+    } else
+#endif
+    {
+#if defined(LORAFISH_CARDPUTER_25D) || defined(LORAFISH_TDECK_PIXEL_ART) || defined(LORAFISH_COLOUR_TANK)
+#if defined(LORAFISH_CARDPUTER_25D)
+      const bool deep=true;
+#elif defined(LORAFISH_TDECK_PIXEL_ART)
+      const bool deep=false;
+#else
+      const bool deep=nova.format().h>64;
+#endif
+      static const uint16_t weedDeep[]={0x03C8,0x05A8}, weedFlat[]={0x04E7,0x05A8};
+      plants=deep ? weedDeep : weedFlat; nplants=2;
+      blues=deep ? tankDeepWater : tankFlatWater; nblues=deep ? 8 : 4;
+#endif
+    }
+  }
+  for (int i=0;i<nplants;i++) c[n++]=plants[i];
+  for (int i=0;i<nblues;i++) c[n++]=blues[i];
+  nova.setPaletteSeed(c,n);
+}
+#endif
+
 static void drawLoRaFishNativeScenery(DisplayDriver& d) {
 #ifdef LORAGOTCHI_NATIVE_UI
   if(d.height()<=64) return;
@@ -4757,7 +4828,7 @@ static void drawLoRaFishNative(DisplayDriver& display, UITask* task) {
   const bool notice=loRaFishNovaNotice || loRaFishChannelNotice || loRaFishNameNotice ||
       loRaFishMonoDisplayNotice || loRaFishAdoptionEligible || loRaFishNeedsPetSetup || loRaFishValuePicker.active();
   if(loRaFishPage==0 && !notice) {
-    const int ribbon=h>64 ? 24 : 0;
+    const int ribbon=h>=96 ? 24 : 0;   // 160x80 panels have no room for a ribbon above the tank
     if(ribbon) {
       display.setTextSize(1);display.setColor(UIColor::secondary_txt);
       char line[80];
@@ -5172,12 +5243,12 @@ public:
           32, 32);
       display.setColor(UIColor::secondary_txt);
       display.setTextSize(1);
-      display.drawTextCentered(display.width() / 2, 64 - 11, "toggle: " PRESS_LABEL);
+      display.drawTextCentered(display.width() / 2, display.height() - 11, "toggle: " PRESS_LABEL);
     } else if (_page == HomePage::ADVERT) {
       display.setColor(UIColor::corp_blue);
       display.drawXbm((display.width() - 32) / 2, 18, advert_icon, 32, 32);
       display.setColor(UIColor::secondary_txt);
-      display.drawTextCentered(display.width() / 2, 64 - 11, "advert: " PRESS_LABEL);
+      display.drawTextCentered(display.width() / 2, display.height() - 11, "advert: " PRESS_LABEL);
 #if ENV_INCLUDE_GPS == 1
     } else if (_page == HomePage::GPS) {
       LocationProvider* nmea = sensors.getLocationProvider();
@@ -5344,7 +5415,7 @@ public:
       } else {
         display.setColor(UIColor::secondary_txt);
         display.drawXbm((display.width() - 32) / 2, 18, power_icon, 32, 32);
-        display.drawTextCentered(display.width() / 2, 64 - 11, "hibernate:" PRESS_LABEL);
+        display.drawTextCentered(display.width() / 2, display.height() - 11, "hibernate:" PRESS_LABEL);
       }
 #endif
     }
@@ -6291,6 +6362,10 @@ void UITask::loop() {
 
 #ifdef LORAFISH_UI
   if (!_display || !_display->isOn()) loRaFishStaticFrameValid = false;
+#endif
+#ifdef LORAGOTCHI_NOVA_LINK
+  // Tell the Nova link whether the screen is on; it sends one {"screen":"off"} line when it goes to sleep (NovaPetLink::noteScreen).
+  if (_display) { if (NovaPetLink::Link* novaScr = NovaPetLink::link()) novaScr->noteScreen(_display->isOn()); }
 #endif
   if (_display != NULL && _display->isOn()) {
 #ifdef LORAFISH_UI

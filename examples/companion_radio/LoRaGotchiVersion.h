@@ -34,7 +34,7 @@
 // Product source candidate, separate from MeshCore FIRMWARE_VERSION.
 // No GitHub release or hardware acceptance is implied.
 #ifndef LORAGOTCHI_PRODUCT_VERSION
-#define LORAGOTCHI_PRODUCT_VERSION "v1.1.0"
+#define LORAGOTCHI_PRODUCT_VERSION "v1.2.0"
 #endif
 
 #if LORAGOTCHI_DXPRO

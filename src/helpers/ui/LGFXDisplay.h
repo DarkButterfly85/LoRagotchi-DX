@@ -5,10 +5,6 @@
 #define LGFX_USE_V1
 #include <LovyanGFX.hpp>
 
-#ifndef UI_ZOOM
-  #define UI_ZOOM 1
-#endif
-
 class LGFXDisplay : public DisplayDriver {
 protected:
   LGFX_Device* display;
@@ -19,7 +15,7 @@ protected:
 
 public:
   LGFXDisplay(int w, int h, LGFX_Device &disp)
-    : DisplayDriver(w/UI_ZOOM, h/UI_ZOOM), display(&disp) {}
+    : DisplayDriver(w, h), display(&disp) {}   // the panel's own size; the UI draws 1:1
   bool begin();
   bool isOn() override { return _isOn; }
   void turnOn() override;
