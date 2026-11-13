@@ -86,7 +86,8 @@ static constexpr size_t MAX_LINE_CAP = 16384;         // the line buffer never g
 static constexpr int PALETTE_SIZE = 16;               // colour pictures: 4 bits a pixel
 
 // The radio screen went to sleep: exactly this one line (no newline here; the outbox adds it), once per transition,
-// and nothing else for that transition (no heartbeat). Only while a page is asking. See Link::noteScreen.
+// and nothing else for that transition (no heartbeat). Only while a page is asking; a transition that happens while
+// nobody asks stays pending until a page does (Link::screenOffDue). See Link::noteScreen.
 static constexpr const char* SCREEN_OFF_LINE = "{\"screen\":\"off\"}";
 
 // Output pacing (MyMesh.cpp checkNovaSerial): at most sendChunk(baud) bytes every SEND_GAP_MS, written without waiting
@@ -424,12 +425,17 @@ public:
     if (on) { awake_ = true; off_due_ = false; }
     else if (awake_) { awake_ = false; off_due_ = true; }
   }
-  // The serial code asks once per pass: true = send SCREEN_OFF_LINE now (it is not due again until the next
-  // transition). No page asking: nothing is sent and the transition is forgotten.
+  // The serial code asks once per pass. screenOffDue: a screen-off line is waiting AND a page is asking, so queue
+  // SCREEN_OFF_LINE now. It stays due (even with no page asking) until screenOffQueued() says the line really went
+  // into the outbox, so a transition that happens while nobody is asking is not lost: it goes out the moment a page
+  // asks (request()). Waking up cancels it (noteScreen(true)).
+  bool screenOffDue(uint32_t now) const { return off_due_ && active(now); }
+  void screenOffQueued() { off_due_ = false; }
+  // Both in one: true = the line is due now and is marked as sent (use screenOffDue/screenOffQueued when the append can fail).
   bool takeScreenOff(uint32_t now) {
-    if (!off_due_) return false;
+    if (!screenOffDue(now)) return false;
     off_due_ = false;
-    return active(now);
+    return true;
   }
 
   // The colours to reserve, in priority order, before a key picture is drawn (see the note on slot order above).

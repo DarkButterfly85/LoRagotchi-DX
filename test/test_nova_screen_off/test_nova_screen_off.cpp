@@ -16,7 +16,7 @@ namespace {
 // What the serial code does each pass (MyMesh.cpp checkNovaSerial): queue the off line when the link says it is due.
 // Returns what the port would get from the outbox, and empties it.
 std::string pass(Link& l, NovaStreams::Hub& hub, uint32_t now) {
-  if (l.takeScreenOff(now)) hub.out.append(NovaPetLink::SCREEN_OFF_LINE);
+  if (l.screenOffDue(now) && hub.out.append(NovaPetLink::SCREEN_OFF_LINE)) l.screenOffQueued();   // same as the call site
   std::string s((const char*)hub.out.data(), hub.out.pending());
   hub.out.consumed(hub.out.pending());
   return s;
@@ -74,6 +74,60 @@ TEST(NovaScreenOff, NothingIsSentUnlessAPageIsAsking) {
   l.request(2000);                                         // a page that starts while asleep is told once
   EXPECT_EQ(pass(l, hub, 2000), "{\"screen\":\"off\"}\n");
   EXPECT_EQ(pass(l, hub, 2100), "");
+}
+
+// The off transition must not be lost when no page is asking at that moment.
+TEST(NovaScreenOff, TransitionWithNoPageStaysPendingUntilAPageAsks) {
+  Link l; NovaStreams::Hub hub;
+  l.noteScreen(true);
+  l.noteScreen(false);                                     // goes to sleep, nobody asking
+  for (uint32_t t = 1000; t < 30000; t += 1000) ASSERT_EQ(pass(l, hub, t), "") << "at " << t;   // waits, sends nothing
+  l.request(30000);                                        // a page starts: the line goes out at once
+  EXPECT_EQ(pass(l, hub, 30000), "{\"screen\":\"off\"}\n");
+  for (uint32_t t = 30100; t < 40000; t += 100) { l.request(t); ASSERT_EQ(pass(l, hub, t), "") << "at " << t; }   // once only
+}
+
+TEST(NovaScreenOff, TransitionWhileAPageIsActiveIsSentOnce) {
+  Link l; NovaStreams::Hub hub;
+  l.request(1000);
+  l.noteScreen(true);
+  l.noteScreen(false);
+  EXPECT_EQ(pass(l, hub, 1000), "{\"screen\":\"off\"}\n");
+  EXPECT_EQ(pass(l, hub, 1001), "");
+  EXPECT_EQ(pass(l, hub, 2000), "");
+}
+
+TEST(NovaScreenOff, WakingBeforeAPageAsksSendsNothing) {
+  Link l; NovaStreams::Hub hub;
+  l.noteScreen(true);
+  l.noteScreen(false);                                     // pending, nobody asking
+  EXPECT_EQ(pass(l, hub, 1000), "");
+  l.noteScreen(true);                                      // screen back on before any page asked
+  EXPECT_EQ(pass(l, hub, 1500), "");
+  l.request(2000);                                         // awake page: still nothing, now or later
+  EXPECT_EQ(pass(l, hub, 2000), "");
+  EXPECT_EQ(pass(l, hub, 3000), "");
+}
+
+TEST(NovaScreenOff, NoDuplicateAfterTheLineWentOut) {
+  Link l; NovaStreams::Hub hub;
+  l.noteScreen(false);
+  EXPECT_EQ(pass(l, hub, 500), "");
+  l.request(1000);
+  EXPECT_EQ(pass(l, hub, 1000), "{\"screen\":\"off\"}\n");
+  for (uint32_t t = 1100; t < 3900; t += 100) { l.noteScreen(false); l.request(t); ASSERT_EQ(pass(l, hub, t), "") << "at " << t; }
+  l.noteScreen(false);
+  EXPECT_EQ(pass(l, hub, 3900), "");
+}
+
+TEST(NovaScreenOff, ALineThatCouldNotBeQueuedStaysDue) {
+  Link l;
+  l.request(1000);
+  l.noteScreen(false);
+  EXPECT_TRUE(l.screenOffDue(1000));
+  EXPECT_TRUE(l.screenOffDue(1100));                       // asking again (outbox was full): still due, not dropped
+  l.screenOffQueued();
+  EXPECT_FALSE(l.screenOffDue(1200));
 }
 
 TEST(NovaScreenOff, WakingBeforeTheLineWentCancelsIt) {
