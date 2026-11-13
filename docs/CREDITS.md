@@ -44,7 +44,7 @@ Features taken from or inspired by ORION:
 - Land species Wolf, Fox, Bear, Kitsune and Griffin, drawn as a visual take on
   the ORION wolf and creature art (no code or packets copied)
 - Natural idle motion and the nose-down sniff, based on the ORION wolf's motion
-- USB and web dashboard (planned, colour screens)
+- USB and web dashboard
 - Trip tracking and wardriving (planned, GPS boards only)
 
 The Nova dashboard sync in our fork (`lodestar_nova_alpha`) is also built on
