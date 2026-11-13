@@ -37,6 +37,14 @@ For setup, controls, menus, pet behaviour and DX travel, see
 - [Credits](docs/CREDITS.md): who made what
 - [Licence](LICENSE) and [NOTICE](NOTICE)
 
+## Easy install
+ESP32
+1. Download the latest from the [Latest release page](https://github.com/DrToxic/LoRagotchi-DX/releases/tag/v1.2.0) and flash using the official [meshcore.io/flasher](https://flasher.meshcore.io/) and click "Custom Firmware"
+### Do not use merged binaries with the meshcore flasher
+
+NRF52
+1. Download the latest from the [Latest release page](https://github.com/DrToxic/LoRagotchi-DX/releases/tag/v1.2.0) and copy the file to the flash drive when radio is in recovery mode (Double-press-hold the reset button)
+
 ## Build and install
 
 1. **Get the source.** Install Git and
