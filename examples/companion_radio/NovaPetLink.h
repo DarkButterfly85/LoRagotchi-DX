@@ -85,6 +85,10 @@ static constexpr size_t MAX_LINE_CAP = 16384;         // the line buffer never g
                                                       // codes bigger is skipped, not cut)
 static constexpr int PALETTE_SIZE = 16;               // colour pictures: 4 bits a pixel
 
+// The radio screen went to sleep: exactly this one line (no newline here; the outbox adds it), once per transition,
+// and nothing else for that transition (no heartbeat). Only while a page is asking. See Link::noteScreen.
+static constexpr const char* SCREEN_OFF_LINE = "{\"screen\":\"off\"}";
+
 // Output pacing (MyMesh.cpp checkNovaSerial): at most sendChunk(baud) bytes every SEND_GAP_MS, written without waiting
 // for the port. A byte on the wire is 10 bits (8N1), so the port carries baud/10 bytes a second = baud/1000 bytes per
 // 10 ms. baud/1200 of them is about 83 percent of that: 96 bytes at 115200 (what the link always sent), 192 at 230400,
@@ -388,7 +392,7 @@ public:
   Canvas canvas;                 // the tee draws into this while a page is asking
   explicit Link(const Format& f = Format())
     : fmt_(f), prev_(NULL), line_(NULL), cap_(0), seq_(0), since_key_(0), last_key_(0), last_sent_(0), until_(0), started_(0),
-      want_key_(true), got_frame_(false), len_(0), off_(0), nseed_(0) {
+      want_key_(true), got_frame_(false), len_(0), off_(0), nseed_(0), awake_(true), off_due_(false) {
     name_[0] = 0;
     memset(seed_, 0, sizeof(seed_));
     if (!f.valid() || !canvas.init(f)) return;
@@ -407,8 +411,25 @@ public:
 
   // "nova pet": keep the stream going for WINDOW_MS. A stream that lapsed starts again with a key picture.
   void request(uint32_t now) {
-    if (!active(now)) { want_key_ = true; len_ = off_ = 0; started_ = now; got_frame_ = false; canvas.resetPalette(); }
+    if (!active(now)) {
+      want_key_ = true; len_ = off_ = 0; started_ = now; got_frame_ = false; canvas.resetPalette();
+      if (!awake_) off_due_ = true;               // a page that starts while the screen is asleep is told once
+    }
     until_ = now + WINDOW_MS;
+  }
+
+  // The UI says, every pass, whether the radio screen is on. A change from on to off makes ONE screen-off line
+  // due (SCREEN_OFF_LINE); going on again, or staying off, makes none. The screen pictures are untouched.
+  void noteScreen(bool on) {
+    if (on) { awake_ = true; off_due_ = false; }
+    else if (awake_) { awake_ = false; off_due_ = true; }
+  }
+  // The serial code asks once per pass: true = send SCREEN_OFF_LINE now (it is not due again until the next
+  // transition). No page asking: nothing is sent and the transition is forgotten.
+  bool takeScreenOff(uint32_t now) {
+    if (!off_due_) return false;
+    off_due_ = false;
+    return active(now);
   }
 
   // The colours to reserve, in priority order, before a key picture is drawn (see the note on slot order above).
@@ -490,6 +511,7 @@ private:
   size_t len_, off_;
   uint16_t seed_[PALETTE_SIZE];
   uint8_t nseed_;
+  bool awake_, off_due_;         // screen on/off as last told by noteScreen; a screen-off line is waiting to go
 };
 
 // ---- which screen this radio has, and the one shared Link ------------------------------------------

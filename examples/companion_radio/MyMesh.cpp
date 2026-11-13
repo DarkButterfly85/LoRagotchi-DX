@@ -2930,6 +2930,8 @@ void MyMesh::checkNovaSerial() {
     next_out = now + NovaPetLink::SEND_GAP_MS;
   }
   if (!l) return;
+  // The radio screen went to sleep: one line, queued behind any picture half written (the outbox waits for it), once per transition.
+  if (l->takeScreenOff(now)) hub.out.append(NovaPetLink::SCREEN_OFF_LINE);
   if (l->pending()) {
     if (!l->active(now)) {
       l->dropPending();                           // nobody is asking any more

@@ -6363,6 +6363,10 @@ void UITask::loop() {
 #ifdef LORAFISH_UI
   if (!_display || !_display->isOn()) loRaFishStaticFrameValid = false;
 #endif
+#ifdef LORAGOTCHI_NOVA_LINK
+  // Tell the Nova link whether the screen is on; it sends one {"screen":"off"} line when it goes to sleep (NovaPetLink::noteScreen).
+  if (_display) { if (NovaPetLink::Link* novaScr = NovaPetLink::link()) novaScr->noteScreen(_display->isOn()); }
+#endif
   if (_display != NULL && _display->isOn()) {
 #ifdef LORAFISH_UI
     const bool sleeping=loRaFishIsSleeping();
